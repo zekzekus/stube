@@ -1,0 +1,185 @@
+(ns stube.http
+  "Ring handlers that bridge HTTP to the kernel.
+
+  Three endpoints implement the entire client/server contract:
+
+  | route                       | method | purpose                                                                       |
+  |-----------------------------|--------|-------------------------------------------------------------------------------|
+  | `/<mount-path>`             | GET    | mint a conversation, serve the shell HTML                                     |
+  | `/conv/:cid/sse`            | GET    | open the long-lived SSE stream for the conversation                           |
+  | `/conv/:cid/:iid/:event`    | POST   | dispatch one event; the iid and event live in the path, signals in the body  |
+
+  The shell page is a trivial HTML document.  All real UI is delivered
+  via SSE patches once the browser connects to `/conv/:cid/sse`."
+  (:require [charred.api                                       :as json]
+            [dev.onionpancakes.chassis.core                    :as chassis]
+            [starfederation.datastar.clojure.api               :as d*]
+            [starfederation.datastar.clojure.adapter.http-kit  :as hk]
+            [stube.conversation                                :as conv]
+            [stube.kernel                                      :as kernel]
+            [stube.render                                      :as render]
+            [stube.server                                      :as server]))
+
+;; ---------------------------------------------------------------------------
+;; JSON helpers
+;; ---------------------------------------------------------------------------
+;;
+;; Charred lets us hoist parsing out of the hot path: the parser is built
+;; once and reused.  `:key-fn keyword` so the kernel sees real keywords
+;; throughout (which it relies on for things like `(:event ev)`).
+
+(def ^:private parse-json
+  (json/parse-json-fn {:async?  false
+                       :bufsize 8192
+                       :key-fn  keyword}))
+
+(def ^:private write-json
+  (json/write-json-fn {}))
+
+(defn- ^String json-str [m]
+  (let [sb (StringBuilder.)]
+    (write-json sb m)
+    (.toString sb)))
+
+(defn- read-signals
+  "Pull the Datastar signals payload from a request and parse it.
+  Returns `{}` if there are none."
+  [req]
+  (let [raw (d*/get-signals req)]
+    (cond
+      (nil? raw)        {}
+      (string? raw)     (parse-json raw)
+      :else             (with-open [s raw] (parse-json s)))))
+
+;; ---------------------------------------------------------------------------
+;; The shell
+;; ---------------------------------------------------------------------------
+;;
+;; The browser receives an effectively-empty page that hands control to
+;; Datastar.  As soon as the body loads, Datastar opens the SSE stream
+;; and the kernel pushes the first frame.
+
+(def datastar-cdn d*/CDN-url)
+
+(defn- shell-html [cid]
+  ;; `data-init` runs once when Datastar processes the element after the
+  ;; page loads.  We open the long-lived SSE stream there; every patch
+  ;; the kernel pushes thereafter morphs into the DOM by id, starting
+  ;; with the `<div id="root">` placeholder below.
+  (chassis/html
+    [chassis/doctype-html5
+     [:html {:lang "en"}
+      [:head
+       [:meta {:charset "utf-8"}]
+       [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
+       [:title "stube"]
+       [:script {:type "module" :src datastar-cdn}]]
+      [:body {:data-init (str "@get('/conv/" cid "/sse')")}
+       [:div {:id "root"}]]]]))
+
+;; ---------------------------------------------------------------------------
+;; Pushing fragments to the wire
+;; ---------------------------------------------------------------------------
+
+(def ^:private patch-modes
+  "Translate kernel keyword patch modes to the Datastar string constants."
+  {:outer   d*/pm-outer
+   :inner   d*/pm-inner
+   :remove  d*/pm-remove
+   :prepend d*/pm-prepend
+   :append  d*/pm-append
+   :before  d*/pm-before
+   :after   d*/pm-after
+   :replace d*/pm-replace})
+
+(defn- elements-opts
+  "Translate the kernel's wire-agnostic options map into the Datastar
+  SDK's namespaced-keyword option keys."
+  [{:keys [selector patch-mode]}]
+  (cond-> {}
+    selector   (assoc d*/selector   selector)
+    patch-mode (assoc d*/patch-mode (or (patch-modes patch-mode)
+                                        (throw (ex-info "Unknown patch-mode"
+                                                        {:patch-mode patch-mode}))))))
+
+(defn- push-fragment!
+  "Translate one kernel fragment into one Datastar SSE event."
+  [sse-gen {:fragment/keys [kind html data script opts]}]
+  (case kind
+    :elements (d*/patch-elements! sse-gen html (elements-opts opts))
+    :signals  (d*/patch-signals!  sse-gen (json-str data) (or opts {}))
+    :script   (d*/execute-script! sse-gen script (or opts {}))
+    :close    (d*/close-sse! sse-gen)))
+
+(defn- push-fragments!
+  "Push several fragments in order, holding the SSE lock so they are not
+  interleaved with concurrent pushes."
+  [sse-gen fragments]
+  (when (seq fragments)
+    (d*/lock-sse! sse-gen
+      (doseq [f fragments]
+        (push-fragment! sse-gen f)))))
+
+;; ---------------------------------------------------------------------------
+;; Handlers
+;; ---------------------------------------------------------------------------
+
+(defn shell-handler
+  "Build the GET handler for a mount path.  Each request mints a fresh
+  conversation pre-bound to `flow-id`; the cid is embedded in the shell
+  so the browser's first SSE GET is to the right place."
+  [flow-id]
+  (fn [_req]
+    (let [cid (server/create-conversation! flow-id)]
+      {:status  200
+       :headers {"Content-Type" "text/html; charset=utf-8"
+                 "Cache-Control" "no-store"}
+       :body    (shell-html cid)})))
+
+(defn sse-handler
+  "Open the long-lived SSE stream for a conversation.  On connect we run
+  the boot effects (a `:call` of the conversation's flow) and push the
+  first frame; thereafter the kernel pushes whenever an event handler
+  produces fragments."
+  [{:keys [path-params] :as req}]
+  (let [cid (:cid path-params)]
+    (hk/->sse-response req
+      {hk/on-open
+       (fn [sse-gen]
+         (server/register-sse! cid sse-gen)
+         (when-let [flow-id (server/pending-flow cid)]
+           (let [[_conv frags]
+                 (server/swap-conv! cid
+                                    (fn [c]
+                                      (let [[c' fs] (binding [render/*cid* cid]
+                                                      (kernel/run-effects
+                                                        c (kernel/boot flow-id)))]
+                                        ;; Squirrel fragments away on the
+                                        ;; conversation just so we can
+                                        ;; return them from `swap-conv!`.
+                                        ;; They never get persisted.
+                                        [c' fs])))]
+             (binding [render/*cid* cid]
+               (push-fragments! sse-gen frags)))))
+
+       hk/on-close
+       (fn [_sse-gen _status]
+         (server/unregister-sse! cid))})))
+
+(defn event-handler
+  "Dispatch one client event into the conversation.  The instance id
+  and event name are taken from the URL path; everything left in the
+  request body / query is treated as the current Datastar signals."
+  [{:keys [path-params] :as req}]
+  (let [{:keys [cid iid event]} path-params
+        signals (read-signals req)
+        ev      {:instance-id iid
+                 :event       (keyword event)
+                 :signals     signals}
+        [_conv frags] (binding [render/*cid* cid]
+                        (server/swap-conv! cid
+                                           (fn [c] (kernel/dispatch c ev))))]
+    (when-let [sse-gen (server/sse cid)]
+      (binding [render/*cid* cid]
+        (push-fragments! sse-gen frags)))
+    {:status 204}))

@@ -1,0 +1,48 @@
+;; stube — top-level dependency manifest.
+;;
+;; Slice 0 keeps the production surface small on purpose:
+;;
+;;   * Chassis            — fast Hiccup-compatible HTML rendering.
+;;   * Charred            — fast pure-Clojure JSON parser/writer for signals.
+;;   * Datastar SDK       — SSE event types and the http-kit adapter.
+;;   * http-kit           — long-lived SSE-friendly HTTP server.
+;;   * Reitit ring        — small data-driven router.
+;;
+;; cloroutine and the `defflow` macro arrive in slice 1; they are not pulled
+;; in here.
+
+{:paths ["src" "resources"]
+
+ :deps
+ {org.clojure/clojure                  {:mvn/version "1.12.4"}
+
+  ;; HTML rendering at the Hiccup boundary.
+  dev.onionpancakes/chassis            {:mvn/version "1.0.365"}
+
+  ;; JSON for the Datastar signals on the wire.
+  com.cnuernber/charred                {:mvn/version "1.038"}
+
+  ;; Datastar Clojure SDK + http-kit adapter.
+  ;; The adapter dep transitively pulls the SDK and http-kit 2.9-beta.
+  dev.data-star.clojure/http-kit       {:mvn/version "1.0.0-RC10"}
+
+  ;; Routing.
+  metosin/reitit-ring                  {:mvn/version "0.10.1"}}
+
+ :aliases
+ {;; REPL-friendly profile that includes test/ and examples/ on the path.
+  :dev
+  {:extra-paths ["dev" "test" "examples"]}
+
+  ;; clojure -X:test
+  :test
+  {:extra-paths ["test"]
+   :extra-deps  {io.github.cognitect-labs/test-runner
+                 {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+   :main-opts   ["-m" "cognitect.test-runner"]
+   :exec-fn     cognitect.test-runner.api/test}
+
+  ;; clojure -M:examples
+  :examples
+  {:extra-paths ["examples"]
+   :main-opts   ["-m" "stube.examples.guess"]}}}
