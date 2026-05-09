@@ -46,7 +46,15 @@
   Everything in this namespace is intended to remain stable across
   framework versions.  Names and arities outside this namespace are
   considered internal until the framework reaches 1.0."
+  ;; Shadow `clojure.core/await`; see [[stube.flow]] for the rationale.
+  (:refer-clojure :exclude [await])
   (:require [stube.conversation :as conv]
+            ;; `:refer [await]` is intentional — it makes `stube.core/await`
+            ;; resolve to the *same var* as `stube.flow/await`, which is
+            ;; required for cloroutine to recognise `(s/await …)` calls in
+            ;; user `defflow` bodies as suspend points (cloroutine compares
+            ;; vars by identity, not by value).
+            [stube.flow         :as flow :refer [await]]
             [stube.kernel       :as kernel]
             [stube.registry     :as registry]
             [stube.render       :as render]
@@ -96,6 +104,22 @@
 
 (def ^{:doc "See [[stube.render/on]]."}     on   render/on)
 (def ^{:doc "See [[stube.render/bind]]."}   bind render/bind)
+
+;; ---------------------------------------------------------------------------
+;; Linear flows (slice 1)
+;; ---------------------------------------------------------------------------
+
+(defmacro defflow
+  "Define a linear flow component.  See [[stube.flow/defflow]] for the
+  full docstring; this is a thin re-export so application code only ever
+  needs `[stube.core :as s]`."
+  [id bindings & body]
+  `(stube.flow/defflow ~id ~bindings ~@body))
+
+;; `await` is brought in via `:refer` above, on purpose; see the require.
+;; This explicit attribution exists only to surface it in `(dir 'stube.core)`.
+(alter-meta! #'await assoc
+             :stube.core/re-export 'stube.flow/await)
 
 ;; ---------------------------------------------------------------------------
 ;; Lifecycle / mounting

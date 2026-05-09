@@ -164,10 +164,23 @@
             inst'        (conv/preserve-meta inst inst')
             conv''       (conv/put-instance conv' inst')
             [conv''' fr] (run-effects conv'' fx)]
-        ;; If `:start`'s effects already produced HTML (e.g. by `:call`-ing
-        ;; a child) we don't render this placeholder over the top.
-        (if (some #(= :elements (:fragment/kind %)) fr)
+        ;; Three outcomes after `:start`:
+        ;;  1. it produced HTML directly (e.g. via `:call`-ing a child);
+        ;;     we don't add a placeholder render on top.
+        ;;  2. it `:answer`-ed or `:end`-ed and the frame is gone;
+        ;;     there is nothing here to render.  This is the common
+        ;;     `defflow` case where the body had zero `await`s and
+        ;;     completed synchronously.
+        ;;  3. the frame is still here with no HTML yet; render the
+        ;;     placeholder so the page sees *something*.
+        (cond
+          (some #(= :elements (:fragment/kind %)) fr)
           [conv''' fr]
+
+          (nil? (conv/instance conv''' iid))
+          [conv''' fr]
+
+          :else
           (let [[c f] (render-frame conv''' iid)]
             [c (conj (vec fr) f)])))
       (let [[conv'' frag] (render-frame conv' iid)]

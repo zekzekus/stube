@@ -27,7 +27,12 @@
   dev.data-star.clojure/http-kit       {:mvn/version "1.0.0-RC10"}
 
   ;; Routing.
-  metosin/reitit-ring                  {:mvn/version "0.10.1"}}
+  metosin/reitit-ring                  {:mvn/version "0.10.1"}
+
+  ;; Macro-based stackless coroutines — powers the slice-1 `defflow`
+  ;; macro that compiles linear let/await bodies into a state machine
+  ;; with auto-generated resume keys.
+  cloroutine/cloroutine                {:mvn/version "13"}}
 
  :aliases
  {;; REPL-friendly profile that includes test/ and examples/ on the path.

@@ -1,6 +1,6 @@
 (ns stube.examples.guess
-  "Slice-0 demo: Seaside's classic \"guess the number\" game, written
-  with hand-rolled task components (no `defflow` macro yet).
+  "Slice-1 demo: Seaside's classic \"guess the number\" game, written as
+  a [[stube.core/defflow]].
 
   Run from the project root:
 
@@ -8,16 +8,15 @@
 
   Then visit <http://localhost:8080/guess>.
 
-  The flow is:
-
-      :demo/guess (task)
-        └─ :on-start ─► :call :demo/prompt   ─► :on-guess
-        └─ :on-guess ─► (re)call :demo/prompt or :demo/info
-        └─ :on-done  ─► [:end]"
+  Compare with `git log -p` to see the slice-0 hand-rolled task version
+  this replaces.  The flow body now reads as a straight-line script:
+  pick a target, loop asking for guesses until one is correct, then show
+  a victory message.  No state-machine boilerplate, no resume keys, no
+  `:start` hook.  Everything between `await`s is ordinary Clojure."
   (:require [stube.core :as s]))
 
 ;; ---------------------------------------------------------------------------
-;; UI building blocks
+;; UI building blocks (unchanged from slice 0)
 ;; ---------------------------------------------------------------------------
 
 ;; A reusable input that asks for a number and answers it back to the
@@ -66,48 +65,47 @@
             [self [[:answer :ack]]]))
 
 ;; ---------------------------------------------------------------------------
-;; The wizard task
+;; The flow
 ;; ---------------------------------------------------------------------------
 ;;
-;; This component has no UI of its own.  It uses `:start` to launch the
-;; first prompt as soon as the conversation boots, then loops with
-;; resume keys until the player wins.
+;; This is the slice-1 highlight.  The body looks like a script you'd
+;; write to play the game by hand, with `s/await` standing in for "now
+;; show this UI and wait for the user".  The `defflow` macro compiles
+;; it down to a regular component that:
+;;
+;;   * holds a cloroutine continuation as instance state,
+;;   * uses :start to take the first step,
+;;   * routes every child :answer through one resume key.
+;;
+;; The recur point sits *outside* the `await` call (cloroutine restriction):
+;; the await runs first, its result is bound to `n`, and only then we
+;; recur.
 
-(s/defcomponent :demo/guess
-  :init  (fn [_]
-           {:target   (inc (rand-int 100))   ; 1..100 inclusive
-            :attempts 0})
+(s/defflow :demo/guess []
+  (let [target (inc (rand-int 100))]                  ; 1..100 inclusive
+    (loop [attempts 1
+           prompt   "Pick a number from 1 to 100."]
+      (let [n (s/await (s/embed :demo/prompt {:text prompt}))]
+        (cond
+          (< n target)
+          (recur (inc attempts)
+                 (str "Too low — try again. (Attempt " attempts ")"))
 
-  ;; Kicked off automatically when the kernel pushes us onto the stack.
-  :start (fn [self]
-           [self [[:call (s/embed :demo/prompt {:text "Pick a number from 1 to 100."})
-                   :resume :on-guess]]])
+          (> n target)
+          (recur (inc attempts)
+                 (str "Too high — try again. (Attempt " attempts ")"))
 
-  :on-guess
-  (fn [self n]
-    (let [self' (update self :attempts inc)
-          {:keys [target attempts]} self']
-      (cond
-        (< n target)
-        [self' [[:call (s/embed :demo/prompt
-                                {:text (str "Too low — try again. (Attempt " attempts ")")})
-                 :resume :on-guess]]]
-
-        (> n target)
-        [self' [[:call (s/embed :demo/prompt
-                                {:text (str "Too high — try again. (Attempt " attempts ")")})
-                 :resume :on-guess]]]
-
-        :else
-        [self' [[:call (s/embed :demo/info
-                                {:text (str "🎉 Got it! "
-                                            target " in " attempts
-                                            (if (= 1 attempts) " attempt." " attempts."))})
-                 :resume :on-done]]])))
-
-  :on-done
-  (fn [self _]
-    [self [[:end {:winner true :target (:target self) :attempts (:attempts self)}]]]))
+          :else
+          (do
+            (s/await
+              (s/embed :demo/info
+                       {:text (str "🎉 Got it! "
+                                   target " in " attempts
+                                   (if (= 1 attempts) " attempt." " attempts."))}))
+            ;; The body's final value becomes the flow's :answer.  Since
+            ;; this is the root flow, the kernel turns that into [:end …]
+            ;; and the conversation closes.
+            {:winner true :target target :attempts attempts}))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring
