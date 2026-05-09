@@ -112,9 +112,14 @@
       [:input (merge {:name \"answer\"} (s/bind :answer))]
 
   Datastar's signal-defining attributes use the colon form
-  (`data-bind:foo`); the dash form would not be recognised."
+  (`data-bind:foo`); the dash form would not be recognised.
+
+  Datastar 1.0 camel-cases `data-bind:<key>` by default.  Clojure code
+  conventionally names signals with kebab-case keywords and reads the
+  POSTed signals back by the same keyword, so force Datastar's no-op
+  kebab case modifier to keep the wire key unchanged."
   [signal]
-  {(keyword (str "data-bind:" (name signal))) true})
+  {(keyword (str "data-bind:" (name signal) "__case.kebab")) true})
 
 ;; ---------------------------------------------------------------------------
 ;; Slots: rendering an embedded child inline

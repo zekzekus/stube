@@ -29,6 +29,8 @@
       [:patch-signals <map>]        push a Datastar signal patch
       [:execute-script <js>]        run literal JS in the browser
       [:io <fn>]                    call `(fn)` off-thread (fire-and-forget)
+      [:back]                       restore the previous conversation
+                                    from `:conv/history` (slice 3)
       [:end <value>]                terminate the conversation
 
   All effects produce zero or more fragments and an updated conversation.
@@ -286,6 +288,41 @@
                  (println "stube :io effect threw:" (ex-message t)))))
   [conv []])
 
+(defmethod step :back
+  [conv _]
+  ;; Walk one step backward through `:conv/history`.  Each entry on the
+  ;; history vector is a *previous* full conversation value (with its
+  ;; own `:conv/history` stripped, by design — see `conv/snapshot`).
+  ;;
+  ;; To make the restored conversation render cleanly into the existing
+  ;; DOM, we mark every instance as not-rendered.  The next call to
+  ;; `render-frame` therefore takes the "first render" path and emits
+  ;; `selector #root, mode inner` — replacing the entire shell with the
+  ;; restored state in one shot.  Without this reset we'd morph
+  ;; restored HTML into elements that may not be in the DOM anymore.
+  (if-let [prev (peek (:conv/history conv))]
+    (let [restored
+          (-> prev
+              (assoc :conv/history (pop (:conv/history conv)))
+              ;; Walk every persisted instance and clear its rendered
+              ;; flag.  Simple and correct; if a conversation ever grows
+              ;; large enough that this is hot, switch to lazy renderer
+              ;; metadata.
+              (update :conv/instances
+                      (fn [m]
+                        (into {}
+                              (map (fn [[iid inst]]
+                                     [iid (assoc inst :instance/rendered? false)])
+                                   m)))))]
+      (if-let [iid (conv/top-id restored)]
+        (let [[c f] (render-frame restored iid)]
+          [c [f]])
+        ;; Empty stack: nothing to render.  Surface as :end so the
+        ;; conversation tears down cleanly.
+        (step restored [:end nil])))
+    ;; No history → nothing to do, no fragments emitted.
+    [conv []]))
+
 (defmethod step :end
   [conv [_ _value]]
   [(assoc conv :conv/ended? true) [close-fragment]])
@@ -329,17 +366,29 @@
 
   Returns `[conv' fragments]`.  Pure: no I/O, no globals."
   [conv {:keys [instance-id event signals]}]
-  (let [;; Snapshot the *previous* conversation onto the history stack
-        ;; before we mutate it, so the back button can rewind to here.
-        conv*  (-> conv conv/snapshot conv/touch)
-        self   (conv/merged-self conv* instance-id signals)
-        cdef   (registry/lookup! (:instance/type self))
-        handle (or (:component/handle cdef) default-handle)
+  (let [;; Compute the merged self from the unmodified `conv` first;
+        ;; `merged-self` only consults `:conv/instances`, so it is
+        ;; insensitive to whether we have snapshotted yet.  This lets
+        ;; us decide whether to snapshot only AFTER seeing what the
+        ;; handler emitted.
+        self       (conv/merged-self conv instance-id signals)
+        cdef       (registry/lookup! (:instance/type self))
+        handle     (or (:component/handle cdef) default-handle)
         [self' fx] (handle self {:event event :signals signals})
+        ;; A handler that walks history backwards (`[:back]`) must NOT
+        ;; have its own pre-state pushed onto that history first — if
+        ;; it did, `:back` would just pop the snapshot we'd just taken
+        ;; and "restore" the same state, leaving the user stuck.  So
+        ;; we look at the produced effects and skip the snapshot in
+        ;; that case.  Every other dispatch behaves as before.
+        back?      (some #(= :back (first %)) fx)
+        conv*      (cond-> conv
+                     (not back?) conv/snapshot
+                     true        conv/touch)
         ;; Protect instance metadata against an accidentally clobbering
         ;; handler.
-        self'  (conv/preserve-meta (conv/instance conv* instance-id) self')
-        conv** (conv/put-instance conv* self')
+        self'      (conv/preserve-meta (conv/instance conv* instance-id) self')
+        conv**     (conv/put-instance conv* self')
         [conv''' more-frags] (run-effects conv** fx)
         ;; If the handler produced no frame-changing effect, re-render
         ;; the same instance so the user sees state changes.  Skip the

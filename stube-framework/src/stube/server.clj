@@ -19,7 +19,8 @@
   raw atoms."
   (:require [org.httpkit.server :as http-kit]
             [reitit.ring        :as ring]
-            [stube.conversation :as conv]))
+            [stube.conversation :as conv]
+            [stube.store        :as store]))
 
 ;; ---------------------------------------------------------------------------
 ;; Storage
@@ -30,6 +31,17 @@
 (defonce ^:private !pending-flows (atom {}))
 (defonce ^:private !mounts        (atom (sorted-map)))
 (defonce ^:private !server        (atom nil))
+
+;; Slice 3 — the configured persistence backend.  Defaults to a no-op
+;; in-memory store, so existing tests and demos keep their slice-0
+;; behaviour exactly.  Replaced by `start!` if a `:store` is supplied.
+(defonce ^:private !store         (atom (store/in-memory-store)))
+
+(defn current-store
+  "The store currently in use.  Exposed for tests and tooling; the
+  http layer never needs to call it."
+  []
+  @!store)
 
 ;; ---------------------------------------------------------------------------
 ;; Conversation helpers
@@ -61,11 +73,13 @@
 
 (defn swap-conv!
   "Atomically apply `f` (which must return `[conv' fragments]`) to the
-  conversation under `cid`, install `conv'`, and return the full
-  `[conv' fragments]` pair so the caller can act on the fragments.
+  conversation under `cid`, install `conv'`, persist it via the
+  configured store, and return the full `[conv' fragments]` pair so
+  the caller can act on the fragments.
 
   `f` may be retried by `swap!` under CAS contention; its only side
-  effect should be the data it returns."
+  effect should be the data it returns.  The store's `save!` runs
+  *outside* the swap retry loop, so it sees only the final value."
   [cid f]
   (let [box (volatile! nil)]
     (swap! !conversations
@@ -75,14 +89,28 @@
                    [c' _fr] pair]
                (vreset! box pair)
                (assoc m cid c'))))
+    (let [[c' _] @box]
+      (try
+        (store/save! @!store c')
+        (catch Throwable t
+          ;; Persistence is best-effort: a failure here must not break
+          ;; the live request.  The store itself is responsible for any
+          ;; informative logging.
+          (binding [*out* *err*]
+            (println "stube.server: store save! threw —" (ex-message t))))))
     @box))
 
 (defn end-conversation!
-  "Drop a conversation and any SSE binding."
+  "Drop a conversation, any SSE binding, and the persisted copy."
   [cid]
   (swap! !conversations dissoc cid)
   (swap! !sse-sessions  dissoc cid)
   (swap! !pending-flows dissoc cid)
+  (try
+    (store/delete! @!store cid)
+    (catch Throwable t
+      (binding [*out* *err*]
+        (println "stube.server: store delete! threw —" (ex-message t)))))
   nil)
 
 ;; ---------------------------------------------------------------------------
@@ -119,16 +147,21 @@
 ;; ---------------------------------------------------------------------------
 
 (defn- build-router
-  "Build the reitit router from the current mounts.  The two
-  conversation-scoped routes are always present; user mounts are
-  appended.  Looked up lazily so adding mounts after start works."
+  "Build the reitit router from the current mounts.  The conversation-
+  scoped routes are always present; user mounts are appended.  Looked
+  up lazily so adding mounts after start works."
   []
   (let [;; Resolved late to avoid a circular require with stube.http.
-        h (requiring-resolve 'stube.http/shell-handler)
+        h     (requiring-resolve 'stube.http/shell-handler)
         sse-h (requiring-resolve 'stube.http/sse-handler)
-        ev-h  (requiring-resolve 'stube.http/event-handler)]
+        ev-h  (requiring-resolve 'stube.http/event-handler)
+        bk-h  (requiring-resolve 'stube.http/back-handler)]
     (ring/router
       (into [["/conv/:cid/sse"            {:get  {:handler @sse-h}}]
+             ["/conv/:cid/back"           {:post {:handler @bk-h}}]
+             ;; The back route is listed *before* the generic
+             ;; `:iid/:event` route so reitit picks the more specific
+             ;; one first.
              ["/conv/:cid/:iid/:event"    {:post {:handler @ev-h}}]]
             (for [[path flow-id] @!mounts]
               [path {:get {:handler (@h flow-id)}}])))))
@@ -145,11 +178,29 @@
 
 (defn start!
   "Start http-kit on `port` (default 8080).  Idempotent: a second call
-  with the server already running stops the old one first."
+  with the server already running stops the old one first.
+
+  Options:
+
+  | key      | default                       | meaning                               |
+  |----------|-------------------------------|---------------------------------------|
+  | `:port`  | 8080                          | TCP port                              |
+  | `:store` | `(store/in-memory-store)`     | persistence backend (slice 3)         |
+
+  When a `:store` is supplied, [[load-all]] runs *before* the http
+  listener accepts requests, so any persisted conversations are live
+  in memory by the time the first browser reconnects."
   ([] (start! {}))
-  ([{:keys [port] :or {port 8080}}]
+  ([{:keys [port store] :or {port 8080}}]
    (when @!server
      (@!server))
+   (when store
+     (reset! !store store)
+     (let [restored (store/load-all store)]
+       (when (seq restored)
+         (println (str "stube: restored " (count restored)
+                       " conversations from store")))
+       (swap! !conversations merge restored)))
    (let [stop-fn (http-kit/run-server (ring-handler)
                                       {:port                 port
                                        :legacy-return-value? false})]
@@ -178,4 +229,5 @@
   (reset! !sse-sessions  {})
   (reset! !pending-flows {})
   (reset! !mounts        (sorted-map))
+  (reset! !store         (store/in-memory-store))
   nil)

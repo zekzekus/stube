@@ -25,4 +25,8 @@
                  (render/on {} :submit)))))
 
 (deftest bind-builds-data-bind-attribute
-  (is (= {(keyword "data-bind:answer") true} (render/bind :answer))))
+  (is (= {(keyword "data-bind:answer__case.kebab") true}
+         (render/bind :answer)))
+  (is (= {(keyword "data-bind:answer-ix-000002__case.kebab") true}
+         (render/bind :answer-ix-000002))
+      "Datastar's default bind key casing is camel; keep Clojure kebab-case signal names on the wire"))

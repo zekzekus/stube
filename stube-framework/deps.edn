@@ -40,8 +40,11 @@
   {:extra-paths ["dev" "test" "examples"]}
 
   ;; clojure -X:test
+  ;; The example flows live under `examples/` and are exercised by
+  ;; regression tests (e.g. `stube.wizard-test`), so the path is on the
+  ;; test classpath as well as `:dev`.
   :test
-  {:extra-paths ["test"]
+  {:extra-paths ["test" "examples"]
    :extra-deps  {io.github.cognitect-labs/test-runner
                  {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
    :main-opts   ["-m" "cognitect.test-runner"]

@@ -136,35 +136,98 @@
                  "Cache-Control" "no-store"}
        :body    (shell-html cid)})))
 
+(defn- resume-render
+  "Render the current top frame of a conversation that already has
+  state.  Used by the SSE handler on path 2 (re-attach to a restored
+  conversation): clear the top frame's `:instance/rendered?` flag so
+  `render-frame`'s \"first render\" branch fires, then render it.
+
+  Returns `[conv' fragments]`.  If the stack is empty we leave the
+  conversation alone and return no fragments."
+  [conv]
+  (if-let [iid (some-> conv :conv/stack peek)]
+    (let [c' (assoc-in conv [:conv/instances iid :instance/rendered?] false)
+          [c'' frag] (#'kernel/render-frame c' iid)]
+      [c'' [frag]])
+    [conv []]))
+
 (defn sse-handler
-  "Open the long-lived SSE stream for a conversation.  On connect we run
-  the boot effects (a `:call` of the conversation's flow) and push the
-  first frame; thereafter the kernel pushes whenever an event handler
-  produces fragments."
+  "Open the long-lived SSE stream for a conversation.
+
+  Three startup paths:
+
+  1. **Fresh shell visit** — the cid was just minted by [[shell-handler]],
+     so a pending flow id is on the baton.  We boot the flow.
+  2. **Restored conversation** — the cid exists in memory (loaded from
+     the persistence store at startup, or carried over a hot reload),
+     but no pending flow is pending.  We re-render its current top
+     frame so the freshly-attached browser sees the restored UI.
+  3. **Unknown cid** — the conversation is gone (ended, expired).  The
+     SSE channel just stays empty; the browser will see no patches.
+
+  Thereafter the kernel pushes whenever an event handler produces
+  fragments."
   [{:keys [path-params] :as req}]
   (let [cid (:cid path-params)]
     (hk/->sse-response req
       {hk/on-open
-       (fn [sse-gen]
-         (server/register-sse! cid sse-gen)
-         (when-let [flow-id (server/pending-flow cid)]
-           (let [[_conv frags]
-                 (server/swap-conv! cid
-                                    (fn [c]
-                                      (let [[c' fs] (binding [render/*cid* cid]
-                                                      (kernel/run-effects
-                                                        c (kernel/boot flow-id)))]
-                                        ;; Squirrel fragments away on the
-                                        ;; conversation just so we can
-                                        ;; return them from `swap-conv!`.
-                                        ;; They never get persisted.
-                                        [c' fs])))]
-             (binding [render/*cid* cid]
-               (push-fragments! sse-gen frags)))))
+      (fn [sse-gen]
+        (server/register-sse! cid sse-gen)
+        ;; `server/pending-flow` is a one-shot: it pops the baton.
+        ;; Read it exactly once into a local before branching, or path
+        ;; 2 will fire after path 1 already consumed the value.
+        (let [pending (server/pending-flow cid)
+              live    (server/conversation cid)]
+          (cond
+            ;; Path 1 — fresh shell visit; instantiate the root flow.
+            (some? pending)
+            (let [[_conv frags]
+                  (server/swap-conv!
+                    cid
+                    (fn [c]
+                      (binding [render/*cid* cid]
+                        (kernel/run-effects c (kernel/boot pending)))))]
+              (binding [render/*cid* cid]
+                (push-fragments! sse-gen frags)))
+
+            ;; Path 2 — re-attach to a conversation that survives in
+            ;; memory (loaded from the persistence store at startup,
+            ;; or carried across a hot reload of the http layer).
+            (some? live)
+            (let [[_conv frags]
+                  (server/swap-conv!
+                    cid
+                    (fn [c]
+                      (binding [render/*cid* cid]
+                        (resume-render c))))]
+              (binding [render/*cid* cid]
+                (push-fragments! sse-gen frags)))
+
+            ;; Path 3 — unknown cid; the conversation is gone.  Leave
+            ;; the SSE channel empty; the browser will simply see no
+            ;; patches.
+            :else
+            nil)))
 
        hk/on-close
        (fn [_sse-gen _status]
          (server/unregister-sse! cid))})))
+
+(defn back-handler
+  "POST `/conv/:cid/back` — emit the [[:back]] effect.  Mirrors
+  [[event-handler]] but without an instance id or signals payload."
+  [{:keys [path-params]}]
+  (let [cid (:cid path-params)
+        [_ frags] (binding [render/*cid* cid]
+                    (server/swap-conv!
+                      cid
+                      (fn [c]
+                        (binding [render/*cid* cid]
+                          (kernel/run-effects c [[:back]])))))]
+    (when-let [sse-gen (server/sse cid)]
+      (binding [render/*cid* cid]
+        (push-fragments! sse-gen frags)))
+    {:status 204}))
 
 (defn event-handler
   "Dispatch one client event into the conversation.  The instance id

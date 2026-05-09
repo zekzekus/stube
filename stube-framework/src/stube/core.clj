@@ -58,7 +58,8 @@
             [stube.kernel       :as kernel]
             [stube.registry     :as registry]
             [stube.render       :as render]
-            [stube.server       :as server]))
+            [stube.server       :as server]
+            [stube.store        :as store]))
 
 ;; ---------------------------------------------------------------------------
 ;; Component definition
@@ -141,6 +142,29 @@
 
 (def ^{:doc "Look up a registered component definition by id (or nil)."}
   registry-lookup registry/lookup)
+
+;; ---------------------------------------------------------------------------
+;; History & persistence (slice 3)
+;; ---------------------------------------------------------------------------
+
+(def ^{:doc "An effect that walks one step backward through the
+  conversation's history.  Use it from a handler to wire a \"Back\"
+  button:
+
+      (s/defcomponent :ui/back-button
+        :render (fn [self]
+                  [:button (merge {:type \"button\"}
+                                  (s/on self :click :as :go-back))
+                   \"Back\"])
+        :handle (fn [self _] [self [s/back]]))
+
+  When emitted from a top-level handler, it pops the most recent
+  conversation snapshot off `:conv/history` and re-renders the
+  restored top frame.  No-op if the history is empty."}
+  back [:back])
+
+(def ^{:doc "See [[stube.store/in-memory-store]]."}  in-memory-store store/in-memory-store)
+(def ^{:doc "See [[stube.store/file-store]]."}        file-store      store/file-store)
 
 ;; ---------------------------------------------------------------------------
 ;; Linear flows (slice 1)

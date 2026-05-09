@@ -22,3 +22,5 @@ result-*
 # REPL artefacts
 .nrepl-port
 .rebel_readline_history
+
+.claude
