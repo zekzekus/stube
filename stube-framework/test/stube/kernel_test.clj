@@ -32,12 +32,15 @@
     (is (= 1 (count (elements-fragments frags))))
     (let [{:fragment/keys [html opts]} (first (elements-fragments frags))]
       (is (re-find #"leaf" html))
-      (is (= "#root" (:selector opts))   "render slots into #root")
-      (is (= :inner   (:patch-mode opts))))
-    (testing "every render in slice 0 targets #root with inner mode"
+      (is (= "#root" (:selector opts))   "first render slots into #root")
+      (is (= :inner  (:patch-mode opts))))
+    (testing "subsequent renders of the same instance morph by id (no selector)"
+      ;; The kernel marked the frame :instance/rendered? on the first
+      ;; emit, so the second render call should fall back to Datastar's
+      ;; default morph-by-id (slice 2 patching strategy).
       (let [[_ frag] (#'kernel/render-frame c (conv/top-id c))]
-        (is (= "#root" (:selector (:fragment/opts frag))))
-        (is (= :inner  (:patch-mode (:fragment/opts frag))))))))
+        (is (nil? (:selector   (:fragment/opts frag))))
+        (is (nil? (:patch-mode (:fragment/opts frag))))))))
 
 (deftest answer-from-root-ends-conversation
   (registry/register!

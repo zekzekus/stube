@@ -55,11 +55,12 @@
             {:text text})
 
   :render (fn [self]
-            [:div (merge {:id    (:instance/id self)
-                          :class "stube-info"}
-                         (s/on self :ack))
+            [:div {:id    (:instance/id self)
+                   :class "stube-info"}
              [:p (:text self)]
-             [:button {:type "button"} "Continue"]])
+             [:button (merge {:type "button"}
+                             (s/on self :click :as :ack))
+              "Continue"]])
 
   :handle (fn [self _evt]
             [self [[:answer :ack]]]))

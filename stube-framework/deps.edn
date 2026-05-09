@@ -48,6 +48,8 @@
    :exec-fn     cognitect.test-runner.api/test}
 
   ;; clojure -M:examples
+  ;; Loads every shipped demo on one server; see
+  ;; `stube.examples.main` for the URL→example map.
   :examples
   {:extra-paths ["examples"]
-   :main-opts   ["-m" "stube.examples.guess"]}}}
+   :main-opts   ["-m" "stube.examples.main"]}}}

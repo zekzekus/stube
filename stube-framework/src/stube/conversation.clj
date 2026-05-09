@@ -77,13 +77,20 @@
 
 (def instance-meta-keys
   "Keys the kernel manages on every instance map.  Handlers must treat
-  these as read-only; the kernel ignores any user changes to them."
+  these as read-only; the kernel ignores any user changes to them.
+
+  `:instance/children` is the slot→iid map populated when a component
+  declares `:children` in its definition.  See [[instantiate-tree]]."
   #{:instance/id :instance/type :instance/parent
-    :instance/resume :instance/rendered?})
+    :instance/resume :instance/rendered? :instance/children})
 
 (defn instantiate
   "Build a fresh instance map from a component definition and an embed
-  spec.  `parent-id` and `resume-key` may be nil for root instances."
+  spec.  `parent-id` and `resume-key` may be nil for root instances.
+
+  This is the *flat* constructor: it does not look at `:children`.
+  Use [[instantiate-tree]] when you want the kernel to materialise the
+  whole subtree."
   [cdef {:keys [embed/args]} parent-id resume-key]
   (let [init-fn (or (:component/init cdef) (constantly {}))
         state   (init-fn (or args {}))]
@@ -92,7 +99,48 @@
             :instance/type      (:component/id cdef)
             :instance/parent    parent-id
             :instance/resume    resume-key
-            :instance/rendered? false})))
+            :instance/rendered? false
+            :instance/children  {}})))
+
+(defn instantiate-tree
+  "Build a parent instance plus every child eagerly declared by its
+  component definition's `:children` map.
+
+  `:children` is either a map `{slot-key embed-spec}` or a function of
+  the freshly-initialised parent state returning such a map.  Slot keys
+  are arbitrary keywords the parent can reference from its `:render`
+  via `(s/render-slot self slot-key)`.
+
+  `lookup-cdef` is a 1-arg function `(component-id) → cdef-map`.  Pass
+  `stube.registry/lookup!` from the kernel; the indirection lets this
+  namespace stay registry-agnostic and easy to test in isolation.
+
+  Returns `[parent-inst descendants]` where `descendants` is a
+  flat seq of every transitively-instantiated child instance, ready to
+  be merged into `:conv/instances`.  The returned `parent-inst` carries
+  `:instance/children` populated with `{slot-key child-iid}`."
+  [cdef embed-spec parent-id resume-key lookup-cdef]
+  (let [self          (instantiate cdef embed-spec parent-id resume-key)
+        children-spec (:children cdef)
+        children-spec (if (fn? children-spec)
+                        (children-spec self)
+                        children-spec)
+        ;; Walk each slot, recursively building child sub-trees.  Each
+        ;; entry yields [slot child-self deeper-descendants].
+        slot-entries  (for [[slot child-embed] children-spec]
+                        (let [child-cdef (lookup-cdef (:embed/type child-embed))
+                              [child-self deeper]
+                              (instantiate-tree child-cdef
+                                                child-embed
+                                                (:instance/id self)
+                                                nil
+                                                lookup-cdef)]
+                          [slot child-self deeper]))
+        children-map  (into {} (map (fn [[s c _]] [s (:instance/id c)]))
+                            slot-entries)
+        descendants   (mapcat (fn [[_ c d]] (cons c d)) slot-entries)]
+    [(assoc self :instance/children children-map)
+     (vec descendants)]))
 
 (defn preserve-meta
   "Merge `new-state` over `old-instance` while protecting the
@@ -148,6 +196,14 @@
 ;; Stack mutations (used by the kernel)
 ;; ---------------------------------------------------------------------------
 
+(defn put-many
+  "Add a flat seq of instances to `:conv/instances` without touching
+  the stack.  Used by the kernel after [[instantiate-tree]] to deposit
+  the eagerly-built children alongside their parent."
+  [conv instances]
+  (update conv :conv/instances merge
+          (into {} (map (juxt :instance/id identity)) instances)))
+
 (defn push-instance
   "Add `inst` to `:conv/instances` and push its id onto the stack."
   [conv inst]
@@ -155,14 +211,26 @@
       (assoc-in [:conv/instances (:instance/id inst)] inst)
       (update :conv/stack conj (:instance/id inst))))
 
+(defn descendant-ids
+  "Return a vector of all instance ids transitively reachable from `iid`
+  via `:instance/children`, including `iid` itself, in pre-order."
+  [conv iid]
+  (loop [acc [] frontier [iid]]
+    (if-let [i (first frontier)]
+      (let [inst   (instance conv i)
+            child-iids (vals (:instance/children inst))]
+        (recur (conj acc i) (into (vec (rest frontier)) child-iids)))
+      acc)))
+
 (defn pop-top
-  "Pop the top frame and remove its instance from the conversation.
-  Returns `[conv' popped-id]`."
+  "Pop the top frame and remove its instance — and every embedded
+  descendant — from the conversation.  Returns `[conv' popped-id]`."
   [conv]
-  (let [popped (top-id conv)]
+  (let [popped     (top-id conv)
+        all-gone   (descendant-ids conv popped)]
     [(-> conv
          (update :conv/stack pop)
-         (update :conv/instances dissoc popped))
+         (update :conv/instances #(apply dissoc % all-gone)))
      popped]))
 
 (defn put-instance
@@ -171,10 +239,20 @@
   (assoc-in conv [:conv/instances (:instance/id inst)] inst))
 
 (defn mark-rendered
-  "Set `:instance/rendered? true` on `iid`.  Called once the kernel has
-  emitted a frame's first patch onto the wire."
+  "Set `:instance/rendered? true` on `iid` and *every* descendant the
+  parent's render placed into the DOM.  Called once the kernel has
+  emitted a frame's first patch onto the wire.
+
+  Marking the whole subtree at once matches reality: Datastar morphs
+  the parent's HTML into the page in one shot, so children that the
+  parent inlined via `s/render-slot` are now in the DOM and any
+  *future* render of that child can use the (cheaper) morph-by-id
+  default instead of re-emitting the shell."
   [conv iid]
-  (assoc-in conv [:conv/instances iid :instance/rendered?] true))
+  (reduce (fn [c i]
+            (assoc-in c [:conv/instances i :instance/rendered?] true))
+          conv
+          (descendant-ids conv iid)))
 
 ;; ---------------------------------------------------------------------------
 ;; Signal merging

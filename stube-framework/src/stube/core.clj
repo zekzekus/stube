@@ -102,8 +102,45 @@
 (def ^{:doc "See [[stube.conversation/embed]]."}
   embed conv/embed)
 
-(def ^{:doc "See [[stube.render/on]]."}     on   render/on)
-(def ^{:doc "See [[stube.render/bind]]."}   bind render/bind)
+(def ^{:doc "See [[stube.render/on]]."}          on          render/on)
+(def ^{:doc "See [[stube.render/bind]]."}        bind        render/bind)
+(def ^{:doc "See [[stube.render/render-slot]]."} render-slot render/render-slot)
+
+;; ---------------------------------------------------------------------------
+;; Decorations (slice 2)
+;; ---------------------------------------------------------------------------
+
+(defn decorate
+  "Build a new component definition by overriding keys of `base-cdef`.
+
+  `overrides` is either:
+
+  * a **map** that replaces the corresponding entries verbatim, or
+  * a **function** of the base cdef returning such a map (so the
+    override can call into the original `:render` / `:handle` etc.).
+
+  Returns a fresh map; the caller is responsible for giving it a fresh
+  `:component/id` and registering it.
+
+      (def site-header
+        (s/decorate (s/registry-lookup :booking/wizard)
+          (fn [base]
+            {:component/id     :booking/wizard-with-banner
+             :component/render
+             (fn [self]
+               [:div {:id (:instance/id self)}
+                [:header.banner \"Welcome\"]
+                ((:component/render base) self)])})))
+
+  No new runtime concept: this is just `merge` lifted into the
+  framework's vocabulary so the call site reads like Seaside-style
+  behavioural composition."
+  [base-cdef overrides]
+  (merge base-cdef
+         (if (fn? overrides) (overrides base-cdef) overrides)))
+
+(def ^{:doc "Look up a registered component definition by id (or nil)."}
+  registry-lookup registry/lookup)
 
 ;; ---------------------------------------------------------------------------
 ;; Linear flows (slice 1)

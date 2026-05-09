@@ -114,25 +114,31 @@
   "Produce the elements fragment for `iid` and return
   `[conv' fragment]`.
 
-  Slice 0 renders only the top frame, and every emitted patch targets
-  the shell's `<div id=\"root\">` with `mode inner`.  This sidesteps
-  Datastar's morph-by-id for the root: when a `:call` pushes a new
-  instance with a fresh id, there is by definition no element with that
-  id in the DOM yet, so a default morph would have nowhere to land.
-  Replacing `#root`'s contents wholesale always works.
+  Patching strategy (slice 2):
 
-  Once embedding lands in slice 2, parents will render hiccup that
-  includes their children's ids inline; from that point morph-by-id can
-  preserve sibling state.  For now, simplicity wins."
+  * **First render of a frame** — its id is not yet in the DOM, so we
+    target the shell's `<div id=\"root\">` with `mode inner`.  This
+    case covers the very first SSE message of a conversation, every
+    `:call`-pushed top frame, and the result of `:replace`.
+  * **Subsequent renders** — the id is in the DOM (either we put it
+    there last time as a top frame, or its parent inlined it via
+    `s/render-slot`), so we let Datastar's default morph-by-id do the
+    work.  Sibling DOM state — input focus, selection, scroll
+    position — is preserved.
+
+  `*conv*` is bound around the user's `:render` so `s/render-slot` can
+  resolve embedded children."
   [conv iid]
-  (let [inst (conv/instance conv iid)
-        cdef (registry/lookup! (:instance/type inst))
-        ;; The component sees the same shape it would inside `dispatch`:
-        ;; instance metadata + state, no signals merged because there
-        ;; aren't any in the kernel's render path.
-        render-fn (or (:component/render cdef) default-render)
-        hiccup    (render-fn inst)
-        opts      {:selector "#root" :patch-mode :inner}]
+  (let [inst       (conv/instance conv iid)
+        cdef       (registry/lookup! (:instance/type inst))
+        render-fn  (or (:component/render cdef) default-render)
+        first-time? (not (:instance/rendered? inst))
+        hiccup     (binding [render/*conv* conv]
+                     (render-fn inst))
+        opts       (if first-time?
+                     {:selector "#root" :patch-mode :inner}
+                     ;; No selector → Datastar morphs by element id.
+                     {})]
     [(conv/mark-rendered conv iid)
      (elements-fragment (render/html hiccup) opts)]))
 
@@ -152,8 +158,16 @@
   [conv [_ embed-spec & {:keys [resume]}]]
   (let [parent-id (conv/top-id conv)
         cdef      (registry/lookup! (:embed/type embed-spec))
-        inst      (conv/instantiate cdef embed-spec parent-id resume)
-        conv'     (conv/push-instance conv inst)
+        ;; `instantiate-tree` materialises the called component *and*
+        ;; every child its `:children` map declares.  Children live in
+        ;; `:conv/instances` alongside their parent but stay off the
+        ;; stack — they are addressed through `:instance/children`,
+        ;; not through call/answer.
+        [inst descendants]
+        (conv/instantiate-tree cdef embed-spec parent-id resume registry/lookup!)
+        conv'     (-> conv
+                      (conv/push-instance inst)
+                      (conv/put-many descendants))
         iid       (:instance/id inst)]
     (if-let [start-fn (:start cdef)]
       ;; "Task" components carry a `:start` hook that runs once on
@@ -230,18 +244,22 @@
 
 (defmethod step :replace
   [conv [_ embed-spec]]
-  (let [[conv-popped popped-id] (conv/pop-top conv)
-        parent (when-let [pid (conv/top-id conv-popped)]
-                 (conv/instance conv-popped pid))
+  (let [old-inst              (conv/top-instance conv)
+        [conv-popped popped-id] (conv/pop-top conv)
+        parent                (when-let [pid (conv/top-id conv-popped)]
+                                (conv/instance conv-popped pid))
         ;; Inherit parent linkage and resume key from the frame we are
         ;; replacing, so that `:answer` from the new frame still flows
         ;; back to the original parent.
-        old-inst (conv/instance conv popped-id)
-        cdef     (registry/lookup! (:embed/type embed-spec))
-        new-inst (conv/instantiate cdef embed-spec
-                                   (some-> parent :instance/id)
-                                   (:instance/resume old-inst))
-        conv'    (conv/push-instance conv-popped new-inst)
+        cdef                  (registry/lookup! (:embed/type embed-spec))
+        [new-inst descendants]
+        (conv/instantiate-tree cdef embed-spec
+                               (some-> parent :instance/id)
+                               (:instance/resume old-inst)
+                               registry/lookup!)
+        conv'    (-> conv-popped
+                     (conv/push-instance new-inst)
+                     (conv/put-many descendants))
         [conv'' frag] (render-frame conv' (:instance/id new-inst))]
     [conv'' [frag]]))
 
