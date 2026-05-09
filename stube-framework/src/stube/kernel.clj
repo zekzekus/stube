@@ -364,9 +364,19 @@
        :event       :submit         ; or any keyword the component knows
        :signals     {:answer \"42\"}}
 
-  Returns `[conv' fragments]`.  Pure: no I/O, no globals."
+  Returns `[conv' fragments]`.  Pure: no I/O, no globals.
+
+  Stale events — those whose `instance-id` no longer exists in the
+  conversation — are dropped silently.  This matters for buttons that
+  are still in the DOM after their owning frame has been popped (e.g.
+  the user double-clicks an OK button: the first click `:answer`s and
+  removes the instance; the second click arrives with an iid that's
+  already gone).  Throwing here would surface as a 500 in the http
+  layer for what is, semantically, a no-op."
   [conv {:keys [instance-id event signals]}]
-  (let [;; Compute the merged self from the unmodified `conv` first;
+  (if (nil? (conv/instance conv instance-id))
+    [conv []]
+    (let [;; Compute the merged self from the unmodified `conv` first;
         ;; `merged-self` only consults `:conv/instances`, so it is
         ;; insensitive to whether we have snapshotted yet.  This lets
         ;; us decide whether to snapshot only AFTER seeing what the
@@ -400,4 +410,4 @@
           [conv''' []]
           (let [[c' f] (render-frame conv''' instance-id)]
             [c' [f]]))]
-    [conv-final (into (vec extra) more-frags)]))
+    [conv-final (into (vec extra) more-frags)])))
