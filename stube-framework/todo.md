@@ -223,16 +223,28 @@ framework.
 
 - [ ] **`[:after ms event]` timer effect.** Live clocks, debounced
       submits, polling fallbacks. (`WAClock` / `WATurboCounter`.)
+      Deferred until the first async example chooses cancellation and
+      ownership semantics; a timer must not outlive its conversation or
+      surprise another tab for the same user.
       [ex:seaside-examples Tier 3]
 - [ ] **`(s/publish! topic msg)` + per-conv subscription.** Server-push
       for "patch this conv from outside its handler". Required for
       `CTCounter`, `CTReport`, `CTChat` ports.
+      Deferred until a multi-user example drives topic lifetime,
+      backpressure, and authorization. The current SSE path stays
+      single-conversation and handler-originated.
       [ex:seaside-examples Tier 3]
 - [ ] **File upload.** Non-SSE multipart route plus an
       `[:upload-received]` hook routed to the active instance.
+      Deferred until an upload example fixes the public API; adding a
+      multipart side route now would widen the transport before the
+      userspace shape is clear.
       [ex:seaside-examples Tier 3 `WAFileUploadExample`]
 - [ ] **Session auth binding.** `WASessionProtectedCounter`-style;
       bind a conversation to an authenticated session.
+      Deferred separately from slice-4 cookie ownership. The framework
+      now prevents cross-session cid use; application-auth binding
+      should compose with the host app's auth model, not invent one.
       [ex:seaside-examples Tier 3]
 - [x] **Registry introspection.** `(s/mounts)` listing root mounts,
       so a `WANavigationBar`-style index page is two lines. Landed as
