@@ -21,6 +21,10 @@
 
       [:call <embed> :resume <k>]   push a child frame; on `:answer` the
                                     parent's `:k` function is invoked
+      [:call-in-slot <slot> <embed> :resume <k>]
+                                    temporarily swap one embedded slot;
+                                    the child answers back to the parent
+                                    without taking over the page
       [:answer <value>]             pop this frame; deliver `value` to
                                     the parent under its resume key
       [:replace <embed>]            pop this frame and push another in
@@ -112,6 +116,28 @@
   [self _event]
   [self []])
 
+(def ^:dynamic ^:private *effect-iid*
+  "Instance id whose handler/lifecycle hook emitted the effects currently
+  being folded.  Stack calls historically used `(conv/top-id conv)`, but
+  embedded children can also handle events; slot-local effects need the
+  actual emitting instance."
+  nil)
+
+(defn- effect-origin [conv]
+  (or *effect-iid* (conv/top-id conv)))
+
+(defn- render-instance
+  "Render `iid` with explicit Datastar patch `opts`, mark it and its
+  rendered descendants as present in the DOM, and return `[conv' frag]`."
+  [conv iid opts]
+  (let [inst      (conv/instance conv iid)
+        cdef      (registry/lookup! (:instance/type inst))
+        render-fn (or (:component/render cdef) default-render)
+        hiccup    (binding [render/*conv* conv]
+                    (render-fn inst))]
+    [(conv/mark-rendered conv iid)
+     (elements-fragment (render/html hiccup) opts)]))
+
 (defn- render-frame
   "Produce the elements fragment for `iid` and return
   `[conv' fragment]`.
@@ -131,18 +157,13 @@
   `*conv*` is bound around the user's `:render` so `s/render-slot` can
   resolve embedded children."
   [conv iid]
-  (let [inst       (conv/instance conv iid)
-        cdef       (registry/lookup! (:instance/type inst))
-        render-fn  (or (:component/render cdef) default-render)
+  (let [inst        (conv/instance conv iid)
         first-time? (not (:instance/rendered? inst))
-        hiccup     (binding [render/*conv* conv]
-                     (render-fn inst))
-        opts       (if first-time?
-                     {:selector "#root" :patch-mode :inner}
-                     ;; No selector → Datastar morphs by element id.
-                     {})]
-    [(conv/mark-rendered conv iid)
-     (elements-fragment (render/html hiccup) opts)]))
+        opts        (if first-time?
+                      {:selector "#root" :patch-mode :inner}
+                      ;; No selector → Datastar morphs by element id.
+                      {})]
+    (render-instance conv iid opts)))
 
 ;; ---------------------------------------------------------------------------
 ;; The step function — one effect at a time
@@ -179,7 +200,8 @@
       (let [[inst' fx]   (start-fn inst)
             inst'        (conv/preserve-meta inst inst')
             conv''       (conv/put-instance conv' inst')
-            [conv''' fr] (run-effects conv'' fx)]
+            [conv''' fr] (binding [*effect-iid* iid]
+                            (run-effects conv'' fx))]
         ;; Three outcomes after `:start`:
         ;;  1. it produced HTML directly (e.g. via `:call`-ing a child);
         ;;     we don't add a placeholder render on top.
@@ -202,47 +224,133 @@
       (let [[conv'' frag] (render-frame conv' iid)]
         [conv'' [frag]]))))
 
-(defmethod step :answer
-  [conv [_ value]]
-  (let [;; The resume key lives on the *child* (the frame being popped):
-        ;; the call site that pushed it remembered which slot in the
-        ;; parent's component definition should receive the answer.
-        leaving         (conv/top-instance conv)
+(defn- render-slot-overlay
+  "Render the child currently occupying `slot` after a `:call-in-slot`.
+  If the slot already had a DOM root, patch that root `outer`; otherwise
+  fall back to re-rendering the parent because there is no child anchor
+  yet."
+  [conv parent-id old-iid new-iid]
+  (if old-iid
+    (render-instance conv new-iid {:selector (str "#" old-iid)
+                                   :patch-mode :outer})
+    (render-frame conv parent-id)))
+
+(defmethod step :call-in-slot
+  [conv [_ slot embed-spec & {:keys [resume]}]]
+  (let [parent-id (or (effect-origin conv)
+                      (throw (ex-info ":call-in-slot needs an emitting parent"
+                                      {:slot slot})))
+        parent    (or (conv/instance conv parent-id)
+                      (throw (ex-info ":call-in-slot parent is missing"
+                                      {:parent parent-id
+                                       :slot   slot})))
+        old-iid   (get-in parent [:instance/children slot])
+        cdef      (registry/lookup! (:embed/type embed-spec))
+        [inst descendants]
+        (conv/instantiate-tree cdef embed-spec parent-id resume registry/lookup!)
+        inst      (assoc inst
+                         :instance/slot slot
+                         :instance/previous old-iid)
+        iid       (:instance/id inst)
+        conv'     (-> conv
+                      (conv/set-child-slot parent-id slot iid)
+                      (conv/put-instance inst)
+                      (conv/put-many descendants))]
+    (if-let [start-fn (:start cdef)]
+      (let [[inst' fx]   (start-fn inst)
+            inst'        (conv/preserve-meta inst inst')
+            conv''       (conv/put-instance conv' inst')
+            [conv''' fr] (binding [*effect-iid* iid]
+                            (run-effects conv'' fx))]
+        (cond
+          (some #(= :elements (:fragment/kind %)) fr)
+          [conv''' fr]
+
+          (nil? (conv/instance conv''' iid))
+          [conv''' fr]
+
+          :else
+          (let [[c f] (render-slot-overlay conv''' parent-id old-iid iid)]
+            [c (conj (vec fr) f)])))
+      (let [[conv'' frag] (render-slot-overlay conv' parent-id old-iid iid)]
+        [conv'' [frag]]))))
+
+(defn- resume-parent
+  "Deliver `value` to `parent-id` under `resume-key`, then render the
+  parent if the resume effects did not already produce elements.
+
+  Both stack calls and slot-local calls share this continuation path;
+  only the way the answering child is removed differs."
+  [conv parent-id resume-key value]
+  (cond
+    ;; Answering the root means the conversation is done.  We translate
+    ;; this into an `:end` so behaviour is consistent.
+    (nil? parent-id)
+    (step conv [:end value])
+
+    ;; Bare child answer with no resume key — nothing to deliver to the
+    ;; parent.  Just re-render the parent so the user sees something.
+    (nil? resume-key)
+    (let [[c' f] (render-frame conv parent-id)]
+      [c' [f]])
+
+    :else
+    (let [parent    (conv/instance conv parent-id)
+          cdef      (registry/lookup! (:instance/type parent))
+          resume-fn (or (get cdef resume-key)
+                        (throw (ex-info (str "Parent has no resume fn for " resume-key)
+                                        {:parent     parent-id
+                                         :resume-key resume-key})))
+          [parent' fx]   (resume-fn parent value)
+          parent'        (conv/preserve-meta parent parent')
+          conv'          (conv/put-instance conv parent')
+          [conv'' more]  (binding [*effect-iid* parent-id]
+                            (run-effects conv' fx))
+          ;; If the resume produced no further element fragments,
+          ;; re-render the parent so its state changes are visible.
+          [conv-final extra]
+          (if (or (some #(= :elements (:fragment/kind %)) more)
+                  (nil? (conv/instance conv'' parent-id)))
+            [conv'' []]
+            (let [[c' f] (render-frame conv'' parent-id)]
+              [c' [f]]))]
+      [conv-final (into (vec extra) more)])))
+
+(defn- answer-from-stack [conv value]
+  (let [leaving         (conv/top-instance conv)
         resume-key      (:instance/resume leaving)
         [conv' _popped] (conv/pop-top conv)
         parent-id       (conv/top-id conv')]
-    (cond
-      ;; Answering the root means the conversation is done.  We translate
-      ;; this into an `:end` so behaviour is consistent.
-      (nil? parent-id)
-      (step conv' [:end value])
+    (resume-parent conv' parent-id resume-key value)))
 
-      ;; Bare child answer with no resume key — nothing to deliver to the
-      ;; parent.  Just re-render the parent so the user sees something.
-      (nil? resume-key)
-      (let [[c' f] (render-frame conv' parent-id)]
-        [c' [f]])
+(defn- answer-from-slot [conv leaving value]
+  (let [leaving-id (:instance/id leaving)
+        parent-id  (:instance/parent leaving)
+        slot       (:instance/slot leaving)]
+    (when-not slot
+      (throw (ex-info "Embedded :answer is only supported for [:call-in-slot ...] children"
+                      {:instance-id leaving-id
+                       :parent      parent-id})))
+    (let [resume-key (:instance/resume leaving)
+          previous   (:instance/previous leaving)
+          conv'      (-> conv
+                         (conv/remove-subtree leaving-id)
+                         (conv/set-child-slot parent-id slot previous))]
+      (resume-parent conv' parent-id resume-key value))))
+
+(defmethod step :answer
+  [conv [_ value]]
+  (let [origin-id (effect-origin conv)
+        leaving   (conv/instance conv origin-id)]
+    (cond
+      (nil? leaving)
+      [conv []]
+
+      (= origin-id (conv/top-id conv))
+      (answer-from-stack conv value)
 
       :else
-      (let [parent    (conv/instance conv' parent-id)
-            cdef      (registry/lookup! (:instance/type parent))
-            resume-fn (or (get cdef resume-key)
-                          (throw (ex-info (str "Parent has no resume fn for " resume-key)
-                                          {:parent     parent-id
-                                           :resume-key resume-key})))
-            [parent' fx]   (resume-fn parent value)
-            parent'        (conv/preserve-meta parent parent')
-            conv''         (conv/put-instance conv' parent')
-            [conv''' more] (run-effects conv'' fx)
-            ;; If the resume produced no further element fragments,
-            ;; re-render the parent so its state changes are visible.
-            [conv-final extra]
-            (if (or (some #(= :elements (:fragment/kind %)) more)
-                    (nil? (conv/instance conv''' parent-id)))
-              [conv''' []]
-              (let [[c' f] (render-frame conv''' parent-id)]
-                [c' [f]]))]
-        [conv-final (into (vec extra) more)]))))
+      (answer-from-slot conv leaving value))))
 
 (defmethod step :replace
   [conv [_ embed-spec]]
@@ -402,7 +510,8 @@
         ;; handler.
         self'      (conv/preserve-meta (conv/instance conv* instance-id) self')
         conv**     (conv/put-instance conv* self')
-        [conv''' more-frags] (run-effects conv** fx)
+        [conv''' more-frags] (binding [*effect-iid* instance-id]
+                                (run-effects conv** fx))
         ;; If the handler produced no frame-changing effect, re-render
         ;; the same instance so the user sees state changes.  Skip the
         ;; re-render if the instance no longer exists (the handler must

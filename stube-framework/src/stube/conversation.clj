@@ -99,9 +99,15 @@
   these as read-only; the kernel ignores any user changes to them.
 
   `:instance/children` is the slot→iid map populated when a component
-  declares `:children` in its definition.  See [[instantiate-tree]]."
+  declares `:children` in its definition.  See [[instantiate-tree]].
+
+  `:instance/slot` and `:instance/previous` are used by the
+  `[:call-in-slot …]` overlay primitive: the temporary child remembers
+  which parent slot it occupies and which child iid should be restored
+  when it answers."
   #{:instance/id :instance/type :instance/parent
-    :instance/resume :instance/rendered? :instance/children})
+    :instance/resume :instance/rendered? :instance/children
+    :instance/slot :instance/previous})
 
 (defn instantiate
   "Build a fresh instance map from a component definition and an embed
@@ -252,10 +258,30 @@
          (update :conv/instances #(apply dissoc % all-gone)))
      popped]))
 
+(defn remove-subtree
+  "Remove `iid` and every embedded descendant from `:conv/instances`
+  without touching the call stack."
+  [conv iid]
+  (update conv :conv/instances #(apply dissoc % (descendant-ids conv iid))))
+
 (defn put-instance
   "Replace `inst` in the instances map without touching the stack."
   [conv inst]
   (assoc-in conv [:conv/instances (:instance/id inst)] inst))
+
+(defn child-slot
+  "Return the slot key in `parent` currently pointing at `child-iid`, or nil."
+  [parent child-iid]
+  (some (fn [[slot iid]] (when (= iid child-iid) slot))
+        (:instance/children parent)))
+
+(defn set-child-slot
+  "Point `parent-id`'s `slot` at `child-iid`.  If `child-iid` is nil,
+  remove the slot."
+  [conv parent-id slot child-iid]
+  (if child-iid
+    (assoc-in conv [:conv/instances parent-id :instance/children slot] child-iid)
+    (update-in conv [:conv/instances parent-id :instance/children] dissoc slot)))
 
 (defn mark-rendered
   "Set `:instance/rendered? true` on `iid` and *every* descendant the

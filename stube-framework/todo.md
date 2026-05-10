@@ -55,7 +55,7 @@ currently hand-encodes the id into a keyword, then parses it back.
 These move us from "everything pushes the whole stack" to faithful
 Seaside-style local composition.
 
-- [ ] **`[:call-in-slot slot embed-spec :resume k]`.**
+- [x] **`[:call-in-slot slot embed-spec :resume k]`.**
   Embedded call/answer that swaps a single child slot rather than the
   whole top frame. The single highest-leverage missing primitive this
   catalogue surfaced — without it `todo.clj` cannot do real in-place
@@ -63,6 +63,9 @@ Seaside-style local composition.
   Touches: kernel `step`, `instantiate`, `render-frame`, and the
   `:rendered?` bookkeeping that decides between morph-by-id and
   `#root inner`.
+  Implemented as a slot-local overlay: the temporary child remembers
+  the previous occupant and restores it when it answers, while the
+  parent receives the answer under the named resume key.
   [ex:todo (workaround documented in file)] [design v2.1 §11
   carried-forward]
 
@@ -71,14 +74,19 @@ Seaside-style local composition.
   unmounting (today `:answer` is the only mechanism, and it pops the
   child). Strong candidate the moment a real use case arrives — flag
   but don't build until then.
+  Deferred deliberately; no current example needs non-unmounting child
+  notification, and building it now would add a second return channel.
   [design v2.1 §13 slice 2 carried-forward]
 
 - [ ] **`:rebuild-children` effect for lazy / conditional slots.**
   Today `:children` is materialised eagerly at instantiation. Slots
   whose embed-spec depends on later state need a kernel-level rebuild.
+  Deferred until a dynamic-slot example drives the exact semantics;
+  `:call-in-slot` covers the current local composition gap without
+  rematerialising child state.
   [design v2.1 §13 slice 2 carried-forward]
 
-- [ ] **`s/decorate` demo.**
+- [x] **`s/decorate` demo.**
   No example currently exercises decorations end-to-end; the unit
   tests do. Add a tiny `with-banner` wrap in `wizard.clj` (or a new
   `breadcrumb.clj`) so the README can point at a real call site.

@@ -139,6 +139,67 @@
         "child re-renders via morph-by-id, not #root inner")))
 
 ;; ---------------------------------------------------------------------------
+;; Slot-local call/answer
+;; ---------------------------------------------------------------------------
+
+(deftest call-in-slot-swaps-one-child-and-resumes-parent
+  (registry/register!
+    {:component/id     :t/label
+     :component/render (fn [s] [:span {:id (:instance/id s)} "label"])})
+  (registry/register!
+    {:component/id     :t/editor
+     :component/render (fn [s] [:form {:id (:instance/id s)} "editor"])
+     :component/handle (fn [s _] [s [[:answer "saved"]]])})
+  (registry/register!
+    {:component/id     :t/parent
+     :component/init   (constantly {:received nil})
+     :children         {:slot/body (conv/embed :t/label)}
+     :component/render (fn [self]
+                         [:div {:id (:instance/id self)}
+                          [:strong (str "received=" (:received self))]
+                          (s/render-slot self :slot/body)])
+     :component/handle (fn [s _]
+                         [s [[:call-in-slot :slot/body (conv/embed :t/editor)
+                              :resume :on-edit]]])
+     :on-edit          (fn [s value] [(assoc s :received value) []])})
+  (let [[c0]      (run-boot :t/parent)
+        parent    (conv/top-id c0)
+        old-child (get-in (conv/instance c0 parent)
+                          [:instance/children :slot/body])
+        [c1 fr1]  (kernel/dispatch c0 {:instance-id parent
+                                       :event       :edit
+                                       :signals     {}})
+        new-child (get-in (conv/instance c1 parent)
+                          [:instance/children :slot/body])
+        frag1     (first (elements-fragments fr1))]
+    (is (= [parent] (:conv/stack c1))
+        "slot-local calls do not push a conversation frame")
+    (is (not= old-child new-child) "slot now points at the editor")
+    (is (= old-child (:instance/previous (conv/instance c1 new-child)))
+        "temporary child remembers the prior slot occupant")
+    (is (= {:selector (str "#" old-child) :patch-mode :outer}
+           (:fragment/opts frag1))
+        "the first patch replaces only the old child root")
+    (is (str/includes? (:fragment/html frag1) "editor"))
+    (is (some? (conv/instance c1 old-child))
+        "previous occupant is kept so answering can restore it")
+
+    (let [[c2 fr2] (kernel/dispatch c1 {:instance-id new-child
+                                        :event       :save
+                                        :signals     {}})
+          parent'  (conv/instance c2 parent)
+          html2    (:fragment/html (first (elements-fragments fr2)))]
+      (is (= [parent] (:conv/stack c2)) "stack is still unchanged")
+      (is (= old-child (get-in parent' [:instance/children :slot/body]))
+          "answer restores the previous child into the slot")
+      (is (= "saved" (:received parent'))
+          "parent resume key receives the editor answer")
+      (is (nil? (conv/instance c2 new-child))
+          "temporary editor is removed after answering")
+      (is (str/includes? html2 "received=saved"))
+      (is (str/includes? html2 "label")))))
+
+;; ---------------------------------------------------------------------------
 ;; render-slot validates inputs
 ;; ---------------------------------------------------------------------------
 

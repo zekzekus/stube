@@ -36,7 +36,8 @@
         ├── (call) :demo/wizard-step  ← \"What's your name?\"
         ├── (call) :demo/wizard-step  ← \"Favourite colour?\"
         └── (call) :demo/wizard-summary ← shows answers + Back button"
-  (:require [stube.core :as s]))
+  (:require [stube.core :as s]
+            [stube.registry :as registry]))
 
 ;; ---------------------------------------------------------------------------
 ;; A reusable text-prompt step
@@ -131,6 +132,25 @@
               :back-click [self [[:answer ::back]]]
               [self []])))
 
+;; Tiny end-to-end `s/decorate` call site: the wizard uses the decorated
+;; summary below, while the original component remains independently
+;; registered and reusable.  The wrapper keeps the same root id so the
+;; kernel's morph-by-id contract stays intact.
+(registry/register!
+  (s/decorate
+    (s/registry-lookup :demo/wizard-summary)
+    (fn [base]
+      {:component/id :demo/wizard-summary-with-banner
+       :component/render
+       (fn [self]
+         (let [[tag attrs & body] ((:component/render base) self)]
+           (into [tag attrs
+                  [:div {:style "padding:0.4rem 0.6rem; margin-bottom:0.75rem;
+                                 background:#eef; border:1px solid #ccd;
+                                 border-radius:0.25rem;"}
+                   "Decorated with " [:code "s/decorate"]]]
+                 body)))})))
+
 ;; ---------------------------------------------------------------------------
 ;; The wizard task
 ;; ---------------------------------------------------------------------------
@@ -189,7 +209,7 @@
 
                  (let [self' (assoc self :colour ans)]
                    [self'
-                    [[:call (s/embed :demo/wizard-summary
+                    [[:call (s/embed :demo/wizard-summary-with-banner
                                      {:name   (:name self')
                                       :colour (:colour self')})
                       :resume :on-done]]])))
