@@ -12,13 +12,16 @@
   The shell page is a trivial HTML document.  All real UI is delivered
   via SSE patches once the browser connects to `/conv/:cid/sse`."
   (:require [charred.api                                       :as json]
+            [clojure.edn                                      :as edn]
+            [clojure.string                                   :as str]
             [dev.onionpancakes.chassis.core                    :as chassis]
             [starfederation.datastar.clojure.api               :as d*]
             [starfederation.datastar.clojure.adapter.http-kit  :as hk]
             [stube.conversation                                :as conv]
             [stube.kernel                                      :as kernel]
             [stube.render                                      :as render]
-            [stube.server                                      :as server]))
+            [stube.server                                      :as server])
+  (:import (java.net URLDecoder)))
 
 ;; ---------------------------------------------------------------------------
 ;; JSON helpers
@@ -50,6 +53,24 @@
       (nil? raw)        {}
       (string? raw)     (parse-json raw)
       :else             (with-open [s raw] (parse-json s)))))
+
+(defn- url-decode [s]
+  (URLDecoder/decode (str s) "UTF-8"))
+
+(defn- query-value
+  "Return decoded query-param `k` from Ring's raw `:query-string`.
+  The app intentionally has no params middleware; parsing the one
+  stube-owned key here keeps the handler stack tiny."
+  [{:keys [query-string]} k]
+  (some (fn [part]
+          (let [[raw-k raw-v] (str/split part #"=" 2)]
+            (when (= k (url-decode raw-k))
+              (url-decode (or raw-v "")))))
+        (some-> query-string (str/split #"&"))))
+
+(defn- read-event-payload [req]
+  (some-> (query-value req render/payload-query-param)
+          (edn/read-string)))
 
 ;; ---------------------------------------------------------------------------
 ;; The shell
@@ -238,6 +259,7 @@
         signals (read-signals req)
         ev      {:instance-id iid
                  :event       (keyword event)
+                 :payload     (read-event-payload req)
                  :signals     signals}
         [_conv frags] (binding [render/*cid* cid]
                         (server/swap-conv! cid

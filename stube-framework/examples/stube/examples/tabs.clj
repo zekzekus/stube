@@ -100,7 +100,7 @@
                                  (if active?
                                    "background:#fff; font-weight:bold;"
                                    "background:#ddd;"))}
-                    (s/on self :click :as (keyword (str "tab-" (name tab-kw)))))
+                    (s/on self :click :as [:tab tab-kw]))
      label]))
 
 (s/defcomponent :demo/tabs
@@ -124,11 +124,9 @@
               ;; aren't in the DOM right now.
               (s/render-slot self (keyword "slot" (name (:active self))))]])
 
-  :handle (fn [self {:keys [event]}]
-            ;; `:tab-counter` / `:tab-notes` / `:tab-about` → flip :active
-            (if (clojure.string/starts-with? (name event) "tab-")
-              [(assoc self :active (keyword (subs (name event) (count "tab-"))))
-               []]
+  :handle (fn [self {:keys [event payload]}]
+            (if (= event :tab)
+              [(assoc self :active payload) []]
               [self []])))
 
 ;; ---------------------------------------------------------------------------

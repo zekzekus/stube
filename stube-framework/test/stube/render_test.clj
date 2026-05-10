@@ -14,6 +14,13 @@
       (is (= (keyword "data-on:submit") k))
       (is (re-find #"@post\('/conv/cv-001/ix-9/submit'\)" v)))))
 
+(deftest on-encodes-structured-event-payload
+  (binding [render/*cid* "cv-001"]
+    (let [attrs (render/on {:instance/id "ix-9"} :click :as [:pick-day 12])
+          [k v] (first attrs)]
+      (is (= (keyword "data-on:click") k))
+      (is (re-find #"/conv/cv-001/ix-9/pick-day\?_stube_payload=12" v)))))
+
 (deftest on-without-cid-throws
   (binding [render/*cid* nil]
     (is (thrown? clojure.lang.ExceptionInfo
@@ -30,3 +37,9 @@
   (is (= {(keyword "data-bind:answer-ix-000002__case.kebab") true}
          (render/bind :answer-ix-000002))
       "Datastar's default bind key casing is camel; keep Clojure kebab-case signal names on the wire"))
+
+(deftest local-bind-scopes-signal-to-instance
+  (let [self {:instance/id "ix-000002"}]
+    (is (= :answer-ix-000002 (render/local-signal self :answer)))
+    (is (= {(keyword "data-bind:answer-ix-000002__case.kebab") true}
+           (render/local-bind self :answer)))))

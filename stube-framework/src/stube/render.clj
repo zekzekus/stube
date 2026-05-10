@@ -15,7 +15,9 @@
 
   The cid only exists at request time, so the helpers consult a dynamic
   var bound by the http layer for the duration of a render."
-  (:require [dev.onionpancakes.chassis.core :as chassis]))
+  (:require [dev.onionpancakes.chassis.core :as chassis]
+            [stube.conversation :as conv])
+  (:import (java.net URLEncoder)))
 
 ;; ---------------------------------------------------------------------------
 ;; Render-time context
@@ -55,11 +57,44 @@
       (throw (ex-info "stube.render/*cid* is unbound; cannot build event URL"
                       {}))))
 
+(def ^:private no-payload ::no-payload)
+
+(def payload-query-param
+  "Query-string key used by [[event-url]] for structured event payloads."
+  "_stube_payload")
+
+(defn- parse-route-event [route-event]
+  (if (vector? route-event)
+    (let [[event & payloads] route-event]
+      (when-not event
+        (throw (ex-info "Structured stube events need a route keyword"
+                        {:route-event route-event})))
+      {:event event
+       :payload (case (count payloads)
+                  0 no-payload
+                  1 (first payloads)
+                  (vec payloads))})
+    {:event route-event
+     :payload no-payload}))
+
+(defn- url-encode [s]
+  (URLEncoder/encode (str s) "UTF-8"))
+
 (defn event-url
   "URL the browser POSTs to for an event.  Public so user code can build
-  custom Datastar expressions that target the same endpoint."
-  [iid event]
-  (str "/conv/" (require-cid!) "/" iid "/" (name event)))
+  custom Datastar expressions that target the same endpoint.
+
+  `route-event` is either a keyword (`:save`) or a structured event
+  vector (`[:pick-day day]`).  The path always contains the logical
+  event name; structured payloads ride in a small EDN query parameter so
+  the server can reconstruct `{:event :pick-day :payload day}` without
+  teaching Datastar about stube metadata."
+  [iid route-event]
+  (let [{:keys [event payload]} (parse-route-event route-event)
+        base (str "/conv/" (require-cid!) "/" iid "/" (name event))]
+    (if (= no-payload payload)
+      base
+      (str base "?" payload-query-param "=" (url-encode (pr-str payload))))))
 
 (defn on
   "Return an attribute map that wires a real DOM event on the
@@ -69,6 +104,9 @@
 
       (on self :submit)            ;; DOM `submit`  → POST .../submit
       (on self :click :as :inc)    ;; DOM `click`   → POST .../inc
+      (on self :click :as [:pick item-id])
+                                    ;; handler sees :event :pick,
+                                    ;; :payload item-id
 
   The first form is the common case where the DOM event name and the
   route name happen to be the same (most often `:submit` on a form,
@@ -102,7 +140,7 @@
                  (throw (ex-info "stube.render/on requires an instance map"
                                  {:got self})))
          attr-k (keyword (str "data-on:" (name dom-event)))
-         expr   (str "@post('" (event-url iid (name route-event)) "')")]
+         expr   (str "@post('" (event-url iid route-event) "')")]
      {attr-k expr})))
 
 (defn bind
@@ -120,6 +158,20 @@
   kebab case modifier to keep the wire key unchanged."
   [signal]
   {(keyword (str "data-bind:" (name signal) "__case.kebab")) true})
+
+(def ^{:doc "See [[stube.conversation/local-signal]]."}
+  local-signal conv/local-signal)
+
+(defn local-bind
+  "Like [[bind]], but scopes logical `signal` to this component instance.
+
+      :keep #{:answer}
+      [:input (s/local-bind self :answer)]
+
+  The browser sends `:answer-<iid>`; the conversation layer lifts that
+  value back onto `:answer` before the handler runs."
+  [self signal]
+  (bind (local-signal self signal)))
 
 ;; ---------------------------------------------------------------------------
 ;; Slots: rendering an embedded child inline

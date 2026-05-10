@@ -47,15 +47,9 @@
 ;; answers the parent with the sentinel `::back`.  The parent decides
 ;; what either of those means in its own flow.
 
-;; Datastar signals are page-global, so two `:demo/wizard-step`
-;; instances mounted in sequence would share a `data-bind:answer`
-;; signal — step 2's input would pre-fill with step 1's value.  We
-;; sidestep that by giving each instance its OWN signal name keyed on
-;; its iid (`answer-ix-000003`, …) and reading the value back from the
-;; `signals` map at submit time.
-
-(defn- answer-signal [self]
-  (keyword (str "answer-" (:instance/id self))))
+;; Datastar signals are page-global, so the input uses `s/local-bind`:
+;; every instance gets its own wire key while the handler still reads the
+;; logical `:answer` value from `self`.
 
 (s/defcomponent :demo/wizard-step
   :init   (fn [{:keys [label placeholder initial]}]
@@ -68,40 +62,40 @@
              ;; this step.
              :initial     (or initial "")})
 
-  :render (fn [self]
-            (let [sig (answer-signal self)]
-              [:form (merge {:id (:instance/id self)
-                             :style "max-width:24rem; padding:1rem;
-                                     font-family:system-ui, sans-serif;"}
-                            (s/on self :submit))
-               [:label {:style "display:block; margin-bottom:0.5rem;"}
-                (:label self)]
-               ;; `value` seeds the DOM; Datastar's `data-bind` then
-               ;; initialises the signal FROM the input's value, so the
-               ;; typed-then-restored flow round-trips cleanly.
-               [:input (merge {:name        "answer"
-                               :value       (:initial self)
-                               :placeholder (:placeholder self)
-                               :style       "width:100%; padding:0.4rem;
-                                             font-size:1rem;"
-                               :autofocus   true}
-                              (s/bind sig))]
-               [:div {:style "display:flex; gap:0.5rem; margin-top:0.75rem;"}
-                [:button {:type "submit"
-                          :style "padding:0.4rem 0.8rem;"} "Next"]
-                ;; `type=button` so this does NOT submit the form.  We
-                ;; route the click as `:back-click` and answer the
-                ;; parent with `::back` — the parent's resume function
-                ;; decides what \"back\" means in *its* flow.
-                [:button (merge {:type "button"
-                                 :style "padding:0.4rem 0.8rem;"}
-                                (s/on self :click :as :back-click))
-                 "Back"]]]))
+  :keep   #{:answer}
 
-  :handle (fn [self {:keys [event signals]}]
+  :render (fn [self]
+            [:form (merge {:id (:instance/id self)
+                           :style "max-width:24rem; padding:1rem;
+                                   font-family:system-ui, sans-serif;"}
+                          (s/on self :submit))
+             [:label {:style "display:block; margin-bottom:0.5rem;"}
+              (:label self)]
+             ;; `value` seeds the DOM; Datastar's `data-bind` then
+             ;; initialises the signal FROM the input's value, so the
+             ;; typed-then-restored flow round-trips cleanly.
+             [:input (merge {:name        "answer"
+                             :value       (:initial self)
+                             :placeholder (:placeholder self)
+                             :style       "width:100%; padding:0.4rem;
+                                           font-size:1rem;"
+                             :autofocus   true}
+                            (s/local-bind self :answer))]
+             [:div {:style "display:flex; gap:0.5rem; margin-top:0.75rem;"}
+              [:button {:type "submit"
+                        :style "padding:0.4rem 0.8rem;"} "Next"]
+              ;; `type=button` so this does NOT submit the form.  We
+              ;; route the click as `:back-click` and answer the
+              ;; parent with `::back` — the parent's resume function
+              ;; decides what \"back\" means in *its* flow.
+              [:button (merge {:type "button"
+                               :style "padding:0.4rem 0.8rem;"}
+                              (s/on self :click :as :back-click))
+               "Back"]]])
+
+  :handle (fn [self {:keys [event]}]
             (case event
-              :submit     [self [[:answer (get signals (answer-signal self)
-                                               (:initial self))]]]
+              :submit     [self [[:answer (get self :answer (:initial self))]]]
               :back-click [self [[:answer ::back]]]
               [self []])))
 

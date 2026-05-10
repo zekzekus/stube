@@ -13,9 +13,8 @@
 
   * A non-trivial single-component renderer: a 7-column grid of day
     cells, prev/next month navigation, a heading.
-  * **One handler routing per-cell clicks**.  Each day cell has its
-    own `:as :pick-<day>` event so we can recover which day was
-    clicked from the route alone.
+  * **One handler routing per-cell clicks**.  Each day cell routes to
+    `:pick-day` and carries the day number as a structured payload.
   * Composition with the dialogs example's task pattern: a small flow
     `:call`s the picker and shows the chosen date.
 
@@ -23,19 +22,10 @@
   Reveals — structured event payloads
   ──────────────────────────────────────────────────────────────────────
 
-  Encoding the day-of-month into the route name (`:pick-1`, `:pick-2`,
-  …, `:pick-31`) works but is awkward — the handler has to parse the
-  number back out of the keyword.  The same pattern shows up in the
-  dialogs example's `:choose` and would show up again any time a
-  rendered list maps each item to a clickable callback.
-
-  A future helper might allow
-
-      (s/on self :click :as [:pick-day day])
-
-  and have the handler receive `{:event :pick-day, :payload [day]}`
-  (or destructure into `:event :pick-day :args [day]`).  Filed in
-  `seaside-examples.md` Tier 1 §calendar."
+  Earlier versions encoded the day-of-month into route names
+  (`:pick-1`, `:pick-2`, …) and parsed it back out in the handler.
+  The current structured event payload keeps the route semantic and
+  lets the handler read `:payload` directly."
   (:require [stube.core :as s])
   (:import (java.time LocalDate YearMonth DayOfWeek)
            (java.time.format TextStyle)
@@ -91,8 +81,7 @@
                                            border:1px solid #ddd;"))]
     [:div (cond-> {:style style}
             in-month?
-            (merge (s/on self :click :as
-                         (keyword (str "pick-" day)))))
+            (merge (s/on self :click :as [:pick-day day])))
      day]))
 
 (s/defcomponent :ui/calendar
@@ -135,7 +124,7 @@
          "Cancel"]]]))
 
   :handle
-  (fn [self {:keys [event]}]
+  (fn [self {:keys [event payload]}]
     (let [ym (YearMonth/of (int (:year self)) (int (:month self)))]
       (cond
         (= event :prev)
@@ -151,9 +140,8 @@
         (= event :cancel)
         [self [[:answer ::cancel]]]
 
-        (clojure.string/starts-with? (name event) "pick-")
-        (let [d (parse-long (subs (name event) (count "pick-")))]
-          [self [[:answer (.atDay ym d)]]])
+        (= event :pick-day)
+        [self [[:answer (.atDay ym payload)]]]
 
         :else
         [self []]))))

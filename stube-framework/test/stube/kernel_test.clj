@@ -129,6 +129,21 @@
     (is (true? (:conv/ended? c1))
         "leaf answered, conversation ended")))
 
+(deftest structured-event-payload-reaches-handler
+  (registry/register!
+    {:component/id     :t/payload
+     :component/init   (constantly {:seen nil})
+     :component/render (fn [s] [:div {:id (:instance/id s)}])
+     :component/handle (fn [s {:keys [event payload]}]
+                         [(assoc s :seen [event payload]) []])})
+  (let [[c0]   (run-boot :t/payload)
+        iid    (conv/top-id c0)
+        [c1 _] (kernel/dispatch c0 {:instance-id iid
+                                    :event       :pick-day
+                                    :payload     12
+                                    :signals     {}})]
+    (is (= [:pick-day 12] (:seen (conv/instance c1 iid))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Side effects: :patch, :patch-signals, :execute-script
 ;; ---------------------------------------------------------------------------

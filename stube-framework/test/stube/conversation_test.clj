@@ -65,4 +65,12 @@
          (conv/merge-kept-signals {:a 1} {:b 2 :c 3} #{:b})))
   (is (= {:a 9}
          (conv/merge-kept-signals {:a 1} {:a 9} #{:a}))
-      "kept signals overwrite existing keys"))
+      "kept signals overwrite existing keys")
+  (let [inst {:instance/id "ix-1" :answer "old"}]
+    (is (= :answer-ix-1 (conv/local-signal inst :answer)))
+    (is (= {:instance/id "ix-1" :answer "local"}
+           (conv/merge-kept-signals inst
+                                    {:answer "global"
+                                     :answer-ix-1 "local"}
+                                    #{:answer}))
+        "local signal keys map back to their logical kept key and win")))

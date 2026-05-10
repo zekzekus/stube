@@ -362,6 +362,7 @@
 
       {:instance-id \"ix-7e2\"
        :event       :submit         ; or any keyword the component knows
+       :payload     any-edn-value   ; optional, from (s/on ... :as [:event v])
        :signals     {:answer \"42\"}}
 
   Returns `[conv' fragments]`.  Pure: no I/O, no globals.
@@ -373,7 +374,7 @@
   removes the instance; the second click arrives with an iid that's
   already gone).  Throwing here would surface as a 500 in the http
   layer for what is, semantically, a no-op."
-  [conv {:keys [instance-id event signals]}]
+  [conv {:keys [instance-id event payload signals]}]
   (if (nil? (conv/instance conv instance-id))
     [conv []]
     (let [;; Compute the merged self from the unmodified `conv` first;
@@ -384,7 +385,9 @@
         self       (conv/merged-self conv instance-id signals)
         cdef       (registry/lookup! (:instance/type self))
         handle     (or (:component/handle cdef) default-handle)
-        [self' fx] (handle self {:event event :signals signals})
+        [self' fx] (handle self {:event   event
+                                 :payload payload
+                                 :signals signals})
         ;; A handler that walks history backwards (`[:back]`) must NOT
         ;; have its own pre-state pushed onto that history first — if
         ;; it did, `:back` would just pop the snapshot we'd just taken

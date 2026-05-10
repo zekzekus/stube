@@ -33,15 +33,11 @@
   After `=` we set `:fresh? true` so the next digit starts a new entry.
 
   ──────────────────────────────────────────────────────────────────────
-  DX note (open question, no commit)
+  DX note
   ──────────────────────────────────────────────────────────────────────
-  Twenty buttons means twenty `:as :digit-7`-style routes — one per
-  numeric key.  A future helper might allow
-
-      (s/on self :click :as [:digit 7])
-
-  and route into a multi-arg `:handle` so the digit handlers collapse
-  to a single clause.  Not implemented; flagged in the catalogue."
+  Digit and operator buttons use structured event payloads, so the
+  handler has one `:digit` clause and one `:op` clause instead of a
+  route keyword per key."
   (:require [stube.core :as s]))
 
 ;; ---------------------------------------------------------------------------
@@ -115,14 +111,14 @@
 ;; The component
 ;; ---------------------------------------------------------------------------
 
-(defn- key-button [self label event-kw]
+(defn- key-button [self label route-event]
   ;; Common button styling so the calculator looks vaguely like one.
-  ;; The route name `:as <event-kw>` is what the handler dispatches on.
+  ;; `route-event` may carry structured payloads such as `[:digit "7"]`.
   [:button (merge {:type  "button"
                    :style "padding:0.6rem 0; font-size:1.1rem;
                            border:1px solid #bbb; border-radius:0.25rem;
                            background:#f4f4f4; cursor:pointer;"}
-                  (s/on self :click :as event-kw))
+                  (s/on self :click :as route-event))
    label])
 
 (s/defcomponent :demo/calc
@@ -147,22 +143,22 @@
       ;; Row 1
       (key-button self "C"  :clear)
       (key-button self "±"  :neg)
-      (key-button self "÷"  :op-div)
-      (key-button self "×"  :op-times)
+      (key-button self "÷"  [:op :div])
+      (key-button self "×"  [:op :times])
       ;; Row 2
-      (key-button self "7"  :digit-7)
-      (key-button self "8"  :digit-8)
-      (key-button self "9"  :digit-9)
-      (key-button self "−"  :op-minus)
+      (key-button self "7"  [:digit "7"])
+      (key-button self "8"  [:digit "8"])
+      (key-button self "9"  [:digit "9"])
+      (key-button self "−"  [:op :minus])
       ;; Row 3
-      (key-button self "4"  :digit-4)
-      (key-button self "5"  :digit-5)
-      (key-button self "6"  :digit-6)
-      (key-button self "+"  :op-plus)
+      (key-button self "4"  [:digit "4"])
+      (key-button self "5"  [:digit "5"])
+      (key-button self "6"  [:digit "6"])
+      (key-button self "+"  [:op :plus])
       ;; Row 4
-      (key-button self "1"  :digit-1)
-      (key-button self "2"  :digit-2)
-      (key-button self "3"  :digit-3)
+      (key-button self "1"  [:digit "1"])
+      (key-button self "2"  [:digit "2"])
+      (key-button self "3"  [:digit "3"])
       ;; `=` is taller; rendered with grid-row span so we stay on a 4-col grid.
       [:button (merge {:type  "button"
                        :style "grid-row: span 2;
@@ -172,29 +168,16 @@
                       (s/on self :click :as :eq))
        "="]
       ;; Row 5 (final three cells, `=` already spans here)
-      (key-button self "0"  :digit-0)
-      (key-button self "."  :digit-dot)
+      (key-button self "0"  [:digit "0"])
+      (key-button self "."  [:digit "."])
       ;; Skip one cell so `=` sits flush right.
       [:span]]])
 
   :handle
-  (fn [self {:keys [event]}]
+  (fn [self {:keys [event payload]}]
     [(case event
-       :digit-0 (press-digit self "0")
-       :digit-1 (press-digit self "1")
-       :digit-2 (press-digit self "2")
-       :digit-3 (press-digit self "3")
-       :digit-4 (press-digit self "4")
-       :digit-5 (press-digit self "5")
-       :digit-6 (press-digit self "6")
-       :digit-7 (press-digit self "7")
-       :digit-8 (press-digit self "8")
-       :digit-9 (press-digit self "9")
-       :digit-dot (press-digit self ".")
-       :op-plus  (press-op self :plus)
-       :op-minus (press-op self :minus)
-       :op-times (press-op self :times)
-       :op-div   (press-op self :div)
+       :digit (press-digit self payload)
+       :op    (press-op self payload)
        :eq    (press-eq self)
        :clear (press-clear self)
        :neg   (press-neg self)

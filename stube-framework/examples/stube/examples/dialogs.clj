@@ -73,49 +73,47 @@
 ;; :ui/prompt — single text-field dialog
 ;; ---------------------------------------------------------------------------
 ;;
-;; OK answers the typed string; Cancel answers ::cancel.  Like the
-;; wizard's per-instance signal trick, we key the bound signal on the
-;; iid so several prompts in a row don't collide.
-
-(defn- prompt-signal [self]
-  (keyword (str "prompt-" (:instance/id self))))
+;; OK answers the typed string; Cancel answers ::cancel.  The input uses
+;; `s/local-bind`, so several prompt instances can be present on the
+;; same page without sharing Datastar's page-global `$value` signal.
 
 (s/defcomponent :ui/prompt
   :init   (fn [{:keys [label default]}]
             {:label   (or label "Please enter a value:")
              :default (or default "")})
 
-  :render (fn [self]
-            (let [sig (prompt-signal self)]
-              [:form (merge {:id    (:instance/id self)
-                             :class "stube-modal"
-                             :style "max-width:24rem; padding:1.25rem; margin:1rem auto;
-                                     border:1px solid #888; border-radius:0.5rem;
-                                     background:#f8f8f8;
-                                     font-family:system-ui, sans-serif;"}
-                            (s/on self :submit))
-               [:label {:style "display:block; margin-bottom:0.5rem;"}
-                (:label self)]
-               [:input (merge {:name      "value"
-                               :value     (:default self)
-                               :autofocus true
-                               :style     "width:100%; padding:0.4rem; font-size:1rem;"}
-                              (s/bind sig))]
-               [:div {:style "display:flex; gap:0.5rem; justify-content:flex-end;
-                              margin-top:0.75rem;"}
-                [:button (merge {:type "button"
-                                 :style "padding:0.4rem 1rem;"}
-                                (s/on self :click :as :cancel))
-                 "Cancel"]
-                [:button {:type "submit"
-                          :style "padding:0.4rem 1rem;
-                                  background:#36c; color:white;
-                                  border:1px solid #25b;"}
-                 "OK"]]]))
+  :keep   #{:value}
 
-  :handle (fn [self {:keys [event signals]}]
+  :render (fn [self]
+            [:form (merge {:id    (:instance/id self)
+                           :class "stube-modal"
+                           :style "max-width:24rem; padding:1.25rem; margin:1rem auto;
+                                   border:1px solid #888; border-radius:0.5rem;
+                                   background:#f8f8f8;
+                                   font-family:system-ui, sans-serif;"}
+                          (s/on self :submit))
+             [:label {:style "display:block; margin-bottom:0.5rem;"}
+              (:label self)]
+             [:input (merge {:name      "value"
+                             :value     (:default self)
+                             :autofocus true
+                             :style     "width:100%; padding:0.4rem; font-size:1rem;"}
+                            (s/local-bind self :value))]
+             [:div {:style "display:flex; gap:0.5rem; justify-content:flex-end;
+                            margin-top:0.75rem;"}
+              [:button (merge {:type "button"
+                               :style "padding:0.4rem 1rem;"}
+                              (s/on self :click :as :cancel))
+               "Cancel"]
+              [:button {:type "submit"
+                        :style "padding:0.4rem 1rem;
+                                background:#36c; color:white;
+                                border:1px solid #25b;"}
+               "OK"]]])
+
+  :handle (fn [self {:keys [event]}]
             (case event
-              :submit (let [v (get signals (prompt-signal self) (:default self))]
+              :submit (let [v (get self :value (:default self))]
                         [self [[:answer v]]])
               :cancel [self [[:answer ::cancel]]]
               [self []])))
@@ -124,9 +122,8 @@
 ;; :ui/choose — one-of-N picker
 ;; ---------------------------------------------------------------------------
 ;;
-;; Each option becomes its own button with `:as :pick-<index>` because
-;; we don't yet have structured-payload events (see `seaside-examples.md`
-;; Tier 1 §calendar for the same workaround).
+;; Each option carries its index as a structured event payload, keeping
+;; the route name semantic (`:pick`) and avoiding keyword parsing.
 
 (s/defcomponent :ui/choose
   :init   (fn [{:keys [caption options]}]
@@ -146,21 +143,19 @@
                 [:button (merge {:type  "button"
                                  :key   i
                                  :style "padding:0.4rem 0.8rem; text-align:left;"}
-                                (s/on self :click :as (keyword (str "pick-" i))))
+                                (s/on self :click :as [:pick i]))
                  (str opt)])]
              [:div {:style "margin-top:0.75rem; text-align:right;"}
               [:button (merge {:type "button" :style "padding:0.4rem 1rem;"}
                               (s/on self :click :as :cancel))
                "Cancel"]]])
 
-  :handle (fn [self {:keys [event]}]
+  :handle (fn [self {:keys [event payload]}]
             (cond
               (= event :cancel) [self [[:answer ::cancel]]]
 
-              ;; `:pick-<n>` → answer with the corresponding option value.
-              (clojure.string/starts-with? (name event) "pick-")
-              (let [idx (parse-long (subs (name event) (count "pick-")))]
-                [self [[:answer (get-in self [:options idx])]]])
+              (= event :pick)
+              [self [[:answer (get-in self [:options payload])]]]
 
               :else [self []])))
 

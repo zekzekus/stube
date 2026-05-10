@@ -105,6 +105,8 @@
 
 (def ^{:doc "See [[stube.render/on]]."}          on          render/on)
 (def ^{:doc "See [[stube.render/bind]]."}        bind        render/bind)
+(def ^{:doc "See [[stube.render/local-signal]]."} local-signal render/local-signal)
+(def ^{:doc "See [[stube.render/local-bind]]."}   local-bind   render/local-bind)
 (def ^{:doc "See [[stube.render/render-slot]]."} render-slot render/render-slot)
 
 ;; ---------------------------------------------------------------------------

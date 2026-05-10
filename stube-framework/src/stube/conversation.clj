@@ -71,6 +71,25 @@
   [x]
   (and (map? x) (contains? x :embed/type)))
 
+(defn local-signal
+  "Return the per-instance signal key for logical `signal` on `self`.
+
+  Datastar signals are page-global.  Binding two embedded components to
+  the same `$answer` would therefore make them share client-side state.
+  A local signal keeps the user-facing logical name (`:answer`) while
+  suffixing the actual wire key with the instance id:
+
+      (local-signal {:instance/id \"ix-1\"} :answer)
+      ;; => :answer-ix-1
+
+  [[merge-kept-signals]] maps local signal keys back to their logical
+  names when the component lists the logical key in `:component/keep`."
+  [self signal]
+  (let [iid (or (:instance/id self)
+                (throw (ex-info "local-signal requires an instance map"
+                                {:got self})))]
+    (keyword (str (name signal) "-" iid))))
+
 ;; ---------------------------------------------------------------------------
 ;; Instance construction
 ;; ---------------------------------------------------------------------------
@@ -263,11 +282,29 @@
   instance map.  This is the per-event two-way binding step: the user
   types in the browser, Datastar updates the signal client-side, and on
   every event the relevant signals land back on `self` before the handler
-  sees it."
+  sees it.
+
+  If the browser sends a per-instance key produced by [[local-signal]],
+  that value is lifted onto the logical kept key.  Local values win over
+  same-named global values so a component can safely say `:keep #{:answer}`
+  and render `(s/local-bind self :answer)`."
   [inst signals keep-keys]
   (if (empty? keep-keys)
     inst
-    (merge inst (select-keys signals (vec keep-keys)))))
+    (reduce (fn [acc k]
+              (let [local-k (when (:instance/id inst)
+                              (local-signal inst k))]
+                (cond
+                  (and local-k (contains? signals local-k))
+                  (assoc acc k (get signals local-k))
+
+                  (contains? signals k)
+                  (assoc acc k (get signals k))
+
+                  :else
+                  acc)))
+            inst
+            keep-keys)))
 
 (defn merged-self
   "Look up `iid` in `conv`, find its component definition, and return the

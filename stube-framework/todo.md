@@ -19,7 +19,7 @@ The single biggest source of repeated workaround code in the examples.
 Every `:click :as` site that needs to carry "which thing was clicked"
 currently hand-encodes the id into a keyword, then parses it back.
 
-- [ ] **Structured event payloads.**
+- [x] **Structured event payloads.**
   Allow `(s/on self :click :as [:pick-day day])` and have the kernel
   route `{:event :pick-day :payload day}` (or a multi-arity handler
   arm) into `:handle`.
@@ -29,18 +29,19 @@ currently hand-encodes the id into a keyword, then parses it back.
   digit).
   [ex:calc, ex:calendar, ex:dialogs, ex:todo] [design v2.1 §14]
 
-- [ ] **Per-instance signal scoping.**
+- [x] **Per-instance signal scoping.**
   Two embedded `:ui/prompt`s on the same page both want `$answer`; today
   `dialogs.clj`, `todo.clj` and `wizard.clj` each compute
   `(keyword (str "prompt-" (:instance/id self)))` by hand. Pick one of:
   - (a) auto-namespace into `$cmp.<iid>.<name>` at render time;
   - (b) ship `(s/local-bind self :answer)` that does the same thing
         explicitly at the call site.
-  Decision was deferred from slice 2; pick before slice 5 so helper
-  components stop carrying boilerplate.
+  Chose the explicit `(s/local-bind self :answer)` / `(s/local-signal
+  self :answer)` path so scoping is visible at the call site while
+  `:keep #{:answer}` still reads cleanly in handlers.
   [ex:dialogs, ex:todo, ex:wizard] [design v2.1 §14 q v2.3]
 
-- [ ] **`(s/on self :submit)` defaulting.**
+- [x] **`(s/on self :submit)` defaulting.**
   Today every form passes `:as :submit` explicitly. When `:as` is
   omitted, default to the DOM event name (`:submit`, `:click`, …).
   Trivial; collapses two-thirds of the `(s/on …)` calls in the

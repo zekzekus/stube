@@ -41,9 +41,9 @@
 
   This file ships the second option.  It exercises everything stube
   already has (per-instance signals, kept signals, structured event
-  routes via `:click :as :foo-<id>`) without inventing new
-  primitives.  The top-of-file docstring on the `:demo/todo`
-  component spells out the workaround so the next reader can find it.
+  payloads) without inventing new primitives.  The top-of-file
+  docstring on the `:demo/todo` component spells out the workaround so
+  the next reader can find it.
 
   ──────────────────────────────────────────────────────────────────────
   State shape
@@ -83,17 +83,7 @@
 ;; collide with the `:draft` signal or with an editor for a different
 ;; row.
 (defn- edit-signal [self id]
-  (keyword (str "edit-" (:instance/id self) "-" id)))
-
-;; Convenience: encode "this event refers to item N" in the route
-;; name.  Same workaround as in `dialogs.clj` and `calendar.clj`,
-;; flagged in the catalogue.
-(defn- evt [tag id] (keyword (str (name tag) "-" id)))
-
-(defn- parse-evt [event prefix]
-  (let [n (name event)]
-    (when (str/starts-with? n prefix)
-      (parse-long (subs n (count prefix))))))
+  (s/local-signal self (keyword (str "edit-" id))))
 
 ;; ---------------------------------------------------------------------------
 ;; Render helpers
@@ -107,13 +97,13 @@
                       (when done? "background:#f4f4f4;"))}
      [:input (merge {:type "checkbox"
                      :checked (boolean done?)}
-                    (s/on self :change :as (evt :toggle id)))]
+                    (s/on self :change :as [:toggle id]))]
      (if editing?
        ;; In-place edit row: a tiny form.  Submit answers the new
        ;; label, Esc/click-away cancels (we route :blur to commit too,
        ;; matching the WATodoItem feel).
        [:form (merge {:style "flex:1; display:flex; gap:0.25rem;"}
-                     (s/on self :submit :as (evt :commit id)))
+                     (s/on self :submit :as [:commit id]))
         [:input (merge {:name      "text"
                         :value     text
                         :autofocus true
@@ -127,13 +117,13 @@
        [:span (merge {:style (str "flex:1; cursor:text; "
                                   (when done? "text-decoration:line-through;
                                                 color:#888;"))}
-                     (s/on self :click :as (evt :edit id)))
+                     (s/on self :click :as [:edit id]))
         text])
      [:button (merge {:type "button"
                       :style "padding:0.2rem 0.5rem; color:#a33;
                               border:1px solid #ccc; background:#fee;
                               border-radius:0.2rem;"}
-                     (s/on self :click :as (evt :delete id)))
+                     (s/on self :click :as [:delete id]))
       "✕"]]))
 
 ;; ---------------------------------------------------------------------------
@@ -167,7 +157,7 @@
                       :value       (:draft self)
                       :autofocus   true
                       :style       "flex:1; padding:0.4rem; font-size:1rem;"}
-                     (s/bind :draft))]
+                     (s/local-bind self :draft))]
       [:button {:type "submit"
                 :style "padding:0.4rem 1rem; background:#36c; color:white;
                         border:1px solid #25b; border-radius:0.25rem;"}
@@ -181,7 +171,7 @@
         (str pending " open · " done " done"))]])
 
   :handle
-  (fn [self {:keys [event signals]}]
+  (fn [self {:keys [event payload signals]}]
     (cond
       (= event :add)
       [(add-item self (:draft self)) []]
@@ -189,23 +179,21 @@
       (= event :cancel-edit)
       [(assoc self :editing-id nil) []]
 
-      (parse-evt event "edit-")
-      [(assoc self :editing-id (parse-evt event "edit-")) []]
+      (= event :edit)
+      [(assoc self :editing-id payload) []]
 
-      (parse-evt event "delete-")
-      [(-> self (delete-item (parse-evt event "delete-"))
-                (cond-> (= (:editing-id self)
-                           (parse-evt event "delete-"))
+      (= event :delete)
+      [(-> self (delete-item payload)
+                (cond-> (= (:editing-id self) payload)
                   (assoc :editing-id nil)))
        []]
 
-      (parse-evt event "toggle-")
-      [(update-item self (parse-evt event "toggle-")
-                    update :done? not)
+      (= event :toggle)
+      [(update-item self payload update :done? not)
        []]
 
-      (parse-evt event "commit-")
-      (let [id  (parse-evt event "commit-")
+      (= event :commit)
+      (let [id  payload
             v   (get signals (edit-signal self id))
             t   (str/trim (str v))]
         [(-> self
