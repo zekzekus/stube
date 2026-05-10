@@ -178,13 +178,13 @@ Small but visible holes in the data model.
 
 Already scoped in v2.1 §13 slice 4; listed here so nothing is lost.
 
-- [ ] **Reaper.** Background loop that ends conversations whose
+- [x] **Reaper.** Background loop that ends conversations whose
       `:conv/touched` is older than a configurable TTL. Closes the
       "persisted convs live forever" gap from slice 3.
-- [ ] **`(s/active-conversations)`** and **`(s/end! cid)`** admin ops.
-- [ ] **Anti-forgery / session ownership.** A cid is a routing handle,
+- [x] **`(s/active-conversations)`** and **`(s/end! cid)`** admin ops.
+- [x] **Anti-forgery / session ownership.** A cid is a routing handle,
       not a capability. Session cookie + assertion on every POST.
-- [ ] **`slf4j` MDC by `cid` + `iid`.** A single `grep` should
+- [x] **`slf4j` MDC by `cid` + `iid`.** A single `grep` should
       reconstruct the timeline of any one conversation.
 
 ---
@@ -226,8 +226,9 @@ framework.
 - [ ] **Session auth binding.** `WASessionProtectedCounter`-style;
       bind a conversation to an authenticated session.
       [ex:seaside-examples Tier 3]
-- [ ] **Registry introspection.** `(s/mounts)` listing root mounts,
-      so a `WANavigationBar`-style index page is two lines.
+- [x] **Registry introspection.** `(s/mounts)` listing root mounts,
+      so a `WANavigationBar`-style index page is two lines. Landed as
+      part of the slice-4 admin surface.
       [ex:seaside-examples Tier 3]
 
 ---

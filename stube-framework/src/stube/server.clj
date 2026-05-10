@@ -20,7 +20,8 @@
   (:require [org.httpkit.server :as http-kit]
             [reitit.ring        :as ring]
             [stube.conversation :as conv]
-            [stube.store        :as store]))
+            [stube.store        :as store])
+  (:import (java.time Duration Instant)))
 
 ;; ---------------------------------------------------------------------------
 ;; Storage
@@ -32,6 +33,7 @@
 (defonce ^:private !mounts        (atom (sorted-map)))
 (defonce ^:private !server        (atom nil))
 (defonce ^:private !ui-css?       (atom true))
+(defonce ^:private !reaper-stop   (atom nil))
 
 ;; Slice 3 — the configured persistence backend.  Defaults to a no-op
 ;; in-memory store, so existing tests and demos keep their slice-0
@@ -53,12 +55,15 @@
   the new cid.  The flow is only *instantiated* when the browser opens
   the SSE stream — at that point the kernel runs `boot` against this
   empty conversation."
-  [flow-id]
-  (let [c   (conv/new-conversation)
-        cid (:conv/id c)]
-    (swap! !conversations assoc cid c)
-    (swap! !pending-flows assoc cid flow-id)
-    cid))
+  ([flow-id]
+   (create-conversation! flow-id nil))
+  ([flow-id owner-token]
+   (let [c   (cond-> (conv/new-conversation)
+               owner-token (assoc :conv/owner-token owner-token))
+         cid (:conv/id c)]
+     (swap! !conversations assoc cid c)
+     (swap! !pending-flows assoc cid flow-id)
+     cid)))
 
 (defn pending-flow
   "Pop and return the pending flow id for `cid`, if any.  After this
@@ -113,6 +118,63 @@
       (binding [*out* *err*]
         (println "stube.server: store delete! threw —" (ex-message t)))))
   nil)
+
+(defn active-conversations
+  "Return a snapshot of all active conversations keyed by cid."
+  []
+  @!conversations)
+
+(defn end!
+  "Public admin wrapper around [[end-conversation!]]."
+  [cid]
+  (end-conversation! cid))
+
+(defn- ->duration [x]
+  (cond
+    (nil? x) nil
+    (instance? Duration x) x
+    (integer? x) (Duration/ofMillis x)
+    :else (throw (ex-info "Expected java.time.Duration or millisecond integer"
+                          {:got x}))))
+
+(defn reap!
+  "End conversations whose `:conv/touched` is older than `ttl`.
+  `ttl` is a `java.time.Duration` or millisecond integer.  Returns the
+  vector of cids that were reaped."
+  [ttl]
+  (let [ttl       (->duration ttl)
+        cutoff    (.minus (Instant/now) ttl)
+        expired   (->> @!conversations
+                       (keep (fn [[cid c]]
+                               (when-let [^Instant touched (:conv/touched c)]
+                                 (when (.isBefore touched cutoff)
+                                   cid))))
+                       vec)]
+    (doseq [cid expired]
+      (end-conversation! cid))
+    expired))
+
+(defn- stop-reaper! []
+  (when-let [stop @!reaper-stop]
+    (deliver stop true)
+    (reset! !reaper-stop nil)))
+
+(defn- start-reaper! [ttl interval]
+  (stop-reaper!)
+  (when-let [ttl (->duration ttl)]
+    (let [interval-ms (max 1 (.toMillis (or (->duration interval)
+                                            (Duration/ofMinutes 1))))
+          stop        (promise)]
+      (reset! !reaper-stop stop)
+      (future
+        (loop []
+          (when-not (deref stop interval-ms false)
+            (try
+              (reap! ttl)
+              (catch Throwable t
+                (binding [*out* *err*]
+                  (println "stube.server: reaper threw —" (ex-message t)))))
+            (recur)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; SSE session helpers
@@ -184,6 +246,8 @@
                                      (ring/create-default-handler))]
       (handler req))))
 
+(declare stop!)
+
 (defn start!
   "Start http-kit on `port` (default 8080).  Idempotent: a second call
   with the server already running stops the old one first.
@@ -195,14 +259,17 @@
   | `:port`    | 8080                          | TCP port                              |
   | `:store`   | `(store/in-memory-store)`     | persistence backend (slice 3)         |
   | `:ui-css?` | true                          | link the stock `/stube/ui.css` file   |
+  | `:conversation-ttl` | nil                  | reaper TTL (`Duration` or millis)     |
+  | `:reaper-interval` | 60000                 | reaper interval (`Duration` or millis)|
 
   When a `:store` is supplied, [[load-all]] runs *before* the http
   listener accepts requests, so any persisted conversations are live
   in memory by the time the first browser reconnects."
   ([] (start! {}))
-  ([{:keys [port store ui-css?] :or {port 8080 ui-css? true}}]
+  ([{:keys [port store ui-css? conversation-ttl reaper-interval]
+     :or {port 8080 ui-css? true}}]
    (when @!server
-     (@!server))
+     (stop!))
    (reset! !ui-css? (boolean ui-css?))
    (when store
      (reset! !store store)
@@ -218,11 +285,13 @@
      (println (str "stube listening on http://localhost:" port))
      (doseq [[p f] (mounts)]
        (println "  mount" p "→" f))
+     (start-reaper! conversation-ttl reaper-interval)
      stop-fn)))
 
 (defn stop!
   "Stop the running server, if any."
   []
+  (stop-reaper!)
   (when-let [stop-fn @!server]
     (stop-fn)
     (reset! !server nil)))

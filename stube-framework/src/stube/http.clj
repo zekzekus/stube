@@ -22,7 +22,8 @@
             [stube.kernel                                      :as kernel]
             [stube.render                                      :as render]
             [stube.server                                      :as server])
-  (:import (java.net URLDecoder)))
+  (:import (java.net URLDecoder)
+           (java.util UUID)))
 
 ;; ---------------------------------------------------------------------------
 ;; JSON helpers
@@ -40,7 +41,7 @@
 (def ^:private write-json
   (json/write-json-fn {}))
 
-(defn- ^String json-str [m]
+(defn- json-str ^String [m]
   (let [sb (StringBuilder.)]
     (write-json sb m)
     (.toString sb)))
@@ -72,6 +73,73 @@
 (defn- read-event-payload [req]
   (some-> (query-value req render/payload-query-param)
           (edn/read-string)))
+
+;; ---------------------------------------------------------------------------
+;; Session ownership
+;; ---------------------------------------------------------------------------
+
+(def ^:private session-cookie "stube_sid")
+
+(defn- cookie-map [{:keys [headers]}]
+  (into {}
+        (keep (fn [part]
+                (let [[k v] (str/split (str/trim part) #"=" 2)]
+                  (when (seq k) [k v]))))
+        (some-> (or (get headers "cookie") (get headers "Cookie"))
+                (str/split #";"))))
+
+(defn- request-session [req]
+  (get (cookie-map req) session-cookie))
+
+(defn- new-session []
+  (str (UUID/randomUUID)))
+
+(defn- session-cookie-header [sid]
+  (str session-cookie "=" sid "; Path=/; HttpOnly; SameSite=Lax"))
+
+(defn- ensure-session [req]
+  (if-let [sid (request-session req)]
+    [sid nil]
+    (let [sid (new-session)]
+      [sid (session-cookie-header sid)])))
+
+(defn- authorized? [req cid]
+  (let [conv  (server/conversation cid)
+        owner (:conv/owner-token conv)]
+    (or (nil? owner)
+        (= owner (request-session req)))))
+
+(defn- forbidden-response []
+  {:status  403
+   :headers {"Content-Type" "text/plain; charset=utf-8"
+             "Cache-Control" "no-store"}
+   :body    "stube conversation belongs to a different session."})
+
+;; ---------------------------------------------------------------------------
+;; Optional slf4j MDC integration
+;; ---------------------------------------------------------------------------
+
+(defn- mdc-class []
+  (try
+    (Class/forName "org.slf4j.MDC")
+    (catch Throwable _ nil)))
+
+(defn- mdc-call! [method-name signature args]
+  (when-let [cls (mdc-class)]
+    (try
+      (let [method (.getMethod cls method-name (into-array Class signature))]
+        (.invoke method nil (object-array args)))
+      (catch Throwable _ nil))))
+
+(defn- with-mdc [pairs f]
+  (doseq [[k v] pairs]
+    (when v
+      (mdc-call! "put" [String String] [(name k) (str v)])))
+  (try
+    (f)
+    (finally
+      (doseq [[k _] pairs]
+        (mdc-call! "remove" [String] [(name k)])))))
 
 ;; ---------------------------------------------------------------------------
 ;; The shell
@@ -187,11 +255,13 @@
   conversation pre-bound to `flow-id`; the cid is embedded in the shell
   so the browser's first SSE GET is to the right place."
   [flow-id]
-  (fn [_req]
-    (let [cid (server/create-conversation! flow-id)]
+  (fn [req]
+    (let [[sid set-cookie] (ensure-session req)
+          cid (server/create-conversation! flow-id sid)]
       {:status  200
-       :headers {"Content-Type" "text/html; charset=utf-8"
-                 "Cache-Control" "no-store"}
+       :headers (cond-> {"Content-Type" "text/html; charset=utf-8"
+                         "Cache-Control" "no-store"}
+                  set-cookie (assoc "Set-Cookie" set-cookie))
        :body    (shell-html cid)})))
 
 (defn- resume-render
@@ -224,10 +294,14 @@
   fragments."
   [{:keys [path-params] :as req}]
   (let [cid (:cid path-params)]
-    (hk/->sse-response req
-      {hk/on-open
-      (fn [sse-gen]
-        (server/register-sse! cid sse-gen)
+    (if-not (authorized? req cid)
+      (forbidden-response)
+      (hk/->sse-response req
+        {hk/on-open
+        (fn [sse-gen]
+          (with-mdc {:cid cid}
+            (fn []
+              (server/register-sse! cid sse-gen)
         ;; `server/pending-flow` is a one-shot: it pops the baton.
         ;; Read it exactly once into a local before branching, or path
         ;; 2 will fire after path 1 already consumed the value.
@@ -236,14 +310,16 @@
           (cond
             ;; Path 1 — fresh shell visit; instantiate the root flow.
             (some? pending)
-            (let [[_conv frags]
+            (let [[conv' frags]
                   (server/swap-conv!
                     cid
                     (fn [c]
                       (binding [render/*cid* cid]
                         (kernel/run-effects c (kernel/boot pending)))))]
               (binding [render/*cid* cid]
-                (push-fragments! sse-gen frags)))
+                (push-fragments! sse-gen frags))
+              (when (:conv/ended? conv')
+                (server/end-conversation! cid)))
 
             ;; Path 2 — re-attach to a conversation that survives in
             ;; memory (loaded from the persistence store at startup,
@@ -262,27 +338,40 @@
             ;; the SSE channel empty; the browser will simply see no
             ;; patches.
             :else
-            nil)))
+            nil)))))
 
        hk/on-close
        (fn [_sse-gen _status]
-         (server/unregister-sse! cid))})))
+           (server/unregister-sse! cid))}))))
 
 (defn back-handler
   "POST `/conv/:cid/back` — emit the [[:back]] effect.  Mirrors
   [[event-handler]] but without an instance id or signals payload."
-  [{:keys [path-params]}]
+  [{:keys [path-params] :as req}]
   (let [cid (:cid path-params)
-        [_ frags] (binding [render/*cid* cid]
-                    (server/swap-conv!
-                      cid
-                      (fn [c]
-                        (binding [render/*cid* cid]
-                          (kernel/run-effects c [[:back]])))))]
-    (when-let [sse-gen (server/sse cid)]
-      (binding [render/*cid* cid]
-        (push-fragments! sse-gen frags)))
-    {:status 204}))
+        live (server/conversation cid)]
+    (cond
+      (nil? live)
+      (stale-response! cid)
+
+      (not (authorized? req cid))
+      (forbidden-response)
+
+      :else
+      (with-mdc {:cid cid}
+        (fn []
+          (let [[conv' frags] (binding [render/*cid* cid]
+                                (server/swap-conv!
+                                  cid
+                                  (fn [c]
+                                    (binding [render/*cid* cid]
+                                      (kernel/run-effects c [[:back]])))))]
+            (when-let [sse-gen (server/sse cid)]
+              (binding [render/*cid* cid]
+                (push-fragments! sse-gen frags)))
+            (when (:conv/ended? conv')
+              (server/end-conversation! cid))
+            {:status 204}))))))
 
 (defn event-handler
   "Dispatch one client event into the conversation.  The instance id
@@ -291,19 +380,31 @@
   [{:keys [path-params] :as req}]
   (let [{:keys [cid iid event]} path-params
         live (server/conversation cid)]
-    (if (or (nil? live)
-            (:conv/ended? live)
-            (nil? (conv/instance live iid)))
+    (cond
+      (nil? live)
       (stale-response! cid)
-      (let [signals (read-signals req)
-            ev      {:instance-id iid
-                     :event       (keyword event)
-                     :payload     (read-event-payload req)
-                     :signals     signals}
-            [_conv frags] (binding [render/*cid* cid]
-                            (server/swap-conv! cid
-                                               (fn [c] (kernel/dispatch c ev))))]
-        (when-let [sse-gen (server/sse cid)]
-          (binding [render/*cid* cid]
-            (push-fragments! sse-gen frags)))
-        {:status 204}))))
+
+      (not (authorized? req cid))
+      (forbidden-response)
+
+      (or (:conv/ended? live)
+          (nil? (conv/instance live iid)))
+      (stale-response! cid)
+
+      :else
+      (with-mdc {:cid cid :iid iid}
+        (fn []
+          (let [signals (read-signals req)
+                ev      {:instance-id iid
+                         :event       (keyword event)
+                         :payload     (read-event-payload req)
+                         :signals     signals}
+                [conv' frags] (binding [render/*cid* cid]
+                                (server/swap-conv! cid
+                                                   (fn [c] (kernel/dispatch c ev))))]
+            (when-let [sse-gen (server/sse cid)]
+              (binding [render/*cid* cid]
+                (push-fragments! sse-gen frags)))
+            (when (:conv/ended? conv')
+              (server/end-conversation! cid))
+            {:status 204}))))))

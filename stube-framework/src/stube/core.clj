@@ -226,6 +226,10 @@
 (def ^{:doc "See [[stube.server/unmount!]]."}  unmount!   server/unmount!)
 (def ^{:doc "See [[stube.server/start!]]."}    start!     server/start!)
 (def ^{:doc "See [[stube.server/stop!]]."}     stop!      server/stop!)
+(def ^{:doc "See [[stube.server/active-conversations]]."}
+  active-conversations server/active-conversations)
+(def ^{:doc "See [[stube.server/end!]]."}      end!       server/end!)
+(def ^{:doc "See [[stube.server/mounts]]."}    mounts     server/mounts)
 
 ;; ---------------------------------------------------------------------------
 ;; REPL / test surface

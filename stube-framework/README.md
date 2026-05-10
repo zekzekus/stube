@@ -73,6 +73,8 @@ clojure -X:test
 
 The shell links the tiny stock stylesheet at `/stube/ui.css` by default;
 start with `{:ui-css? false}` if you want a completely unstyled shell.
+Production starts can also set `:conversation-ttl` (a `java.time.Duration`
+or millisecond integer) to enable the background conversation reaper.
 
 ## Layout
 
