@@ -45,11 +45,14 @@
   may include:
 
       :start  (fn [self] [self' effects])
+      :stop   (fn [self] [self' effects])
+      :wakeup (fn [self] [self' effects])
 
   …which the kernel runs once immediately after instantiation.  This
   lets \"task\" components (a wizard that exists only to sequence
   others) launch their first `:call` without needing a synthetic user
-  event."
+  event.  `:stop` runs just before a frame/subtree is removed; `:wakeup`
+  runs when a persisted or history-restored frame becomes live again."
   (:require [stube.conversation :as conv]
             [stube.registry     :as registry]
             [stube.render       :as render]))
@@ -165,11 +168,69 @@
                       {})]
     (render-instance conv iid opts)))
 
+(declare run-effects)
+
+;; ---------------------------------------------------------------------------
+;; Lifecycle hooks
+;; ---------------------------------------------------------------------------
+
+(defn- lifecycle-pair
+  "Normalise a lifecycle hook result.  Hooks mirror `:start` and should
+  return `[self' effects]`, but accepting nil keeps cleanup-only hooks
+  terse."
+  [self result]
+  (cond
+    (nil? result) [self []]
+    (and (vector? result) (= 2 (count result)) (map? (first result))) result
+    :else [self result]))
+
+(defn- run-stop-hooks
+  "Run `:stop` for the instance ids, preserving any emitted fragments.
+  The instances are still present while hooks run; callers remove them
+  afterwards."
+  [conv iids]
+  (reduce (fn [[c frags] iid]
+            (if-let [inst (conv/instance c iid)]
+              (let [cdef (registry/lookup! (:instance/type inst))]
+                (if-let [stop-fn (:stop cdef)]
+                  (let [[_ fx] (lifecycle-pair inst (stop-fn inst))
+                        [c' more] (binding [*effect-iid* iid]
+                                    (run-effects c fx))]
+                    [c' (into frags more)])
+                  [c frags]))
+              [c frags]))
+          [conv []]
+          iids))
+
+(defn- wakeup-frame
+  "Run `:wakeup` for `iid`, updating the instance before rendering."
+  [conv iid]
+  (if-let [inst (conv/instance conv iid)]
+    (let [cdef (registry/lookup! (:instance/type inst))]
+      (if-let [wakeup-fn (:wakeup cdef)]
+        (let [[inst' fx] (lifecycle-pair inst (wakeup-fn inst))
+              inst'      (conv/preserve-meta inst inst')
+              conv'      (conv/put-instance conv inst')
+              [conv'' frags] (binding [*effect-iid* iid]
+                                (run-effects conv' fx))]
+          [conv'' frags])
+        [conv []]))
+    [conv []]))
+
+(defn resume-top
+  "Run `:wakeup` for the current top frame and render it as a restored
+  frame.  Used by the http layer when a persisted conversation reattaches."
+  [conv]
+  (if-let [iid (conv/top-id conv)]
+    (let [conv'          (assoc-in conv [:conv/instances iid :instance/rendered?] false)
+          [conv'' wake]  (wakeup-frame conv' iid)
+          [conv''' frag] (render-frame conv'' iid)]
+      [conv''' (conj (vec wake) frag)])
+    [conv []]))
+
 ;; ---------------------------------------------------------------------------
 ;; The step function — one effect at a time
 ;; ---------------------------------------------------------------------------
-
-(declare run-effects)
 
 (defmulti ^:private step
   "Apply a single effect to the conversation and return
@@ -317,11 +378,15 @@
       [conv-final (into (vec extra) more)])))
 
 (defn- answer-from-stack [conv value]
-  (let [leaving         (conv/top-instance conv)
+  (let [leaving-id      (conv/top-id conv)
+        leaving         (conv/top-instance conv)
         resume-key      (:instance/resume leaving)
-        [conv' _popped] (conv/pop-top conv)
-        parent-id       (conv/top-id conv')]
-    (resume-parent conv' parent-id resume-key value)))
+        stop-iids       (conv/descendant-ids conv leaving-id)
+        [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
+        [conv' _popped] (conv/pop-top conv-stopped)
+        parent-id       (conv/top-id conv')
+        [conv'' frags]  (resume-parent conv' parent-id resume-key value)]
+    [conv'' (into (vec stop-frags) frags)]))
 
 (defn- answer-from-slot [conv leaving value]
   (let [leaving-id (:instance/id leaving)
@@ -333,10 +398,13 @@
                        :parent      parent-id})))
     (let [resume-key (:instance/resume leaving)
           previous   (:instance/previous leaving)
-          conv'      (-> conv
+          stop-iids  (conv/descendant-ids conv leaving-id)
+          [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
+          conv'      (-> conv-stopped
                          (conv/remove-subtree leaving-id)
-                         (conv/set-child-slot parent-id slot previous))]
-      (resume-parent conv' parent-id resume-key value))))
+                         (conv/set-child-slot parent-id slot previous))
+          [conv'' frags] (resume-parent conv' parent-id resume-key value)]
+      [conv'' (into (vec stop-frags) frags)])))
 
 (defmethod step :answer
   [conv [_ value]]
@@ -355,7 +423,10 @@
 (defmethod step :replace
   [conv [_ embed-spec]]
   (let [old-inst              (conv/top-instance conv)
-        [conv-popped popped-id] (conv/pop-top conv)
+        old-id                (:instance/id old-inst)
+        stop-iids             (conv/descendant-ids conv old-id)
+        [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
+        [conv-popped popped-id] (conv/pop-top conv-stopped)
         parent                (when-let [pid (conv/top-id conv-popped)]
                                 (conv/instance conv-popped pid))
         ;; Inherit parent linkage and resume key from the frame we are
@@ -371,7 +442,7 @@
                      (conv/push-instance new-inst)
                      (conv/put-many descendants))
         [conv'' frag] (render-frame conv' (:instance/id new-inst))]
-    [conv'' [frag]]))
+    [conv'' (conj (vec stop-frags) frag)]))
 
 (defmethod step :patch
   [conv [_ hiccup]]
@@ -423,8 +494,9 @@
                                      [iid (assoc inst :instance/rendered? false)])
                                    m)))))]
       (if-let [iid (conv/top-id restored)]
-        (let [[c f] (render-frame restored iid)]
-          [c [f]])
+        (let [[c wake] (wakeup-frame restored iid)
+              [c' f]  (render-frame c iid)]
+          [c' (conj (vec wake) f)])
         ;; Empty stack: nothing to render.  Surface as :end so the
         ;; conversation tears down cleanly.
         (step restored [:end nil])))
@@ -433,7 +505,9 @@
 
 (defmethod step :end
   [conv [_ _value]]
-  [(assoc conv :conv/ended? true) [close-fragment]])
+  (let [stop-iids (vec (mapcat #(conv/descendant-ids conv %) (:conv/stack conv)))
+        [conv' stop-frags] (run-stop-hooks conv stop-iids)]
+    [(assoc conv' :conv/ended? true) (conj (vec stop-frags) close-fragment)]))
 
 (defmethod step :default
   [_conv [op & _]]

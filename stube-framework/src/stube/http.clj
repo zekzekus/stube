@@ -156,6 +156,28 @@
       (doseq [f fragments]
         (push-fragment! sse-gen f)))))
 
+(defn- stale-fragments []
+  [{:fragment/kind :elements
+    :fragment/html (render/html
+                     [:section {:class "stube-card stube-modal"}
+                      [:h2 "This page is stale"]
+                      [:p "Please reload to start a fresh conversation."]])
+    :fragment/opts {:selector "#root" :patch-mode :inner}}
+   {:fragment/kind :close}])
+
+(defn- stale-response!
+  "Tell the browser its page no longer matches a live instance, then
+  forget the conversation."
+  [cid]
+  (let [frags (stale-fragments)]
+    (when-let [sse-gen (server/sse cid)]
+      (push-fragments! sse-gen frags))
+    (server/end-conversation! cid)
+    {:status  410
+     :headers {"Content-Type" "text/plain; charset=utf-8"
+               "Cache-Control" "no-store"}
+     :body    "stube conversation is stale; please reload."}))
+
 ;; ---------------------------------------------------------------------------
 ;; Handlers
 ;; ---------------------------------------------------------------------------
@@ -175,17 +197,14 @@
 (defn- resume-render
   "Render the current top frame of a conversation that already has
   state.  Used by the SSE handler on path 2 (re-attach to a restored
-  conversation): clear the top frame's `:instance/rendered?` flag so
-  `render-frame`'s \"first render\" branch fires, then render it.
+  conversation): run the top frame's `:wakeup` hook, clear its
+  `:instance/rendered?` flag so `render-frame`'s \"first render\" branch
+  fires, then render it.
 
   Returns `[conv' fragments]`.  If the stack is empty we leave the
   conversation alone and return no fragments."
   [conv]
-  (if-let [iid (some-> conv :conv/stack peek)]
-    (let [c' (assoc-in conv [:conv/instances iid :instance/rendered?] false)
-          [c'' frag] (#'kernel/render-frame c' iid)]
-      [c'' [frag]])
-    [conv []]))
+  (kernel/resume-top conv))
 
 (defn sse-handler
   "Open the long-lived SSE stream for a conversation.
@@ -271,15 +290,20 @@
   request body / query is treated as the current Datastar signals."
   [{:keys [path-params] :as req}]
   (let [{:keys [cid iid event]} path-params
-        signals (read-signals req)
-        ev      {:instance-id iid
-                 :event       (keyword event)
-                 :payload     (read-event-payload req)
-                 :signals     signals}
-        [_conv frags] (binding [render/*cid* cid]
-                        (server/swap-conv! cid
-                                           (fn [c] (kernel/dispatch c ev))))]
-    (when-let [sse-gen (server/sse cid)]
-      (binding [render/*cid* cid]
-        (push-fragments! sse-gen frags)))
-    {:status 204}))
+        live (server/conversation cid)]
+    (if (or (nil? live)
+            (:conv/ended? live)
+            (nil? (conv/instance live iid)))
+      (stale-response! cid)
+      (let [signals (read-signals req)
+            ev      {:instance-id iid
+                     :event       (keyword event)
+                     :payload     (read-event-payload req)
+                     :signals     signals}
+            [_conv frags] (binding [render/*cid* cid]
+                            (server/swap-conv! cid
+                                               (fn [c] (kernel/dispatch c ev))))]
+        (when-let [sse-gen (server/sse cid)]
+          (binding [render/*cid* cid]
+            (push-fragments! sse-gen frags)))
+        {:status 204}))))

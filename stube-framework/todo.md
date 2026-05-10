@@ -134,34 +134,42 @@ already exist in user code and are mechanically trivial.
 
 Small but visible holes in the data model.
 
-- [ ] **`:stop` lifecycle hook.**
+- [x] **`:stop` lifecycle hook.**
   Mirror of `:start`; runs once when the frame is popped. Needed for
   cleaning up resources held by `:io` callbacks (subscriptions,
   timers, file handles).
+  Runs for stack frames and slot-local children before removal; hook
+  effects are folded before the removal's visible fragments.
   [design v2.1 §14 q v2.5]
 
-- [ ] **`:wakeup` lifecycle hook.**
+- [x] **`:wakeup` lifecycle hook.**
   Runs when a frame is restored from history (via `:back` or
   crash-resume). Lets a component re-acquire transient resources that
   weren't (and shouldn't be) persisted.
+  Runs for the restored top frame before render on `:back` and SSE
+  reattach.
   [design v2.1 §14 q v2.5, §13 slice 3]
 
-- [ ] **Docstring slot + `(s/help :auth/login)`.**
+- [x] **Docstring slot + `(s/help :auth/login)`.**
   Add `:doc` to `defcomponent`; surface it via `(s/help id)` so
   component libraries are self-documenting. Trivial; matches §15.1.
   [design v2.1 §13 slice 5]
 
-- [ ] **Hot-reload safety.**
+- [x] **Hot-reload safety.**
   Re-evaluating a `defcomponent` should not crash live conversations
   whose instances are of that type. Decide and document: do existing
   live frames pick up the new `:render` next time their handler fires,
   or only new frames?
+  Existing live frames pick up the latest registered definition on the
+  next render/dispatch; this is now pinned by regression coverage.
   [design v2.1 §13 slice 5]
 
-- [ ] **Stale-instance soft 410.**
+- [x] **Stale-instance soft 410.**
   Today a POST whose iid is no longer on the stack throws. Patch a
   "page is stale, please reload" banner into `#root` and end the conv
   gracefully.
+  The HTTP layer now returns 410, patches the stale banner when an SSE
+  stream is present, closes it, and forgets the conversation.
   [design v2.1 §14 q v2.6]
 
 ---

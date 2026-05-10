@@ -71,6 +71,7 @@
   called as
 
       (s/defcomponent :auth/login
+        :doc    \"Prompt for credentials.\"
         :init   (fn [args] state-map)
         :keep   #{:signal-keys}            ;; optional
         :render (fn [self] hiccup)
@@ -95,7 +96,9 @@
           (contains? opts :handle) (-> (assoc :component/handle (:handle opts))
                                        (dissoc :handle))
           (contains? opts :keep)   (-> (assoc :component/keep   (:keep   opts))
-                                       (dissoc :keep))))))
+                                       (dissoc :keep))
+          (contains? opts :doc)    (-> (assoc :component/doc    (:doc    opts))
+                                       (dissoc :doc))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Compositional helpers
@@ -178,6 +181,9 @@
 
 (def ^{:doc "Look up a registered component definition by id (or nil)."}
   registry-lookup registry/lookup)
+
+(def ^{:doc "Return a registered component's docstring, or nil."}
+  help registry/help)
 
 ;; ---------------------------------------------------------------------------
 ;; History & persistence (slice 3)

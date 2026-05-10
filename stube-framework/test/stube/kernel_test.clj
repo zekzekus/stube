@@ -94,6 +94,59 @@
         "only the leaf renders; task placeholder was suppressed")
     (is (re-find #"leaf" (:fragment/html (first (elements-fragments frags)))))))
 
+(deftest stop-fires-when-frame-is-popped
+  (registry/register!
+    {:component/id     :t/leaf
+     :component/render (fn [s] [:div {:id (:instance/id s)}])
+     :component/handle (fn [s _] [s [[:answer :done]]])
+     :stop             (fn [s] [s [[:patch-signals {:stopped true}]]])})
+  (let [[c0]      (run-boot :t/leaf)
+        iid       (conv/top-id c0)
+        [c1 frags] (kernel/dispatch c0 {:instance-id iid
+                                        :event       :go
+                                        :signals     {}})]
+    (is (true? (:conv/ended? c1)))
+    (is (some #(and (= :signals (:fragment/kind %))
+                    (= {:stopped true} (:fragment/data %)))
+              frags)
+        ":stop effects are emitted before the conversation closes")))
+
+(deftest wakeup-fires-when-history-restores-frame
+  (registry/register!
+    {:component/id     :t/counter
+     :component/init   (constantly {:n 0 :woke 0})
+     :component/render (fn [s] [:div {:id (:instance/id s)}
+                                "n=" (:n s) " woke=" (:woke s)])
+     :component/handle (fn [s _] [(update s :n inc) []])
+     :wakeup           (fn [s] [(update s :woke inc) []])})
+  (let [[c0]     (run-boot :t/counter)
+        iid      (conv/top-id c0)
+        [c1 _]   (kernel/dispatch c0 {:instance-id iid
+                                      :event       :tick
+                                      :signals     {}})
+        [c2 fr]  (kernel/run-effects c1 [[:back]])
+        html     (:fragment/html (first (elements-fragments fr)))]
+    (is (= 1 (:woke (conv/instance c2 iid))))
+    (is (re-find #"woke=1" html))))
+
+(deftest live-instances-use-reregistered-component-definition
+  (registry/register!
+    {:component/id     :t/hot
+     :component/init   (constantly {:n 0})
+     :component/render (fn [s] [:div {:id (:instance/id s)} "old"])
+     :component/handle (fn [s _] [(update s :n inc) []])})
+  (let [[c0] (run-boot :t/hot)
+        iid  (conv/top-id c0)]
+    (registry/register!
+      {:component/id     :t/hot
+       :component/render (fn [s] [:div {:id (:instance/id s)} "new n=" (:n s)])
+       :component/handle (fn [s _] [(update s :n inc) []])})
+    (let [[_ frags] (kernel/dispatch c0 {:instance-id iid
+                                         :event       :tick
+                                         :signals     {}})]
+      (is (re-find #"new n=1"
+                   (:fragment/html (first (elements-fragments frags))))))))
+
 ;; ---------------------------------------------------------------------------
 ;; State updates without effects → auto re-render
 ;; ---------------------------------------------------------------------------

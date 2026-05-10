@@ -4,6 +4,7 @@
   In stube, a *component* is a plain map of the form
 
       {:component/id      :auth/login
+       :component/doc     \"Prompt for credentials.\"
        :component/init    (fn [args] state-map)
        :component/render  (fn [self]  hiccup)
        :component/handle  (fn [self event] [self' effects])
@@ -71,6 +72,11 @@
   REPL; not used internally."
   []
   @!components)
+
+(defn help
+  "Return the docstring registered for component `id`, or nil."
+  [id]
+  (:component/doc (lookup id)))
 
 (defn clear!
   "Drop every component from the registry.  Intended for tests."
