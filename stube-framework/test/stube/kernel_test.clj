@@ -5,6 +5,7 @@
   of the test components do, so the var stays unbound."
   (:require [clojure.test       :refer [deftest is testing use-fixtures]]
             [stube.conversation :as conv]
+            [stube.core         :as s]
             [stube.kernel       :as kernel]
             [stube.registry     :as registry]))
 
@@ -196,6 +197,36 @@
                                     :payload     12
                                     :signals     {}})]
     (is (= [:pick-day 12] (:seen (conv/instance c1 iid))))))
+
+(deftest dispatch-records-sanitized-last-event-summary
+  (registry/register!
+    {:component/id     :t/event-summary
+     :component/render (fn [s] [:div {:id (:instance/id s)}])
+     :component/handle (fn [s _] [s []])})
+  (let [[c0] (run-boot :t/event-summary)
+        iid  (conv/top-id c0)
+        [c1] (kernel/dispatch c0 {:instance-id iid
+                                  :event       :save
+                                  :payload     {:id 7}
+                                  :signals     {:secret "value"
+                                                :answer "ok"}})]
+    (is (= {:instance-id iid
+            :event       :save
+            :payload     {:id 7}
+            :signal-keys [:answer :secret]}
+           (:conv/last-event c1)))))
+
+(deftest replay-boots-flow-and-reduces-events
+  (registry/register!
+    {:component/id     :t/replay-counter
+     :component/init   (constantly {:n 0})
+     :component/render (fn [s] [:div {:id (:instance/id s)}])
+     :component/handle (fn [s _] [(update s :n inc) []])})
+  (let [[c _frags] (s/replay :t/replay-counter
+                             [{:event :tick}
+                              {:event :tick}])]
+    (is (= 2 (:n (conv/top-instance c))))
+    (is (= 2 (count (:conv/history c))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Side effects: :patch, :patch-signals, :execute-script

@@ -230,10 +230,47 @@
   active-conversations server/active-conversations)
 (def ^{:doc "See [[stube.server/end!]]."}      end!       server/end!)
 (def ^{:doc "See [[stube.server/mounts]]."}    mounts     server/mounts)
+(def ^{:doc "See [[stube.server/inspect]]."}   inspect    server/inspect)
 
 ;; ---------------------------------------------------------------------------
 ;; REPL / test surface
 ;; ---------------------------------------------------------------------------
+
+(defn- replay-start [baseline]
+  (cond
+    (map? baseline)
+    [baseline []]
+
+    (qualified-keyword? baseline)
+    (kernel/run-effects (conv/new-conversation) (kernel/boot baseline))
+
+    :else
+    (throw (ex-info "replay baseline must be a conversation map or flow id"
+                    {:baseline baseline}))))
+
+(defn- replay-event [conv event]
+  (let [event (if (fn? event) (event conv) event)]
+    (cond-> event
+      (nil? (:instance-id event)) (assoc :instance-id (conv/top-id conv))
+      (nil? (:signals event))     (assoc :signals {}))))
+
+(defn replay
+  "Replay `events` against a baseline conversation or root flow id.
+
+  Returns `[conv fragments]`, matching [[dispatch]] / [[boot]].  When
+  the baseline is a flow id, replay boots a fresh conversation first.
+  Event maps may omit `:instance-id` to target the current top frame and
+  may omit `:signals` to use `{}`.  An event may also be a function of
+  the current conversation returning such a map."
+  ([events]
+   (replay (conv/new-conversation) events))
+  ([baseline events]
+   (let [[c0 boot-frags] (replay-start baseline)]
+     (reduce (fn [[c frags] event]
+               (let [[c' more] (kernel/dispatch c (replay-event c event))]
+                 [c' (into frags more)]))
+             [c0 (vec boot-frags)]
+             events))))
 
 (def ^{:doc "Pure event dispatch — `(dispatch conv event) → [conv' fragments]`.
   Useful from the REPL or for tests; production code goes through the http

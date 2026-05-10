@@ -3,8 +3,9 @@
 A Clojure component framework over [Datastar](https://data-star.dev/) — Seaside-style
 callable components, modelled as plain values, evaluated by a small effect kernel.
 
-> **Status:** very early. This repository contains *slice 0* of the design in
-> [`v2.md`](./v2.md): primitives, hand-rolled tasks, no `defflow` macro yet.
+> **Status:** early, but the core slices are in place: `defflow`, embedded
+> children, history/back, persistence, stock UI helpers, and basic operations.
+> See [`docs/v2_1.md`](./docs/v2_1.md) for the current design notes.
 
 ## Highlights
 
@@ -76,6 +77,12 @@ start with `{:ui-css? false}` if you want a completely unstyled shell.
 Production starts can also set `:conversation-ttl` (a `java.time.Duration`
 or millisecond integer) to enable the background conversation reaper.
 
+Debugging tip: install the browser's Datastar Inspector extension and
+watch the `/conv/<cid>/sse` stream while clicking through an example.
+On the REPL side, `(s/inspect cid)` prints the live conversation summary
+and `(s/replay :some/root [{:event :submit}])` replays pure events
+without starting a server.
+
 ## Layout
 
 | path                  | purpose                                                 |
@@ -89,21 +96,14 @@ or millisecond integer) to enable the background conversation reaper.
 | `src/stube/http.clj`         | ring handlers (`/`, `/conv/:cid/sse`, `…/event`) |
 | `src/stube/server.clj`       | http-kit lifecycle, in-memory stores             |
 | `examples/`                   | runnable demos                                  |
-| `v2.md`                       | the design this implements                      |
+| `docs/v2.md`, `docs/v2_1.md`  | design notes and current revision               |
 
 ## Design
 
-See [`v2.md`](./v2.md). Slice 0's scope is:
-
-- Component registry, `defcomponent`.
-- Conversation atom, `dispatch`, `step`, `run-effects`.
-- HTTP wiring (start, sse, event) on http-kit.
-- `s/on` and `s/bind` Hiccup helpers, `_meta` signal convention.
-- Hand-rolled tasks (no `defflow` macro yet).
-- One demo (guess-the-number).
-
-The macro `defflow`, embedding/decorations, persistent history UI, and
-operations come in subsequent slices.
+See [`docs/v2.md`](./docs/v2.md) and the current revision in
+[`docs/v2_1.md`](./docs/v2_1.md). The implementation keeps the same
+shape: component definitions are maps, conversations are EDN-oriented
+values, and the HTTP layer is the only Datastar-specific boundary.
 
 ## License
 

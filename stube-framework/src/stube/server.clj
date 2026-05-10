@@ -17,7 +17,8 @@
   All the http handlers live in [[stube.http]]; this namespace only
   exposes the functions they need, so the http layer never reaches into
   raw atoms."
-  (:require [org.httpkit.server :as http-kit]
+  (:require [clojure.pprint     :as pprint]
+            [org.httpkit.server :as http-kit]
             [reitit.ring        :as ring]
             [stube.conversation :as conv]
             [stube.store        :as store])
@@ -204,6 +205,36 @@
 (defn unmount! [path] (swap! !mounts dissoc path) nil)
 
 (defn mounts [] @!mounts)
+
+(defn- instance-summary [inst]
+  {:id       (:instance/id inst)
+   :type     (:instance/type inst)
+   :parent   (:instance/parent inst)
+   :resume   (:instance/resume inst)
+   :children (:instance/children inst)
+   :state    (apply dissoc inst conv/instance-meta-keys)})
+
+(defn- conversation-summary [c]
+  {:id            (:conv/id c)
+   :created       (:conv/created c)
+   :touched       (:conv/touched c)
+   :ended?        (boolean (:conv/ended? c))
+   :history-count (count (:conv/history c))
+   :last-event    (:conv/last-event c)
+   :stack         (mapv #(instance-summary (conv/instance c %))
+                        (:conv/stack c))
+   :instances     (into (sorted-map)
+                        (map (fn [[iid inst]] [iid (instance-summary inst)]))
+                        (:conv/instances c))})
+
+(defn inspect
+  "Pretty-print and return a compact summary of live conversation `cid`.
+  Returns nil if the conversation is not active."
+  [cid]
+  (when-let [c (conversation cid)]
+    (let [summary (conversation-summary c)]
+      (pprint/pprint summary)
+      summary)))
 
 (defn ui-css?
   "True when the stock stube stylesheet should be linked from shells."

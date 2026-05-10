@@ -276,16 +276,20 @@ example coverage, not as justification for more runtime machinery.
 
 ## 9. REPL & inspection (DX polish, slice 5)
 
-- [ ] **`(s/inspect cid)`** — pretty-print the live conversation
+- [x] **`(s/inspect cid)`** — pretty-print the live conversation
       (stack, instances, last event). Drops straight into the workflow
       we already use ad-hoc in tests.
+      Prints and returns a compact live summary; dispatch records a
+      sanitized last-event summary with signal keys, not signal values.
       [design v2.1 §13 slice 5]
-- [ ] **`(s/replay events)`** — reduce a conv from a baseline through
+- [x] **`(s/replay events)`** — reduce a conv from a baseline through
       a sequence of events. Useful both for tests and for "what if I
       had answered differently".
+      Supports `(s/replay conv events)` and `(s/replay flow-id events)`;
+      event maps default to the current top frame with empty signals.
       [design v2.1 §13 slice 5, bar §15.6]
-- [ ] **README: Datastar Inspector tip.** Single most useful debug
-      tool; one paragraph + screenshot.
+- [x] **README: Datastar Inspector tip.** Single most useful debug
+      tool; one paragraph in the running/debugging notes.
       [design v2.1 §13 slice 5]
 
 ---

@@ -426,7 +426,7 @@
         old-id                (:instance/id old-inst)
         stop-iids             (conv/descendant-ids conv old-id)
         [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
-        [conv-popped popped-id] (conv/pop-top conv-stopped)
+        [conv-popped _popped-id] (conv/pop-top conv-stopped)
         parent                (when-let [pid (conv/top-id conv-popped)]
                                 (conv/instance conv-popped pid))
         ;; Inherit parent linkage and resume key from the frame we are
@@ -532,6 +532,15 @@
 ;; Dispatch — the kernel's external entry point
 ;; ---------------------------------------------------------------------------
 
+(defn- event-summary [{:keys [instance-id event payload signals] :as ev}]
+  (cond-> {:instance-id instance-id
+           :event       event}
+    (contains? ev :payload)
+    (assoc :payload payload)
+
+    (seq signals)
+    (assoc :signal-keys (->> (keys signals) (sort-by str) vec))))
+
 (defn boot
   "Mint the initial set of effects for a freshly minted conversation
   whose root flow is `flow-id`.  Pulled out so the http layer can ask
@@ -556,7 +565,7 @@
   removes the instance; the second click arrives with an iid that's
   already gone).  Throwing here would surface as a 500 in the http
   layer for what is, semantically, a no-op."
-  [conv {:keys [instance-id event payload signals]}]
+  [conv {:keys [instance-id event payload signals] :as ev}]
   (if (nil? (conv/instance conv instance-id))
     [conv []]
     (let [;; Compute the merged self from the unmodified `conv` first;
@@ -579,7 +588,8 @@
         back?      (some #(= :back (first %)) fx)
         conv*      (cond-> conv
                      (not back?) conv/snapshot
-                     true        conv/touch)
+                     true        conv/touch
+                     true        (assoc :conv/last-event (event-summary ev)))
         ;; Protect instance metadata against an accidentally clobbering
         ;; handler.
         self'      (conv/preserve-meta (conv/instance conv* instance-id) self')
