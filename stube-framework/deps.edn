@@ -37,7 +37,8 @@
  :aliases
  {;; REPL-friendly profile that includes test/ and examples/ on the path.
   :dev
-  {:extra-paths ["dev" "test" "examples"]}
+  {:extra-paths ["dev" "test" "examples"]
+   :extra-deps {fipp/fipp {:mvn/version "0.6.29"}}}
 
   ;; clojure -X:test
   ;; The example flows live under `examples/` and are exercised by
