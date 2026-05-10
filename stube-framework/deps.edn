@@ -41,7 +41,7 @@
 
   ;; clojure -X:test
   ;; The example flows live under `examples/` and are exercised by
-  ;; regression tests (e.g. `stube.wizard-test`), so the path is on the
+  ;; regression tests (e.g. `dev.zeko.stube.wizard-test`), so the path is on the
   ;; test classpath as well as `:dev`.
   :test
   {:extra-paths ["test" "examples"]
@@ -52,7 +52,7 @@
 
   ;; clojure -M:examples
   ;; Loads every shipped demo on one server; see
-  ;; `stube.examples.main` for the URL→example map.
+  ;; `dev.zeko.stube.examples.main` for the URL→example map.
   :examples
   {:extra-paths ["examples"]
-   :main-opts   ["-m" "stube.examples.main"]}}}
+   :main-opts   ["-m" "dev.zeko.stube.examples.main"]}}}
