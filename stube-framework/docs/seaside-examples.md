@@ -76,21 +76,16 @@ because it points at a small DX win or a clearly-scoped follow-up.
 + `WATodoItemEditor`)
 
 * **Pattern**: dynamic list (add / remove / edit / toggle).
-* **Why**: this is the canonical Seaside example that **breaks** in
-  our current model the moment you try to be faithful to it. Seaside
-  does in-place editing via `self call: editor` *from inside the
-  child*, which works because `call:` swaps the receiver in its
-  parent's render slot. Our `:call` always pushes onto the
-  conversation stack and re-renders into `#root` — so faithfully
-  porting the editor would hide the rest of the list.
-* **What we ship**: the in-place editor is implemented as a
-  state-flag inside the parent (`:editing-id` plus a conditional
-  branch in `:render`). Functionally equivalent, no new framework
-  primitive needed, but flagged in the file as the workaround.
-* **Reveals (next-step driver)**: a clean port wants something like
-  `[:call-in-slot slot-key embed-spec :resume k]` — an embedded
-  call/answer that swaps a single child slot rather than the whole
-  top frame. Strong candidate for an early item in a future slice.
+* **Why**: this is the canonical Seaside example that demands local
+  composition. Seaside does in-place editing via `self call: editor`
+  *from inside the child*, which works because `call:` swaps the
+  receiver in its parent's render slot.
+* **What we ship**: the editor is now a temporary child mounted with
+  `[:call-in-slot :slot/editor ... :resume :on-edit]`. The parent uses
+  `:editing-id` only to choose which row renders that slot; the edit
+  form itself is a real component that answers back.
+* **Reveals**: `:call-in-slot` is the small primitive that makes this
+  faithful without a client-side island or parent-owned form state.
 
 ---
 

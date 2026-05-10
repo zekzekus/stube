@@ -1,6 +1,6 @@
 (ns stube.examples.todo
-  "Todo list with in-place editing — Seaside's `WATodo` /
-  `WATodoItem` / `WATodoItemEditor` collapsed into a single component.
+  "Todo list with slot-local in-place editing — Seaside's `WATodo` /
+  `WATodoItem` / `WATodoItemEditor` using stube's `:call-in-slot`.
 
   Run from the project root:
 
@@ -9,7 +9,7 @@
   Then visit <http://localhost:8080/todo>.
 
   ──────────────────────────────────────────────────────────────────────
-  Why this example matters — and what it reveals
+  Why this example matters
   ──────────────────────────────────────────────────────────────────────
 
   The Seaside version splits responsibility three ways:
@@ -22,28 +22,10 @@
                           which then `replace:`s itself in place
 
   That `call:`/`answer:` is **scoped to the row's slot**: only the row
-  flips into edit mode, the rest of the list stays put.  In stube,
-  `:call` and `:answer` operate on the **conversation stack** — the
-  child takes over the page (the kernel's first-render path patches
-  `#root` `inner`).  A faithful port would hide the entire list while
-  one item was being edited.
-
-  We have two ways forward:
-
-  * **Add a new effect** — `[:call-in-slot slot embed-spec :resume k]`
-    that swaps a single child slot rather than the top frame.  This
-    is filed in `seaside-examples.md` Tier 3 as the highest-leverage
-    next-step driver this catalogue surfaces.
-
-  * **Inline the editor as state on the parent** — keep an
-    `:editing-id` field; render the editing row as an `<input>`,
-    every other row as a label.
-
-  This file ships the second option.  It exercises everything stube
-  already has (per-instance signals, kept signals, structured event
-  payloads) without inventing new primitives.  The top-of-file
-  docstring on the `:demo/todo` component spells out the workaround so
-  the next reader can find it.
+  flips into edit mode, the rest of the list stays put.  The stube port
+  uses `[:call-in-slot :slot/editor ... :resume :on-edit]` for the same
+  shape: the parent chooses which row hosts the temporary editor, the
+  editor answers, and the parent restores the display row.
 
   ──────────────────────────────────────────────────────────────────────
   State shape
@@ -51,7 +33,7 @@
 
       {:next-id    7
        :draft      \"\"            ; bound to the new-item input
-       :editing-id nil            ; iff non-nil, that row renders as <input>
+       :editing-id nil            ; iff non-nil, that row renders editor slot
        :items      [{:id 1 :text \"buy milk\"  :done? false}
                     {:id 2 :text \"write demo\" :done? true}]}"
   (:require [stube.core :as s]
@@ -79,12 +61,6 @@
           (update :next-id inc)
           (assoc :draft "")))))
 
-;; Per-row signal name so the `<input>` for one editing row doesn't
-;; collide with the `:draft` signal or with an editor for a different
-;; row.
-(defn- edit-signal [self id]
-  (s/local-signal self (keyword (str "edit-" id))))
-
 ;; ---------------------------------------------------------------------------
 ;; Render helpers
 ;; ---------------------------------------------------------------------------
@@ -99,20 +75,10 @@
                      :checked (boolean done?)}
                     (s/on self :change :as [:toggle id]))]
      (if editing?
-       ;; In-place edit row: a tiny form.  Submit answers the new
-       ;; label, Esc/click-away cancels (we route :blur to commit too,
-       ;; matching the WATodoItem feel).
-       [:form (merge {:style "flex:1; display:flex; gap:0.25rem;"}
-                     (s/on self :submit :as [:commit id]))
-        [:input (merge {:name      "text"
-                        :value     text
-                        :autofocus true
-                        :style     "flex:1; padding:0.2rem 0.4rem; font-size:1rem;"}
-                       (s/bind (edit-signal self id)))]
-        [:button {:type "submit" :style "padding:0.2rem 0.6rem;"} "Save"]
-        [:button (merge {:type "button" :style "padding:0.2rem 0.6rem;"}
-                        (s/on self :click :as :cancel-edit))
-         "Cancel"]]
+       ;; The temporary editor is a real child component overlaid into
+       ;; this row.  When it answers, `:on-edit` below restores the row.
+       [:div {:style "flex:1;"}
+        (s/render-slot self :slot/editor)]
        ;; Display row: clicking the label opens the editor.
        [:span (merge {:style (str "flex:1; cursor:text; "
                                   (when done? "text-decoration:line-through;
@@ -130,6 +96,34 @@
 ;; The component
 ;; ---------------------------------------------------------------------------
 
+(s/defcomponent :demo/todo-editor
+  :init (fn [{:keys [id text]}]
+          {:id id :text text})
+
+  :keep #{:text}
+
+  :render
+  (fn [self]
+    [:form (merge {:id    (:instance/id self)
+                   :style "display:flex; gap:0.25rem;"}
+                  (s/on self :submit))
+     [:input (merge {:name      "text"
+                     :value     (:text self)
+                     :autofocus true
+                     :style     "flex:1; padding:0.2rem 0.4rem; font-size:1rem;"}
+                    (s/local-bind self :text))]
+     [:button {:type "submit" :style "padding:0.2rem 0.6rem;"} "Save"]
+     [:button (merge {:type "button" :style "padding:0.2rem 0.6rem;"}
+                     (s/on self :click :as :cancel))
+      "Cancel"]])
+
+  :handle
+  (fn [self {:keys [event]}]
+    [self [[:answer (if (= event :cancel)
+                      s/cancel
+                      {:id   (:id self)
+                       :text (:text self)})]]]))
+
 (s/defcomponent :demo/todo
   :init (constantly
           {:next-id    3
@@ -138,9 +132,8 @@
            :items      [{:id 1 :text "click a label to edit it" :done? false}
                         {:id 2 :text "tick the box when done"    :done? false}]})
 
-  ;; `:draft` is read on every event; per-row edit signals are read
-  ;; only when their row submits, so we don't list them here — they
-  ;; are pulled by name out of the `signals` map in `:handle`.
+  ;; `:draft` is read on parent events; the temporary editor scopes its
+  ;; own `:text` signal with `s/local-bind`.
   :keep #{:draft}
 
   :render
@@ -171,16 +164,18 @@
         (str pending " open · " done " done"))]])
 
   :handle
-  (fn [self {:keys [event payload signals]}]
+  (fn [self {:keys [event payload]}]
     (cond
       (= event :add)
       [(add-item self (:draft self)) []]
 
-      (= event :cancel-edit)
-      [(assoc self :editing-id nil) []]
-
       (= event :edit)
-      [(assoc self :editing-id payload) []]
+      (if-let [item (some #(when (= (:id %) payload) %) (:items self))]
+        [(assoc self :editing-id payload)
+         [[:call-in-slot :slot/editor
+           (s/embed :demo/todo-editor {:id payload :text (:text item)})
+           :resume :on-edit]]]
+        [self []])
 
       (= event :delete)
       [(-> self (delete-item payload)
@@ -192,17 +187,19 @@
       [(update-item self payload update :done? not)
        []]
 
-      (= event :commit)
-      (let [id  payload
-            v   (get signals (edit-signal self id))
-            t   (str/trim (str v))]
+      :else [self []]))
+
+  :on-edit
+  (fn [self answer]
+    (if (= answer s/cancel)
+      [(assoc self :editing-id nil) []]
+      (let [{:keys [id text]} answer
+            t (str/trim (str text))]
         [(-> self
              (cond-> (not (str/blank? t))
                (update-item id assoc :text t))
              (assoc :editing-id nil))
-         []])
-
-      :else [self []])))
+         []]))))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

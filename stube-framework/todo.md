@@ -66,7 +66,8 @@ Seaside-style local composition.
   Implemented as a slot-local overlay: the temporary child remembers
   the previous occupant and restores it when it answers, while the
   parent receives the answer under the named resume key.
-  [ex:todo (workaround documented in file)] [design v2.1 §11
+  The todo example now uses this for its row-local editor.
+  [ex:todo (former workaround documented in file)] [design v2.1 §11
   carried-forward]
 
 - [ ] **`[:notify-parent k value]`.**

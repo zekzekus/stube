@@ -55,7 +55,7 @@
     "Per-cell click routing in a non-trivial single-component grid."
     "tier 1"]
    ["/todo"         "Todo list"
-    "Dynamic list with in-place edit (workaround for embedded call/answer)."
+    "Dynamic list with slot-local in-place edit via `:call-in-slot`."
     "tier 1"]])
 
 (s/defcomponent :demo/index
