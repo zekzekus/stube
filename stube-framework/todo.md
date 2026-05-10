@@ -196,6 +196,10 @@ Already scoped in v2.1 §13 slice 4; listed here so nothing is lost.
 - [ ] **Browser back-button glue.** One-liner in the shell HTML
       (`data-on-popstate__window` POSTing to `/conv/:cid/back`).
       Deferred until we have a clean cross-example pattern.
+      Still deferred after the slice-4 sweep: without a matching
+      `pushState` policy, a `popstate` handler alone is surprising and
+      browser-global. In-page `(s/back-button ...)` remains the clean
+      zero-JS path.
       [design v2.1 §13 slice 3 carried-forward]
 
 - [ ] **Cloroutine continuation persistence.**
@@ -203,6 +207,10 @@ Already scoped in v2.1 §13 slice 4; listed here so nothing is lost.
   them with a warning. Two paths worth costing: (a) a custom
   `print-method` that serialises the cloroutine state, (b) replay from
   recorded events on resume.
+  Still deferred after the slice-4 sweep: hand-rolled task components
+  remain EDN-clean and persistable, while opaque cloroutine state stays
+  explicitly in-memory until a replay/checkpoint design preserves the
+  "data is the program" invariant.
   [design v2.1 §13 slice 3 carried-forward]
 
 ---
