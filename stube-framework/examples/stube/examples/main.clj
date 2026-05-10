@@ -19,6 +19,7 @@
             [stube.examples.dialogs]
             [stube.examples.tabs]
             [stube.examples.calendar]
+            [stube.examples.seaside-todo]
             [stube.examples.todo]))
 
 ;; ---------------------------------------------------------------------------
@@ -56,7 +57,10 @@
     "tier 1"]
    ["/todo"         "Todo list"
     "Dynamic list with slot-local in-place edit via `:call-in-slot`."
-    "tier 1"]])
+    "tier 1"]
+   ["/seaside-todo" "Seaside book ToDo"
+    "The HPI tutorial app: login/register, filters, task editor, report, and mirror notes."
+    "book"]])
 
 (s/defcomponent :demo/index
   :render

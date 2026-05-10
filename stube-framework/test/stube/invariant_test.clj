@@ -43,6 +43,7 @@
   '[stube.examples.calc
     stube.examples.main
     stube.examples.multicounter
+    stube.examples.seaside-todo
     stube.examples.tabs
     stube.examples.todo
     stube.examples.wizard])
@@ -51,6 +52,7 @@
   [:demo/index
    :demo/calc
    :demo/multicounter
+   :demo/seaside-todo-root
    :demo/tabs
    :demo/todo
    :demo/wizard])

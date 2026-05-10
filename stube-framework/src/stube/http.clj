@@ -42,9 +42,9 @@
   (json/write-json-fn {}))
 
 (defn- json-str ^String [m]
-  (let [sb (StringBuilder.)]
-    (write-json sb m)
-    (.toString sb)))
+  (let [w (java.io.StringWriter.)]
+    (write-json w m)
+    (str w)))
 
 (defn- read-signals
   "Pull the Datastar signals payload from a request and parse it.

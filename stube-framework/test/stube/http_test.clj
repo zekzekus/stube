@@ -11,6 +11,10 @@
                       (registry/clear!)
                       (server/reset-state!)))
 
+(deftest signal-patches-serialize-to-json
+  (is (= "{\"password-ix-1\":\"\"}"
+         (#'http/json-str {:password-ix-1 ""}))))
+
 (deftest stale-event-returns-410
   (let [resp (http/event-handler {:path-params {:cid "cv-missing"
                                                 :iid "ix-missing"

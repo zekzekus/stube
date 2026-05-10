@@ -8,13 +8,49 @@ stories so we can spot:
 * missing DX (helpers / sugar that should ship in `stube.core`),
 * design assumptions that don't survive contact with real UI.
 
-Examples already in the tree (slices 1–3):
+Examples already in the tree:
 
 | file                     | seaside analogue          | what it exercises                         |
 |--------------------------|---------------------------|-------------------------------------------|
 | `guess.clj`              | `WAConvenienceTest`-style | `defflow`, linear `s/await`, end          |
 | `multicounter.clj`       | `WAMultiCounter`          | `:children`, `s/render-slot`, morph-by-id |
 | `wizard.clj`             | task with back            | hand-rolled flow, child→parent `::back`   |
+| `seaside_todo.clj`       | HPI tutorial ToDo app     | login/register task, filters, Magritte-like descriptions |
+
+---
+
+## Book app — HPI “An Introduction to Seaside” ToDo
+
+`seaside_todo.clj` ports the tutorial's running application as a
+single stube example mounted at `/seaside-todo`.  It intentionally
+keeps the Seaside chapter names visible in the code:
+
+* `StUser` / `StTask` → plain EDN maps and pure helpers.
+* `StRootTask` → a hand-rolled task component that `:call`s login,
+  register, and logged-in screens.
+* `StLoginComponent` / `StRegisterComponent` / `StTaskEditor` →
+  answering components.
+* `StMenuComponent` → a reusable menu component whose entries route
+  EDN events to the parent instead of holding Smalltalk callback
+  blocks.
+* `StImageDatabase` → an EDN `:db` value carried by the root task, so
+  the example remains pure and file-store friendly.
+* Magritte → small description maps that generate both the task editor
+  fields and the report columns.
+
+Findings from the port:
+
+* The tutorial's Ajax chapter maps naturally to stube's default
+  Datastar/SSE transport; checkbox toggles and edit/save already patch
+  incrementally without a separate script.aculo.us layer.
+* A shared application database is still outside the framework surface.
+  The example keeps its database in the conversation to avoid side
+  effects during kernel dispatch.  A production app would want an
+  explicit, synchronous app-store boundary.
+* The Atom feed chapter wants a custom XML route (`/atomTasks`), while
+  stube currently only mounts component shells plus conversation
+  endpoints.  That is the clearest missing primitive if we want to port
+  the book literally end to end.
 
 ---
 
