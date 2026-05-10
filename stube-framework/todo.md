@@ -257,6 +257,9 @@ framework.
 
 Adding any of these *first* would surface DX issues for the helpers
 above before they harden.
+After the sweep, the framework helpers they depend on are in place; keep
+these as showcase/demo tasks and add them one at a time when we want
+example coverage, not as justification for more runtime machinery.
 
 - [ ] `paginated-list.clj` (`WABatchedList`) — render-callback init
       arg, pagination state.
