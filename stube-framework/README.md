@@ -71,6 +71,9 @@ clojure -M:examples
 clojure -X:test
 ```
 
+The shell links the tiny stock stylesheet at `/stube/ui.css` by default;
+start with `{:ui-css? false}` if you want a completely unstyled shell.
+
 ## Layout
 
 | path                  | purpose                                                 |
@@ -80,6 +83,7 @@ clojure -X:test
 | `src/stube/conversation.clj` | conversation/instance data model and helpers     |
 | `src/stube/registry.clj`     | component registry                               |
 | `src/stube/render.clj`       | hiccup → HTML, Datastar attribute helpers        |
+| `src/stube/ui.clj`           | stock dialogs and default UI classes             |
 | `src/stube/http.clj`         | ring handlers (`/`, `/conv/:cid/sse`, `…/event`) |
 | `src/stube/server.clj`       | http-kit lifecycle, in-memory stores             |
 | `examples/`                   | runnable demos                                  |

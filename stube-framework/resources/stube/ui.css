@@ -1,0 +1,80 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+}
+
+.stube-card {
+  background: #fff;
+  border: 1px solid #c8c8d0;
+  border-radius: 0.5rem;
+  box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 8%);
+  color: #222;
+  padding: 1rem;
+}
+
+.stube-modal {
+  margin: 1rem auto;
+  max-width: 24rem;
+}
+
+.stube-card__body {
+  margin-top: 0;
+}
+
+.stube-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.stube-input {
+  box-sizing: border-box;
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  width: 100%;
+}
+
+.stube-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.stube-actions--end {
+  justify-content: flex-end;
+}
+
+.stube-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.stube-button {
+  background: #f6f6f8;
+  border: 1px solid #aeb0ba;
+  border-radius: 0.25rem;
+  color: #222;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+}
+
+.stube-button:hover {
+  background: #ededf2;
+}
+
+.stube-button--primary {
+  background: #3366cc;
+  border-color: #2855aa;
+  color: #fff;
+}
+
+.stube-button--primary:hover {
+  background: #2855aa;
+}
+
+.stube-button--block {
+  text-align: left;
+  width: 100%;
+}

@@ -96,6 +96,30 @@
       base
       (str base "?" payload-query-param "=" (url-encode (pr-str payload))))))
 
+(defn back-url
+  "URL the browser POSTs to for the conversation-level Back action."
+  []
+  (str "/conv/" (require-cid!) "/back"))
+
+(defn back-button
+  "Return a small Hiccup button wired to the conversation-level `[:back]`
+  effect.
+
+      (s/back-button \"Back\")
+
+  This intentionally does not take `self`: browser history rewind is a
+  conversation operation, not a component-local event.  For wizard-style
+  Back buttons that answer a parent with a sentinel, keep using
+  `(s/on self :click :as ...)` from that component."
+  ([label]
+   (back-button label {}))
+  ([label attrs]
+   [:button (merge {:type "button"
+                    :class "stube-button"
+                    (keyword "data-on:click") (str "@post('" (back-url) "')")}
+                   attrs)
+    label]))
+
 (defn on
   "Return an attribute map that wires a real DOM event on the
   surrounding element to a server-side stube event.

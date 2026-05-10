@@ -13,6 +13,7 @@
   via SSE patches once the browser connects to `/conv/:cid/sse`."
   (:require [charred.api                                       :as json]
             [clojure.edn                                      :as edn]
+            [clojure.java.io                                  :as io]
             [clojure.string                                   :as str]
             [dev.onionpancakes.chassis.core                    :as chassis]
             [starfederation.datastar.clojure.api               :as d*]
@@ -81,6 +82,7 @@
 ;; and the kernel pushes the first frame.
 
 (def datastar-cdn d*/CDN-url)
+(def ui-css-path "/stube/ui.css")
 
 (defn- shell-html [cid]
   ;; `data-init` runs once when Datastar processes the element after the
@@ -94,9 +96,22 @@
        [:meta {:charset "utf-8"}]
        [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
        [:title "stube"]
+       (when (server/ui-css?)
+         [:link {:rel "stylesheet" :href ui-css-path}])
        [:script {:type "module" :src datastar-cdn}]]
       [:body {:data-init (str "@get('/conv/" cid "/sse')")}
        [:div {:id "root"}]]]]))
+
+(defn ui-css-handler
+  "Serve the opt-out stock stylesheet linked by the shell."
+  [_req]
+  (if-let [res (io/resource "stube/ui.css")]
+    {:status  200
+     :headers {"Content-Type" "text/css; charset=utf-8"
+               "Cache-Control" "public, max-age=3600"}
+     :body    (slurp res)}
+    {:status 404
+     :body   "stube ui.css not found"}))
 
 ;; ---------------------------------------------------------------------------
 ;; Pushing fragments to the wire

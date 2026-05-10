@@ -43,3 +43,11 @@
     (is (= :answer-ix-000002 (render/local-signal self :answer)))
     (is (= {(keyword "data-bind:answer-ix-000002__case.kebab") true}
            (render/local-bind self :answer)))))
+
+(deftest back-button-posts-to-conversation-back-route
+  (binding [render/*cid* "cv-001"]
+    (is (= [:button {:type "button"
+                     :class "stube-button"
+                     (keyword "data-on:click") "@post('/conv/cv-001/back')"}
+            "Back"]
+           (render/back-button "Back")))))

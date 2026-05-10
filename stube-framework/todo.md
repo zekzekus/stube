@@ -99,26 +99,33 @@ Seaside-style local composition.
 If a helper appears in two examples, it belongs in core. These all
 already exist in user code and are mechanically trivial.
 
-- [ ] **`(s/confirm question)`, `(s/prompt label default)`,
+- [x] **`(s/confirm question)`, `(s/prompt label default)`,
       `(s/choose options caption)`, `(s/info text)`.**
   Wrappers over `s/embed` plus the canonical `:ui/confirm` /
   `:ui/prompt` / `:ui/choose` / `:ui/info` components. Ship the
   components in a `stube.ui` namespace and the verbs in `stube.core`.
   Lets a `defflow` body read like Seaside's
   `self confirm: 'Ready?'`.
+  Stock components live in `stube.ui`; `dialogs.clj` now uses only the
+  verbs from `stube.core`.
   [ex:dialogs (DX note), ex:wizard]
 
-- [ ] **`(s/back-button label)` helper.**
+- [x] **`(s/back-button label)` helper.**
   Renders the canonical `<button>` wired to `s/back`. Every example
   with a wizard re-rolls this.
+  Implemented as a conversation-level helper posting to `/conv/:cid/back`;
+  wizard-local Back buttons still use component events when they need to
+  preserve in-flow state.
   [ex:wizard] [design v2.1 §13 slice 3]
 
-- [ ] **Default styles / `stube.ui` mini stylesheet.**
+- [x] **Default styles / `stube.ui` mini stylesheet.**
   Pick *one* opinionated CSS file (literally a `<link>` in the shell
   the user can opt out of) so demo code stops carrying inline
   `:style "padding:0.4rem 1rem; …"` strings on every button. Matches
   `[bar]` §15.4 — "the whole library fits in your head" — and §15.5 —
   "zero client code".
+  The shell links `/stube/ui.css` by default; pass `:ui-css? false` to
+  `s/start!` to opt out.
   [ex:calc, ex:dialogs, ex:todo (every example)]
 
 ---

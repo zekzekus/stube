@@ -59,7 +59,8 @@
             [stube.registry     :as registry]
             [stube.render       :as render]
             [stube.server       :as server]
-            [stube.store        :as store]))
+            [stube.store        :as store]
+            [stube.ui           :as ui]))
 
 ;; ---------------------------------------------------------------------------
 ;; Component definition
@@ -107,7 +108,40 @@
 (def ^{:doc "See [[stube.render/bind]]."}        bind        render/bind)
 (def ^{:doc "See [[stube.render/local-signal]]."} local-signal render/local-signal)
 (def ^{:doc "See [[stube.render/local-bind]]."}   local-bind   render/local-bind)
+(def ^{:doc "See [[stube.render/back-button]]."}  back-button  render/back-button)
 (def ^{:doc "See [[stube.render/render-slot]]."} render-slot render/render-slot)
+
+(def ^{:doc "Sentinel returned by cancellable stock UI components."}
+  cancel ui/cancel)
+
+(defn- ensure-ui! []
+  (ui/register!))
+
+(defn confirm
+  "Return an embed spec for the stock yes/no confirmation component."
+  [question]
+  (ensure-ui!)
+  (embed :ui/confirm {:question question}))
+
+(defn prompt
+  "Return an embed spec for the stock text prompt component."
+  ([label] (prompt label nil))
+  ([label default]
+   (ensure-ui!)
+   (embed :ui/prompt {:label label :default default})))
+
+(defn choose
+  "Return an embed spec for the stock one-of-N choice component."
+  ([options] (choose options "Pick one:"))
+  ([options caption]
+   (ensure-ui!)
+   (embed :ui/choose {:options options :caption caption})))
+
+(defn info
+  "Return an embed spec for the stock informational OK dialog."
+  [text]
+  (ensure-ui!)
+  (embed :ui/info {:text text}))
 
 ;; ---------------------------------------------------------------------------
 ;; Decorations (slice 2)
@@ -151,14 +185,8 @@
 
 (def ^{:doc "An effect that walks one step backward through the
   conversation's history.  Use it from a handler to wire a \"Back\"
-  button:
-
-      (s/defcomponent :ui/back-button
-        :render (fn [self]
-                  [:button (merge {:type \"button\"}
-                                  (s/on self :click :as :go-back))
-                   \"Back\"])
-        :handle (fn [self _] [self [s/back]]))
+  button, or render `(s/back-button \"Back\")` for the stock
+  conversation-level button.
 
   When emitted from a top-level handler, it pops the most recent
   conversation snapshot off `:conv/history` and re-renders the

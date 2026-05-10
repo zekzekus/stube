@@ -31,6 +31,7 @@
 (defonce ^:private !pending-flows (atom {}))
 (defonce ^:private !mounts        (atom (sorted-map)))
 (defonce ^:private !server        (atom nil))
+(defonce ^:private !ui-css?       (atom true))
 
 ;; Slice 3 — the configured persistence backend.  Defaults to a no-op
 ;; in-memory store, so existing tests and demos keep their slice-0
@@ -142,6 +143,11 @@
 
 (defn mounts [] @!mounts)
 
+(defn ui-css?
+  "True when the stock stube stylesheet should be linked from shells."
+  []
+  @!ui-css?)
+
 ;; ---------------------------------------------------------------------------
 ;; Lifecycle
 ;; ---------------------------------------------------------------------------
@@ -155,9 +161,11 @@
         h     (requiring-resolve 'stube.http/shell-handler)
         sse-h (requiring-resolve 'stube.http/sse-handler)
         ev-h  (requiring-resolve 'stube.http/event-handler)
-        bk-h  (requiring-resolve 'stube.http/back-handler)]
+        bk-h  (requiring-resolve 'stube.http/back-handler)
+        css-h (requiring-resolve 'stube.http/ui-css-handler)]
     (ring/router
-      (into [["/conv/:cid/sse"            {:get  {:handler @sse-h}}]
+      (into [["/stube/ui.css"             {:get  {:handler @css-h}}]
+             ["/conv/:cid/sse"            {:get  {:handler @sse-h}}]
              ["/conv/:cid/back"           {:post {:handler @bk-h}}]
              ;; The back route is listed *before* the generic
              ;; `:iid/:event` route so reitit picks the more specific
@@ -182,18 +190,20 @@
 
   Options:
 
-  | key      | default                       | meaning                               |
-  |----------|-------------------------------|---------------------------------------|
-  | `:port`  | 8080                          | TCP port                              |
-  | `:store` | `(store/in-memory-store)`     | persistence backend (slice 3)         |
+  | key        | default                       | meaning                               |
+  |------------|-------------------------------|---------------------------------------|
+  | `:port`    | 8080                          | TCP port                              |
+  | `:store`   | `(store/in-memory-store)`     | persistence backend (slice 3)         |
+  | `:ui-css?` | true                          | link the stock `/stube/ui.css` file   |
 
   When a `:store` is supplied, [[load-all]] runs *before* the http
   listener accepts requests, so any persisted conversations are live
   in memory by the time the first browser reconnects."
   ([] (start! {}))
-  ([{:keys [port store] :or {port 8080}}]
+  ([{:keys [port store ui-css?] :or {port 8080 ui-css? true}}]
    (when @!server
      (@!server))
+   (reset! !ui-css? (boolean ui-css?))
    (when store
      (reset! !store store)
      (let [restored (store/load-all store)]
@@ -230,4 +240,5 @@
   (reset! !pending-flows {})
   (reset! !mounts        (sorted-map))
   (reset! !store         (store/in-memory-store))
+  (reset! !ui-css?       true)
   nil)
