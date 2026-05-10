@@ -39,9 +39,9 @@
   vars."
   nil)
 
-(defn ^String html
+(defn html
   "Render hiccup `tree` to an HTML string."
-  [tree]
+  ^String [tree]
   (chassis/html tree))
 
 ;; ---------------------------------------------------------------------------

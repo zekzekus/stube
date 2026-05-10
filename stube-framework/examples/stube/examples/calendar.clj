@@ -27,7 +27,7 @@
   The current structured event payload keeps the route semantic and
   lets the handler read `:payload` directly."
   (:require [stube.core :as s])
-  (:import (java.time LocalDate YearMonth DayOfWeek)
+  (:import (java.time YearMonth)
            (java.time.format TextStyle)
            (java.util Locale)))
 
@@ -68,7 +68,7 @@
                   (s/on self :click :as event-kw))
    label])
 
-(defn- day-cell [self {:keys [day in-month? date]}]
+(defn- day-cell [self {:keys [day in-month?]}]
   ;; Two reasons not to render an `:on click` for out-of-month cells:
   ;; (a) the user shouldn't accidentally pick from an adjacent month,
   ;; (b) skipping the attribute is the cheapest way to disable the

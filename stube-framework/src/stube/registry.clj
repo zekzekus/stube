@@ -19,8 +19,7 @@
 
   The registry maps `:component/id` to the component map.  It is held in a
   single atom so component definitions can be evaluated at namespace load
-  time the same way `defmulti` defmethods are."
-  (:refer-clojure :exclude [register]))
+  time the same way `defmulti` defmethods are.")
 
 ;; A single global registry.  Re-defining a component (e.g. during REPL
 ;; iteration) replaces the previous entry by id.

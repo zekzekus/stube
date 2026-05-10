@@ -38,7 +38,8 @@
   Digit and operator buttons use structured event payloads, so the
   handler has one `:digit` clause and one `:op` clause instead of a
   route keyword per key."
-  (:require [stube.core :as s]))
+  (:require [clojure.string :as str]
+            [stube.core :as s]))
 
 ;; ---------------------------------------------------------------------------
 ;; Pure helpers (testable from a REPL with no server)
@@ -70,7 +71,7 @@
     (assoc self
            :display (cond
                       (and (= cur "0") (not= d ".")) (str d)
-                      (and (= d ".") (clojure.string/includes? cur ".")) cur
+                      (and (= d ".") (str/includes? cur ".")) cur
                       :else (str cur d))
            :fresh?  false)))
 
@@ -103,7 +104,7 @@
     (assoc self
            :display (cond
                       (= "Err" d) d
-                      (clojure.string/starts-with? d "-") (subs d 1)
+                      (str/starts-with? d "-") (subs d 1)
                       (= "0" d) d
                       :else (str "-" d)))))
 

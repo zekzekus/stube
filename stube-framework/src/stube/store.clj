@@ -98,7 +98,7 @@
 ;; File-per-cid EDN store
 ;; ---------------------------------------------------------------------------
 
-(defn- ^java.io.File cid-file [^java.io.File dir cid]
+(defn- cid-file ^java.io.File [^java.io.File dir cid]
   ;; Cids are minted by us and only contain hex + `cv-`, so they are safe
   ;; filename characters without further escaping.
   (io/file dir (str cid ".edn")))

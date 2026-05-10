@@ -1,0 +1,5 @@
+{:linters
+ {:unresolved-var
+  {:exclude [stube.core/await]}
+  :unresolved-symbol
+  {:exclude [factor]}}}

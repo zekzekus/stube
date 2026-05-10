@@ -1,4 +1,9 @@
-(ns stube.kernel
+(ns ^{:stube/rationale
+      "The kernel is temporarily over the §15.4 350-line budget because
+      embedding, lifecycle, history, and slot-local calls still live in
+      one explicit file. Keep the single-multimethod shape; split only
+      when an extraction makes the runtime easier to read."}
+  stube.kernel
   "The pure runtime: `step`, `run-effects`, `dispatch`.
 
   Reading guide
@@ -136,10 +141,14 @@
   (let [inst      (conv/instance conv iid)
         cdef      (registry/lookup! (:instance/type inst))
         render-fn (or (:component/render cdef) default-render)
-        hiccup    (binding [render/*conv* conv]
-                    (render-fn inst))]
+        html      (binding [render/*conv* conv]
+                    ;; Keep the dynamic conversation bound through HTML
+                    ;; serialization too: user render fns may return lazy
+                    ;; seqs whose elements call `s/render-slot` only when
+                    ;; Chassis walks the tree.
+                    (render/html (render-fn inst)))]
     [(conv/mark-rendered conv iid)
-     (elements-fragment (render/html hiccup) opts)]))
+     (elements-fragment html opts)]))
 
 (defn- render-frame
   "Produce the elements fragment for `iid` and return

@@ -1,5 +1,5 @@
 (ns stube.render-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is]]
             [stube.render :as render]))
 
 (deftest html-renders-hiccup

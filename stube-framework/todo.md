@@ -300,21 +300,27 @@ example coverage, not as justification for more runtime machinery.
 Not features — *checks* that the codebase still meets the bar at every
 slice boundary. Worth a CI script before 1.0.
 
-- [ ] **Kernel size invariant.** `stube/kernel.clj` ≤ 350 lines, one
+- [x] **Kernel size invariant.** `stube/kernel.clj` ≤ 350 lines, one
       multimethod. Fail CI if it grows past the limit without an
       `:rationale` opt-out.
+      Covered by `stube.invariant-test`; the current kernel carries an
+      explicit rationale while it is over budget.
       [bar §15.4]
-- [ ] **Zero-JS invariant.** Grep examples for `<script>` other than
+- [x] **Zero-JS invariant.** Grep examples for `<script>` other than
       the Datastar bundle; fail CI if any example sneaks in custom JS.
+      Covered by `stube.invariant-test` over `examples/**/*.clj`.
       [bar §15.5]
-- [ ] **EDN-clean conversations invariant.** A test that round-trips
+- [x] **EDN-clean conversations invariant.** A test that round-trips
       every example's mid-flow conversation through `pr-str` /
       `read-string` and asserts equality. (`defflow` continuations
       currently fail; tracked under §6.)
+      Covered for the shipped non-`defflow` examples; `defflow` examples
+      remain explicitly tracked under §6 continuation persistence.
       [bar §15.6]
-- [ ] **`defcomponent` reads like a record def.** Lint rule (or
+- [x] **`defcomponent` reads like a record def.** Lint rule (or
       doc-test) that flags components doing anything but `def`-time
       registration at top level.
+      Covered by `stube.invariant-test` for example components.
       [bar §15.1]
 
 ---

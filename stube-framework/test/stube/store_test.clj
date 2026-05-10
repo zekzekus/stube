@@ -69,7 +69,6 @@
         conv  (assoc (conv/new-conversation)
                      :conv/instances {"ix-1" {:instance/id "ix-1"
                                               ::cont (fn [] :nope)}})
-        cid   (:conv/id conv)
         captured (java.io.StringWriter.)]
     (binding [*err* captured]
       (store/save! s conv))

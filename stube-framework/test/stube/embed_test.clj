@@ -9,8 +9,7 @@
             [stube.conversation :as conv]
             [stube.core         :as s]
             [stube.kernel       :as kernel]
-            [stube.registry     :as registry]
-            [stube.render       :as render]))
+            [stube.registry     :as registry]))
 
 (use-fixtures :each (fn [t] (registry/clear!) (t) (registry/clear!)))
 
@@ -262,17 +261,17 @@
 (deftest decorate-overrides-with-map
   (let [base   {:component/id    :t/base
                 :component/init  (constantly {:n 0})
-                :component/render (fn [s] [:div "base"])}
+                :component/render (fn [_] [:div "base"])}
         deco   (s/decorate base
                            {:component/id     :t/deco
-                            :component/render (fn [s] [:div "decorated"])})]
+                            :component/render (fn [_] [:div "decorated"])})]
     (is (= :t/deco (:component/id deco)))
     (is (= [:div "decorated"] ((:component/render deco) {})))
     (is (fn? (:component/init deco)) "non-overridden keys preserved")))
 
 (deftest decorate-overrides-with-fn
   (let [base   {:component/id     :t/base
-                :component/render (fn [s] [:p "inner"])}
+                :component/render (fn [_] [:p "inner"])}
         deco   (s/decorate base
                  (fn [b]
                    {:component/id     :t/deco

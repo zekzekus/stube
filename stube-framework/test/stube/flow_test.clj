@@ -30,9 +30,6 @@
      :component/handle (fn [self _evt]
                          [self [[:answer (:answer-with self)]]])}))
 
-(defn- elements-fragments [frags]
-  (filter #(= :elements (:fragment/kind %)) frags))
-
 (defn- run-boot [flow-id]
   (kernel/run-effects (conv/new-conversation) (kernel/boot flow-id)))
 
