@@ -1,1 +1,26 @@
-.claude/
+-# Build / dependency caches
+-.cpcache/
+-.clj-kondo/.cache/
+-.lsp/.cache/
+-target/
+-classes/
+-out/
+-
+-# Editor / OS
+-.idea/
+-.vscode/
+-*.iml
+-.DS_Store
+-*~
+-
+-# Nix / direnv
+-result
+-result-*
+-.direnv/
+-.envrc.local
+-
+-# REPL artefacts
+-.nrepl-port
+-.rebel_readline_history
+-
+-.claude
