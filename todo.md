@@ -1,332 +1,272 @@
-# todo.md — stube framework, work outstanding
+# todo.md — stube, road to 1.0
 
-A grouped task list for everything we want true at 1.0. Items are
-labelled by where they came from:
+The tier-1, tier-2, and tier-3 Seaside sweeps are done. The framework
+boots, persists, schedules, publishes, uploads, and round-trips
+hand-rolled conversations through EDN. What follows is the work between
+"the demos run" and a 1.0 we'd hand to someone else.
 
-- **[design]** — open question or roadmap entry from `v2.md` / `v2_1.md`.
-- **[ex:<file>]** — pain-point or workaround flagged in an example
-  under `examples/stube/examples/`, or in `seaside-examples.md`.
-- **[bar]** — non-functional aesthetic / DX target from §15 of v2.1.
+Each item is labelled by its origin:
 
-Within each group items are ordered roughly by leverage: the higher up,
-the more downstream code gets simpler the moment it lands.
+- **[bar §N]** — a §15 aesthetic / invariant target from `docs/v2_1.md`
+  that the current implementation does not yet meet.
+- **[carried]** — explicitly deferred in the tiered sweep
+  (`docs/todo-tiers.md`); promoted here because the framework should not
+  ship 1.0 with it still pending.
+- **[shape]** — surfaces noticed while reviewing the codebase as it
+  stands today (line counts, public-API surface, error reporting,
+  deployment story). Not previously tracked.
 
----
+Items are ordered by leverage within each group: the higher up, the more
+downstream choices it unblocks or constraints it removes.
 
-## 1. Event & routing ergonomics
-
-The single biggest source of repeated workaround code in the examples.
-Every `:click :as` site that needs to carry "which thing was clicked"
-currently hand-encodes the id into a keyword, then parses it back.
-
-- [x] **Structured event payloads.**
-  Allow `(s/on self :click :as [:pick-day day])` and have the kernel
-  route `{:event :pick-day :payload day}` (or a multi-arity handler
-  arm) into `:handle`.
-  Eliminates: `(evt :toggle id)` + `parse-evt` in `todo.clj`,
-  `:pick-<i>` in `dialogs.clj` `:ui/choose`, all the per-cell route
-  names in `calendar.clj`, and ten `case` arms in `calc.clj` (one per
-  digit).
-  [ex:calc, ex:calendar, ex:dialogs, ex:todo] [design v2.1 §14]
-
-- [x] **Per-instance signal scoping.**
-  Two embedded `:ui/prompt`s on the same page both want `$answer`; today
-  `dialogs.clj`, `todo.clj` and `wizard.clj` each compute
-  `(keyword (str "prompt-" (:instance/id self)))` by hand. Pick one of:
-  - (a) auto-namespace into `$cmp.<iid>.<name>` at render time;
-  - (b) ship `(s/local-bind self :answer)` that does the same thing
-        explicitly at the call site.
-  Chose the explicit `(s/local-bind self :answer)` / `(s/local-signal
-  self :answer)` path so scoping is visible at the call site while
-  `:keep #{:answer}` still reads cleanly in handlers.
-  [ex:dialogs, ex:todo, ex:wizard] [design v2.1 §14 q v2.3]
-
-- [x] **`(s/on self :submit)` defaulting.**
-  Today every form passes `:as :submit` explicitly. When `:as` is
-  omitted, default to the DOM event name (`:submit`, `:click`, …).
-  Trivial; collapses two-thirds of the `(s/on …)` calls in the
-  examples to a single argument.
-  [ex:dialogs, ex:todo]
+> Historical record. The granular per-tier task list that drove slices
+> 0–4 and the Seaside sweep lives at `docs/todo-tiers.md`. Anything
+> moved here is either still open or worth re-evaluating before 1.0.
 
 ---
 
-## 2. Composition primitives
+## 1. The §15 bar — what the codebase needs to be true *as* code
 
-These move us from "everything pushes the whole stack" to faithful
-Seaside-style local composition.
+These are not features; they're the non-functional bar the design
+explicitly set. None of them is currently met.
 
-- [x] **`[:call-in-slot slot embed-spec :resume k]`.**
-  Embedded call/answer that swaps a single child slot rather than the
-  whole top frame. The single highest-leverage missing primitive this
-  catalogue surfaced — without it `todo.clj` cannot do real in-place
-  editing (it inlines the editor as parent state instead).
-  Touches: kernel `step`, `instantiate`, `render-frame`, and the
-  `:rendered?` bookkeeping that decides between morph-by-id and
-  `#root inner`.
-  Implemented as a slot-local overlay: the temporary child remembers
-  the previous occupant and restores it when it answers, while the
-  parent receives the answer under the named resume key.
-  The todo example now uses this for its row-local editor.
-  [ex:todo (former workaround documented in file)] [design v2.1 §11
-  carried-forward]
+- [ ] **Kernel ≤ 350 lines.** `src/dev/zeko/stube/kernel.clj` is **695
+      lines** — almost double the budget. `invariant-test` currently
+      passes only via the `:rationale` opt-out. The right move is to
+      extract the parts that aren't kernel-shaped: effect interpreters
+      (`:after`, `:subscribe`, `:upload-received` plumbing), the
+      auto-render/diff bookkeeping that grew during slice 2, and any
+      pure helpers reachable only from one effect. Goal: one
+      multimethod, one `step`, one `run-effects`, one `dispatch`, under
+      350 lines — and drop the rationale opt-out.
+      [bar §15.4]
 
-- [ ] **`[:notify-parent k value]`.**
-  Children that want to push something at their parent without
-  unmounting (today `:answer` is the only mechanism, and it pops the
-  child). Strong candidate the moment a real use case arrives — flag
-  but don't build until then.
-  Deferred deliberately; no current example needs non-unmounting child
-  notification, and building it now would add a second return channel.
-  [design v2.1 §13 slice 2 carried-forward]
+- [ ] **Errors are local, surfaced in the browser.** §15.3 promises a
+      bad component breaks its own frame, not the page, and that
+      Datastar exceptions surface in the console "with enough context to
+      identify the failing instance." Today an exception thrown in
+      `:render` or `:handle` bubbles into the SSE handler and closes the
+      stream. Define and ship the failure mode: catch at the frame
+      boundary, patch a labelled error placeholder into the instance's
+      DOM slot, log the cid/iid in the server logs and in a comment in
+      the patched fragment.
+      [bar §15.3]
+
+- [ ] **Public surface freeze for 1.0.** `dev.zeko.stube.core` is the
+      documented stable namespace, but `stube.server`, `stube.render`,
+      `stube.ui`, and `stube.store` are re-exported piecemeal and used
+      directly by examples in places. Decide what is API and what is
+      internal, mark the rest `^:no-doc` / `:internal`, and add a
+      doc-test that fails if an example reaches past `core` /`flow`
+      /`ui`.
+      [shape]
+
+---
+
+## 2. Composition & flow primitives still open
+
+Carried-forward items from the tier sweeps. None has had a concrete use
+case yet; each is a known shape we punted on. Treat them as **design
+spikes**: write the smallest example that *needs* it before adding the
+primitive.
+
+- [ ] **`[:notify-parent k value]`.** A child pushing data to its
+      parent without unmounting. Today the only return channel is
+      `:answer`, which pops the child. Build the moment a real demo
+      needs it; until then, document the deliberate gap.
+      [carried §2]
 
 - [ ] **`:rebuild-children` effect for lazy / conditional slots.**
-  Today `:children` is materialised eagerly at instantiation. Slots
-  whose embed-spec depends on later state need a kernel-level rebuild.
-  Deferred until a dynamic-slot example drives the exact semantics;
-  `:call-in-slot` covers the current local composition gap without
-  rematerialising child state.
-  [design v2.1 §13 slice 2 carried-forward]
+      `:children` materialises eagerly at instantiation. A slot whose
+      embed-spec depends on later state needs a kernel-level rebuild.
+      `:call-in-slot` covers the local-composition case; this is for
+      genuinely dynamic structural children.
+      [carried §2]
 
-- [x] **`s/decorate` demo.**
-  `breadcrumb.clj` now exercises decorations end-to-end by mounting a
-  `WAPath` / `WATrail`-style wrapper around a base page component.
-  [design v2.1 §13 slice 2] [ex:seaside-examples Tier 2 `WAPath`]
+- [ ] **`try` / `catch` across `s/await` in `defflow`.** Cloroutine
+      restricts forms across yield points. We never spiked the exact
+      limits. Pick one of (a) document the working subset and reject
+      the rest at macro-expansion with a clear error, (b) compile a
+      shape that lifts the catch into the resume handler so the user
+      writes ordinary try/catch.
+      [carried §13 slice 1] [v2 §16 q1]
 
----
-
-## 3. Convenience helpers (graduate from examples → `stube.core`)
-
-If a helper appears in two examples, it belongs in core. These all
-already exist in user code and are mechanically trivial.
-
-- [x] **`(s/confirm question)`, `(s/prompt label default)`,
-      `(s/choose options caption)`, `(s/info text)`.**
-  Wrappers over `s/embed` plus the canonical `:ui/confirm` /
-  `:ui/prompt` / `:ui/choose` / `:ui/info` components. Ship the
-  components in a `stube.ui` namespace and the verbs in `stube.core`.
-  Lets a `defflow` body read like Seaside's
-  `self confirm: 'Ready?'`.
-  Stock components live in `stube.ui`; `dialogs.clj` now uses only the
-  verbs from `stube.core`.
-  [ex:dialogs (DX note), ex:wizard]
-
-- [x] **`(s/back-button label)` helper.**
-  Renders the canonical `<button>` wired to `s/back`. Every example
-  with a wizard re-rolls this.
-  Implemented as a conversation-level helper posting to `/conv/:cid/back`;
-  wizard-local Back buttons still use component events when they need to
-  preserve in-flow state.
-  [ex:wizard] [design v2.1 §13 slice 3]
-
-- [x] **Default styles / `stube.ui` mini stylesheet.**
-  Pick *one* opinionated CSS file (literally a `<link>` in the shell
-  the user can opt out of) so demo code stops carrying inline
-  `:style "padding:0.4rem 1rem; …"` strings on every button. Matches
-  `[bar]` §15.4 — "the whole library fits in your head" — and §15.5 —
-  "zero client code".
-  The shell links `/stube/ui.css` by default; pass `:ui-css? false` to
-  `s/start!` to opt out.
-  [ex:calc, ex:dialogs, ex:todo (every example)]
+- [ ] **Error answers `[:answer-error e]` + `:on-error` resume.** Today
+      a child can only succeed-and-answer or stay alive. A
+      cancellation or thrown-from-child path needs symmetric plumbing.
+      Likely a small kernel addition once the error-surfacing story
+      from §1 above is settled — both want the same "what does failure
+      look like" answer.
+      [carried §13 slice 1]
 
 ---
 
-## 4. Lifecycle, registry & component metadata
+## 3. History & persistence — the cloroutine gap
 
-Small but visible holes in the data model.
+`defflow` is the headline ergonomic of slice 1, but its conversations
+do **not** persist. The file store skips them with a warning. This is
+the largest single asterisk on "the data is the program" (§15.6).
 
-- [x] **`:stop` lifecycle hook.**
-  Mirror of `:start`; runs once when the frame is popped. Needed for
-  cleaning up resources held by `:io` callbacks (subscriptions,
-  timers, file handles).
-  Runs for stack frames and slot-local children before removal; hook
-  effects are folded before the removal's visible fragments.
-  [design v2.1 §14 q v2.5]
+- [ ] **Cloroutine continuation persistence.** Two designs to cost
+      before committing:
+      - (a) Custom `print-method` over the cloroutine state machine —
+            cheapest, but couples us to cloroutine internals.
+      - (b) Replay from recorded events on resume — keeps the
+            EDN-clean invariant but doubles the surface area of
+            "what's a conversation" (state + event log).
+      Either way: pick before 1.0 or explicitly document `defflow` as
+      in-memory-only and recommend hand-rolled tasks for crash-resume.
+      [carried §6] [bar §15.6]
 
-- [x] **`:wakeup` lifecycle hook.**
-  Runs when a frame is restored from history (via `:back` or
-  crash-resume). Lets a component re-acquire transient resources that
-  weren't (and shouldn't be) persisted.
-  Runs for the restored top frame before render on `:back` and SSE
-  reattach.
-  [design v2.1 §14 q v2.5, §13 slice 3]
-
-- [x] **Docstring slot + `(s/help :auth/login)`.**
-  Add `:doc` to `defcomponent`; surface it via `(s/help id)` so
-  component libraries are self-documenting. Trivial; matches §15.1.
-  [design v2.1 §13 slice 5]
-
-- [x] **Hot-reload safety.**
-  Re-evaluating a `defcomponent` should not crash live conversations
-  whose instances are of that type. Decide and document: do existing
-  live frames pick up the new `:render` next time their handler fires,
-  or only new frames?
-  Existing live frames pick up the latest registered definition on the
-  next render/dispatch; this is now pinned by regression coverage.
-  [design v2.1 §13 slice 5]
-
-- [x] **Stale-instance soft 410.**
-  Today a POST whose iid is no longer on the stack throws. Patch a
-  "page is stale, please reload" banner into `#root` and end the conv
-  gracefully.
-  The HTTP layer now returns 410, patches the stale banner when an SSE
-  stream is present, closes it, and forgets the conversation.
-  [design v2.1 §14 q v2.6]
+- [ ] **Browser back-button glue (`popstate`).** A one-liner in the
+      shell HTML, but only useful with a matching `pushState` policy.
+      The clean way: emit a `pushState` script fragment on every frame
+      transition, wire `popstate` to POST `/conv/:cid/back`. Skipping
+      it means in-page `s/back-button` remains the only path; that's
+      fine until a demo demonstrably needs the browser button.
+      [carried §6]
 
 ---
 
-## 5. Operations (slice 4 proper)
+## 4. Application boundaries — what the framework declines to own
 
-Already scoped in v2.1 §13 slice 4; listed here so nothing is lost.
+Tier 3 made several of these explicit (no shared DB, no auth principal,
+no chat retention). They're correct, but a 1.0 still needs to *show*
+the boundary cleanly enough that users don't reach across it.
 
-- [x] **Reaper.** Background loop that ends conversations whose
-      `:conv/touched` is older than a configurable TTL. Closes the
-      "persisted convs live forever" gap from slice 3.
-- [x] **`(s/active-conversations)`** and **`(s/end! cid)`** admin ops.
-- [x] **Anti-forgery / session ownership.** A cid is a routing handle,
-      not a capability. Session cookie + assertion on every POST.
-- [x] **`slf4j` MDC by `cid` + `iid`.** A single `grep` should
-      reconstruct the timeline of any one conversation.
+- [ ] **Application app-store hook.** The `seaside_todo` port noted
+      that a real shared database "is still outside the framework
+      surface" and that examples keep the DB on the conversation to
+      avoid side effects during dispatch. Document the pattern (an
+      injected component, or a value on the conversation under a
+      reserved key, or a host-app function passed through `start!`)
+      and pick one for examples to standardise on.
+      [shape, ref `seaside-examples.md` ToDo findings]
 
----
+- [ ] **Non-shell HTTP routes for the same conversation.** The
+      seaside_todo port also called out the Atom feed chapter
+      (`/atomTasks`): `start!` only mounts component shells and the
+      conversation endpoints. A way to declare extra routes alongside
+      a mount — same handler signature, same access to conversation
+      state — would close the only "literal Seaside chapter doesn't
+      port" gap.
+      [shape, ref `seaside-examples.md` Atom feed]
 
-## 6. History & navigation polish
-
-`s/back` works; the loose ends are small.
-
-- [ ] **Browser back-button glue.** One-liner in the shell HTML
-      (`data-on-popstate__window` POSTing to `/conv/:cid/back`).
-      Deferred until we have a clean cross-example pattern.
-      Still deferred after the slice-4 sweep: without a matching
-      `pushState` policy, a `popstate` handler alone is surprising and
-      browser-global. In-page `(s/back-button ...)` remains the clean
-      zero-JS path.
-      [design v2.1 §13 slice 3 carried-forward]
-
-- [ ] **Cloroutine continuation persistence.**
-  `defflow` conversations are in-memory-only today; `file-store` skips
-  them with a warning. Two paths worth costing: (a) a custom
-  `print-method` that serialises the cloroutine state, (b) replay from
-  recorded events on resume.
-  Still deferred after the slice-4 sweep: hand-rolled task components
-  remain EDN-clean and persistable, while opaque cloroutine state stays
-  explicitly in-memory until a replay/checkpoint design preserves the
-  "data is the program" invariant.
-  [design v2.1 §13 slice 3 carried-forward]
+- [ ] **Application principal pass-through.** Slice 4 binds a cid to a
+      `stube_sid` owner cookie; that is framework ownership, not app
+      auth. `protected_counter.clj` shows app login as conversation
+      state. The missing piece is the documented boundary: where does
+      the request's authenticated principal land on the conversation,
+      and who's responsible for putting it there? A `:principal` field
+      derived by a host-supplied function at conversation mint time is
+      the smallest workable contract.
+      [shape, ref §16 carry-over from `v2_1.md`]
 
 ---
 
-## 7. Multi-user & async (Tier-3 sweep)
+## 5. Transport & deployment shape
 
-These now ship as the Tier-3 example sweep. The runtime additions are
-deliberately small: scheduled events, topic subscriptions, and a
-multipart upload side route. Shared app state, durable chat storage, and
-application auth policy stay in user code.
+The kernel is transport-agnostic by design (`v2_1.md` §9.4). The HTTP
+layer is the only Datastar-specific file. None of this has been
+exercised by anything but our local dev server.
 
-- [x] **`[:after ms event]` timer effect.** Live clocks, debounced
-      submits, polling fallbacks. (`WAClock` / `WATurboCounter`.)
-      Landed as `(s/after delay-ms route-event)`. Timers are cid/iid
-      scoped; ending a conversation cancels outstanding futures, and a
-      missing instance makes delivery a no-op. The clock demo carries a
-      generation payload so restored/restarted timers ignore stale ticks.
-      [ex:seaside-examples Tier 3]
-- [x] **`(s/publish! topic msg)` + per-conv subscription.** Server-push
-      for "patch this conv from outside its handler". Required for
-      `CTCounter`, `CTReport`, `CTChat` ports.
-      Landed as `(s/subscribe topic event)` / `(s/unsubscribe topic)`
-      effects plus asynchronous `(s/publish! topic msg)`. Topic policy,
-      backpressure, and durable message storage remain application
-      concerns; the framework only delivers payloads back into live
-      cid/iid pairs.
-      [ex:seaside-examples Tier 3]
-- [x] **File upload.** Non-SSE multipart route plus an
-      `[:upload-received]` hook routed to the active instance.
-      Landed as `/stube/upload/:cid/:iid` with `(s/upload-attrs self)`
-      and `(s/upload-frame self)`. The route parses multipart data and
-      dispatches `:upload-received` with EDN-safe file summaries.
-      [ex:seaside-examples Tier 3 `WAFileUploadExample`]
-- [x] **Session auth binding.** `WASessionProtectedCounter`-style;
-      bind a conversation to an authenticated session.
-      Decision: no new auth primitive. Slice-4 cookie ownership already
-      binds a cid to the browser session and rejects cross-session POSTs.
-      `protected_counter.clj` demonstrates app-level login as ordinary
-      conversation state; host apps should compose their own principal
-      model at the boundary.
-      [ex:seaside-examples Tier 3]
-- [x] **Registry introspection.** `(s/mounts)` listing root mounts,
-      so a `WANavigationBar`-style index page is two lines. Landed as
-      part of the slice-4 admin surface.
-      [ex:seaside-examples Tier 3]
+- [ ] **Reverse-proxy / SSE-timeout playbook.** http-kit + SSE is
+      vulnerable to common proxy idle timeouts (nginx default 60s, ALB
+      default 60s). A periodic keep-alive comment frame and a documented
+      Nginx/Caddy/ALB snippet is enough to make "ship it to prod" not a
+      surprise.
+      [shape]
+
+- [ ] **Graceful shutdown.** `stop!` currently closes the http listener
+      but does not drain in-flight SSE streams or fire `:stop` hooks for
+      live conversations. For 1.0 it should: stop accepting, send a
+      shell-replace patch with a reload banner, run `:stop` for every
+      live instance, flush the store.
+      [shape]
+
+- [ ] **Datastar version pinning.** The shell links a CDN bundle by
+      URL. Decide between (a) pinning a known-good version constant in
+      `core`, (b) vendoring the bundle into `resources/`. Either is
+      fine; the current "latest on CDN" gives nondeterministic
+      behaviour at install time.
+      [shape]
+
+- [ ] **Cross-process pub/sub.** `(s/publish! topic msg)` is an
+      in-process delivery loop. Document the boundary (single-JVM only)
+      and sketch the shape a Redis/Postgres `LISTEN` adapter would
+      take — likely a small `Publisher` protocol the server can be
+      handed. Don't implement until a user asks; do document the
+      limitation.
+      [shape]
 
 ---
 
-## 8. Tier-2 demos (no new primitives needed)
+## 6. Documentation & onboarding
 
-These now ship as showcase coverage for the helpers above. The sweep did
-not add runtime machinery; the only notable convention is that callback
-handles in persisted state should be EDN data (for example a qualified
-symbol) rather than raw function objects.
+The README is enough to get the example browser running. It is not
+enough to *write* a component without reading the source.
 
-- [x] `paginated_list.clj` (`WABatchedList`) — render-callback init
-      arg, pagination state. The demo passes the row renderer as a
-      qualified symbol so the conversation remains EDN-clean.
-- [x] `table_report.clj` (`WATableReport`) — column config maps,
-      click-to-sort.
-- [x] `tree.clj` (`WATree`) — per-node expansion set, recursive
-      render.
-- [x] `breadcrumb.clj` (`WAPath` / `WATrail`) — first real
-      `s/decorate` end-to-end demo.
-- [x] `example_browser.clj` (`WAExampleBrowser`) — dynamic component
-      lookup + child swap; now doubles as the demo landing page.
+- [ ] **Public-API reference doc.** Generated from the `core` /
+      `flow` / `ui` namespaces' docstrings. The docstrings are already
+      good; what's missing is the rendered, navigable surface.
+      [shape, supports bar §15.4 "fits in your head"]
 
----
+- [ ] **"Build a small app" tutorial.** The example browser shows
+      what the framework can do; nothing yet walks a reader through
+      *making* a stube app. Target audience: a Clojure developer who
+      has never used Seaside. ~30 minutes from `git clone` to a
+      working two-screen flow. Reuse the wizard / todo demos, don't
+      invent new fiction.
+      [shape]
 
-## 9. REPL & inspection (DX polish, slice 5)
-
-- [x] **`(s/inspect cid)`** — pretty-print the live conversation
-      (stack, instances, last event). Drops straight into the workflow
-      we already use ad-hoc in tests.
-      Prints and returns a compact live summary; dispatch records a
-      sanitized last-event summary with signal keys, not signal values.
-      [design v2.1 §13 slice 5]
-- [x] **`(s/replay events)`** — reduce a conv from a baseline through
-      a sequence of events. Useful both for tests and for "what if I
-      had answered differently".
-      Supports `(s/replay conv events)` and `(s/replay flow-id events)`;
-      event maps default to the current top frame with empty signals.
-      [design v2.1 §13 slice 5, bar §15.6]
-- [x] **README: Datastar Inspector tip.** Single most useful debug
-      tool; one paragraph in the running/debugging notes.
-      [design v2.1 §13 slice 5]
+- [ ] **Decision log per design question.** `v2_1.md` §14 already
+      lists open-questions-now-resolved. A `docs/decisions/` folder
+      capturing one short ADR per significant call (resume key naming,
+      EDN-clean state, embed-vs-call boundary, principal model) means
+      future contributors don't have to re-derive the noun set in
+      §17.
+      [shape]
 
 ---
 
-## 10. Aesthetic & invariant guards (the §15 bar)
+## 7. Test & invariant coverage
 
-Not features — *checks* that the codebase still meets the bar at every
-slice boundary. Worth a CI script before 1.0.
+- [ ] **Property-style coverage of the kernel fold.** `kernel_test`
+      covers the happy paths. A generative test that produces random
+      effect sequences and asserts (a) kernel never throws, (b)
+      conversation round-trips through `pr-str`/`read-string` at every
+      step (excluding `defflow` until §3), (c) every fragment carries
+      a target that exists in the prior emitted HTML — would catch the
+      whole class of "embedding edge case" bugs before they become
+      example workarounds.
+      [shape, supports bar §15.6]
 
-- [x] **Kernel size invariant.** `stube/kernel.clj` ≤ 350 lines, one
-      multimethod. Fail CI if it grows past the limit without an
-      `:rationale` opt-out.
-      Covered by `stube.invariant-test`; the current kernel carries an
-      explicit rationale while it is over budget.
-      [bar §15.4]
-- [x] **Zero-JS invariant.** Grep examples for `<script>` other than
-      the Datastar bundle; fail CI if any example sneaks in custom JS.
-      Covered by `stube.invariant-test` over `examples/**/*.clj`.
-      [bar §15.5]
-- [x] **EDN-clean conversations invariant.** A test that round-trips
-      every example's mid-flow conversation through `pr-str` /
-      `read-string` and asserts equality. (`defflow` continuations
-      currently fail; tracked under §6.)
-      Covered for the shipped non-`defflow` examples; `defflow` examples
-      remain explicitly tracked under §6 continuation persistence.
-      [bar §15.6]
-- [x] **`defcomponent` reads like a record def.** Lint rule (or
-      doc-test) that flags components doing anything but `def`-time
-      registration at top level.
-      Covered by `stube.invariant-test` for example components.
-      [bar §15.1]
+- [ ] **`stube.invariant-test` should fail when an example sneaks
+      something past the bar.** The current rules (no `<script>` in
+      examples, `defcomponent` only at top level, kernel-size budget)
+      are good. Add: every example's mid-flow conversation
+      round-trips through EDN; every public-facing example uses only
+      `s/...` calls (no reaching into `kernel/` / `server/` /
+      `conversation/`).
+      [shape, supports §1 above]
+
+---
+
+## 8. Deliberately *not* on this list
+
+Carried forward from `v2_1.md` §16 — kept here so we don't add them by
+accident:
+
+- Time-travel UI (history exists; browsing it is an app).
+- Server-side optimistic updates (Datastar does them client-side).
+- First-class streaming flows (`:io` + `:patch` already covers it).
+- Per-component CSS scoping (Hiccup is global; Tailwind/CSS modules
+  belong at the build layer).
+- WebSocket transport (SSE is the right primitive for our shape).
+- Framework-owned durable chat / shared DB (Tier-3 pub/sub is
+  live-only by design).
+- Framework-owned application auth model (cid owner cookie is the
+  only thing the framework promises).
 
 ---
 
