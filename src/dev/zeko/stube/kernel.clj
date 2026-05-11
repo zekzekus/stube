@@ -63,6 +63,7 @@
   is removed; `:wakeup` runs when a persisted or history-restored frame
   becomes live again."
   (:require [dev.zeko.stube.conversation :as conv]
+            [dev.zeko.stube.halos        :as halos]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]))
 
@@ -154,19 +155,29 @@
 
 (defn- render-instance
   "Render `iid` with explicit Datastar patch `opts`, mark it and its
-  rendered descendants as present in the DOM, and return `[conv' frag]`."
+  rendered descendants as present in the DOM, and return `[conv' frag]`.
+
+  When `:conv/halos?` is set, the outer hiccup is decorated with
+  `data-stube-*` attrs and the resulting HTML is cached on the instance
+  under `:instance/last-html` so the dev panel's HTML tab can show it."
   [conv iid opts]
   (let [inst      (conv/instance conv iid)
         cdef      (registry/lookup! (:instance/type inst))
         render-fn (or (:component/render cdef) default-render)
+        halos?    (boolean (:conv/halos? conv))
         html      (binding [render/*conv* conv]
                     ;; Keep the dynamic conversation bound through HTML
                     ;; serialization too: user render fns may return lazy
                     ;; seqs whose elements call `s/render-slot` only when
                     ;; Chassis walks the tree.
-                    (render/html (render-fn inst)))]
-    [(conv/mark-rendered conv iid)
-     (elements-fragment html opts)]))
+                    (let [hiccup (cond-> (render-fn inst)
+                                   halos? (halos/decorate-root inst))]
+                      (render/html hiccup)))
+        marked    (conv/mark-rendered conv iid)
+        conv'     (cond-> marked
+                    halos? (assoc-in [:conv/instances iid :instance/last-html]
+                                     html))]
+    [conv' (elements-fragment html opts)]))
 
 (defn- render-frame
   "Produce the elements fragment for `iid` and return
@@ -288,6 +299,18 @@
           [conv'' wake]  (run-wakeup-hooks conv' (conv/descendant-ids conv' iid))
           [conv''' frag] (render-frame conv'' iid)]
       [conv''' (conj (vec wake) frag)])
+    [conv []]))
+
+(defn redraw-top
+  "Re-render the current top frame in-place without running `:wakeup`
+  or snapshotting.  Returns `[conv' [frag]]`.  Used by dev-tooling
+  paths (e.g. enabling halos on a live conversation) that want a fresh
+  frame against the *current* state."
+  [conv]
+  (if-let [iid (conv/top-id conv)]
+    (let [conv'       (assoc-in conv [:conv/instances iid :instance/rendered?] false)
+          [conv'' fr] (render-frame conv' iid)]
+      [conv'' [fr]])
     [conv []]))
 
 ;; ---------------------------------------------------------------------------

@@ -37,22 +37,37 @@
 
 (defn go
   "Load the examples and start the server. Idempotent — calling it
-  twice does not double-mount."
-  ([] (go *port*))
-  ([port]
-   (load-examples)
-   (s/start! {:port port})
-   (println (str "stube examples up — http://localhost:" port "/"))
-   :started))
+  twice does not double-mount.
+
+  Accepts a port (legacy 1-arg) or an option map merged into the start!
+  options. Examples:
+
+      (go)
+      (go 8081)
+      (go {:halos? true})
+      (go {:port 8081 :halos? true})"
+  ([] (go {}))
+  ([port-or-opts]
+   (let [opts (cond
+                (integer? port-or-opts) {:port port-or-opts}
+                (map?     port-or-opts) port-or-opts
+                :else (throw (ex-info "go expects a port or an opts map"
+                                      {:got port-or-opts})))
+         port (or (:port opts) *port*)]
+     (load-examples)
+     (s/start! (merge {:port port} opts))
+     (println (str "stube examples up — http://localhost:" port "/"
+                   (when (:halos? opts) "  (halos enabled; add ?halos=1)")))
+     :started)))
 
 (defn stop  [] (s/stop!))
 (defn reset [] (server/reset-state!))
 
 (defn restart
-  ([] (restart *port*))
-  ([port]
+  ([] (restart {}))
+  ([port-or-opts]
    (reset)
-   (go port)))
+   (go port-or-opts)))
 
 (defn browse
   ([] (browse "/"))
@@ -62,6 +77,59 @@
 (defn mounts  [] (s/mounts))
 (defn convs   [] (keys (s/active-conversations)))
 (defn inspect [cid] (s/inspect cid))
+
+;; ---------------------------------------------------------------------------
+;; Halos — dev overlay (see docs/halos-spike.md)
+;; ---------------------------------------------------------------------------
+;;
+;; Quick path:
+;;
+;;     (go-halos)              ; restart with halos enabled
+;;     (browse-halos)          ; open the example browser with ?halos=1
+;;     (browse-halos "/multicounter")
+;;     (tree)                  ; tree of the first live conv
+;;     (history)               ; history snapshots of the first live conv
+;;     (where :demo/counter)   ; file:line of a defcomponent
+
+(defn go-halos
+  "Like `go`, but enables the dev halos overlay."
+  ([]          (go-halos *port*))
+  ([port]      (go (cond-> {:halos? true}
+                     (integer? port) (assoc :port port)
+                     (map? port)     (merge port)))))
+
+(defn restart-halos
+  "Reset + go-halos."
+  ([]     (reset) (go-halos))
+  ([port] (reset) (go-halos port)))
+
+(defn browse-halos
+  "Open a mounted path with `?halos=1` so the overlay activates."
+  ([] (browse-halos "/"))
+  ([path]
+   (let [sep (if (re-find #"\?" path) "&" "?")]
+     (browse/browse-url (str "http://localhost:" *port* path sep "halos=1")))))
+
+(defn- first-cid []
+  (or (first (convs))
+      (throw (ex-info "no live conversations — visit a mounted URL first" {}))))
+
+(defn tree
+  "Pretty-print the component tree for `cid` (defaults to the first
+  live conversation)."
+  ([]    (tree (first-cid)))
+  ([cid] (s/tree cid)))
+
+(defn history
+  "Summarise `:conv/history` for `cid` (defaults to the first live
+  conversation)."
+  ([]    (history (first-cid)))
+  ([cid] (s/history cid)))
+
+(defn where
+  "Return the file:line where component `type-kw` was defined."
+  [type-kw]
+  (s/where type-kw))
 
 ;; ---------------------------------------------------------------------------
 ;; Portal inspector — available when started with the global
@@ -113,6 +181,14 @@
   (inspect <cid>)
   (reset)
   (restart)
+
+  ;; Halos dev overlay
+  (go-halos)
+  (browse-halos "/multicounter")
+  (tree)
+  (history)
+  (where :demo/counter)
+  (restart-halos)
 
   (portal)
   (tap> (mounts))

@@ -22,6 +22,7 @@
             [starfederation.datastar.clojure.api               :as d*]
             [starfederation.datastar.clojure.adapter.http-kit  :as hk]
             [dev.zeko.stube.conversation                                :as conv]
+            [dev.zeko.stube.halos                                       :as halos]
             [dev.zeko.stube.kernel                                      :as kernel]
             [dev.zeko.stube.render                                      :as render]
             [dev.zeko.stube.server                                      :as server])
@@ -154,12 +155,22 @@
 
 (def datastar-cdn d*/CDN-url)
 (def ui-css-path "/stube/ui.css")
+(def halos-js-path "/stube/halos.js")
 
-(defn- shell-html [cid]
+(defn- halos-requested? [req]
+  (some? (query-value req "halos")))
+
+(defn- shell-html [cid dev?]
   ;; `data-init` runs once when Datastar processes the element after the
   ;; page loads.  We open the long-lived SSE stream there; every patch
   ;; the kernel pushes thereafter morphs into the DOM by id, starting
   ;; with the `<div id="root">` placeholder below.
+  ;;
+  ;; In dev mode (server started with :halos? true), we always inject
+  ;; the halos overlay script and the data-stube-cid hook.  The overlay
+  ;; itself starts disabled — the user enables it from the floating
+  ;; pill, which POSTs the enable endpoint and triggers a redraw with
+  ;; halo data-attrs.
   (chassis/html
     [chassis/doctype-html5
      [:html {:lang "en"}
@@ -169,8 +180,11 @@
        [:title "stube"]
        (when (server/ui-css?)
          [:link {:rel "stylesheet" :href ui-css-path}])
-       [:script {:type "module" :src datastar-cdn}]]
-      [:body {:data-init (str "@get('/conv/" cid "/sse')")}
+       [:script {:type "module" :src datastar-cdn}]
+       (when dev?
+         [:script {:type "module" :src halos-js-path}])]
+      [:body (cond-> {:data-init (str "@get('/conv/" cid "/sse')")}
+               dev? (assoc :data-stube-cid cid))
        [:div {:id "root"}]]]]))
 
 (defn ui-css-handler
@@ -183,6 +197,82 @@
      :body    (slurp res)}
     {:status 404
      :body   "stube ui.css not found"}))
+
+(defn halos-js-handler
+  "Serve the dev halos overlay script. 404s when the server was not
+  started with `:halos? true` so production builds never expose it."
+  [_req]
+  (cond
+    (not (server/halos?))
+    {:status 404 :body "stube halos disabled"}
+
+    :else
+    (if-let [res (io/resource "dev/zeko/stube/halos.js")]
+      {:status  200
+       :headers {"Content-Type"  "application/javascript; charset=utf-8"
+                 "Cache-Control" "no-store"}
+       :body    (slurp res)}
+      {:status 404 :body "stube halos.js not found"})))
+
+(defn- halos-tab-keyword [s]
+  (case (some-> s str/lower-case)
+    "instance" :instance
+    "html"     :html
+    "history"  :history
+    :tree))
+
+(defn halos-enable-handler
+  "POST `/stube/halos/:cid/enable` — flip the conv into halos mode and
+  push a freshly-decorated frame so the overlay sees data-stube attrs
+  without a hard reload.  Backed by [[server/enable-halos-and-redraw!]]."
+  [{:keys [path-params] :as req}]
+  (let [cid (:cid path-params)]
+    (cond
+      (not (server/halos?))
+      {:status 404 :body "stube halos disabled"}
+
+      (nil? (server/conversation cid))
+      {:status 410 :body "no such conversation"}
+
+      (not (authorized? req cid))
+      (forbidden-response)
+
+      :else
+      (do (server/enable-halos-and-redraw! cid)
+          {:status 204}))))
+
+(defn halos-panel-handler
+  "Return the rendered side-panel HTML for the dev halos overlay.
+
+  404s when the server has halos off; 410 when the conversation has
+  halos off (the overlay shouldn't be polling); plain 200 HTML otherwise.
+  The shape is consumed by `halos.js`, which morphs the response into
+  the side-panel container."
+  [{:keys [path-params] :as req}]
+  (cond
+    (not (server/halos?))
+    {:status 404 :body "stube halos disabled"}
+
+    :else
+    (let [cid  (:cid path-params)
+          conv (server/conversation cid)]
+      (cond
+        (or (nil? conv) (not (:conv/halos? conv)))
+        {:status  410
+         :headers {"Content-Type" "text/html; charset=utf-8"
+                   "Cache-Control" "no-store"}
+         :body    "<div class=\"stube-halo-body\">halos not active for this conversation</div>"}
+
+        (not (authorized? req cid))
+        (forbidden-response)
+
+        :else
+        (let [iid (query-value req "iid")
+              tab (halos-tab-keyword (query-value req "tab"))]
+          {:status  200
+           :headers {"Content-Type"  "text/html; charset=utf-8"
+                     "Cache-Control" "no-store"}
+           :body    (render/html (halos/panel-hiccup conv {:iid iid :tab tab}))})))))
 
 ;; ---------------------------------------------------------------------------
 ;; Pushing fragments to the wire
@@ -283,16 +373,25 @@
 (defn shell-handler
   "Build the GET handler for a mount path.  Each request mints a fresh
   conversation pre-bound to `flow-id`; the cid is embedded in the shell
-  so the browser's first SSE GET is to the right place."
+  so the browser's first SSE GET is to the right place.
+
+  When the server is started with `:halos? true`, every shell injects
+  the halos overlay (initially inactive) and a `data-stube-cid` hook so
+  the user can enable the overlay from a floating pill.  Adding
+  `?halos=1` on the URL is a shortcut that pre-enables the conv."
   [flow-id]
   (fn [req]
     (let [[sid set-cookie] (ensure-session req)
-          cid (server/create-conversation! flow-id sid)]
+          cid       (server/create-conversation! flow-id sid)
+          dev?      (server/halos?)
+          pre-on?   (and dev? (halos-requested? req))]
+      (when pre-on?
+        (server/enable-halos! cid))
       {:status  200
        :headers (cond-> {"Content-Type" "text/html; charset=utf-8"
                          "Cache-Control" "no-store"}
                   set-cookie (assoc "Set-Cookie" set-cookie))
-       :body    (shell-html cid)})))
+       :body    (shell-html cid dev?)})))
 
 (defn- resume-render
   "Render the current top frame of a conversation that already has

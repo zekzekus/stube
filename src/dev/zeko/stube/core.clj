@@ -55,6 +55,7 @@
             ;; user `defflow` bodies as suspend points (cloroutine compares
             ;; vars by identity, not by value).
             [dev.zeko.stube.flow         :as flow :refer [await]]
+            [dev.zeko.stube.halos        :as halos]
             [dev.zeko.stube.kernel       :as kernel]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]
@@ -66,22 +67,11 @@
 ;; Component definition
 ;; ---------------------------------------------------------------------------
 
-(defn defcomponent
-  "Define a component and add it to the global registry.  Conventionally
-  called as
-
-      (s/defcomponent :auth/login
-        :doc    \"Prompt for credentials.\"
-        :init   (fn [args] state-map)
-        :keep   #{:signal-keys}            ;; optional
-        :render (fn [self] hiccup)
-        :handle (fn [self event]           ;; event is {:event …, :signals …}
-                  [self' effects])
-        :on-foo (fn [self answer-value]    ;; resume keys, optional
-                  [self' effects]))
-
-  Returns the registered component map."
-  [id & {:as opts}]
+(defn register-component!
+  "Plain function form of [[defcomponent]]. Useful from data-driven
+  callers that don't want the macro's source-meta capture; the macro
+  delegates here after attaching `:component/source`."
+  [id opts]
   (registry/register!
     (-> opts
         (assoc :component/id id)
@@ -99,6 +89,30 @@
                                        (dissoc :keep))
           (contains? opts :doc)    (-> (assoc :component/doc    (:doc    opts))
                                        (dissoc :doc))))))
+
+(defmacro defcomponent
+  "Define a component and add it to the global registry. Conventionally
+  called as
+
+      (s/defcomponent :auth/login
+        :doc    \"Prompt for credentials.\"
+        :init   (fn [args] state-map)
+        :keep   #{:signal-keys}            ;; optional
+        :render (fn [self] hiccup)
+        :handle (fn [self event]           ;; event is {:event …, :signals …}
+                  [self' effects])
+        :on-foo (fn [self answer-value]    ;; resume keys, optional
+                  [self' effects]))
+
+  The macro captures the call-site `:file`/`:line` under
+  `:component/source` so the halos dev tool can jump to the definition.
+  Use [[register-component!]] from data-driven code that prefers a
+  function shape."
+  [id & opts]
+  (let [src {:file *file*
+             :line (:line (meta &form))}]
+    `(register-component! ~id (assoc (hash-map ~@opts)
+                                     :component/source ~src))))
 
 ;; ---------------------------------------------------------------------------
 ;; Compositional helpers
@@ -267,6 +281,37 @@
 (def ^{:doc "See [[dev.zeko.stube.server/end!]]."}      end!       server/end!)
 (def ^{:doc "See [[dev.zeko.stube.server/mounts]]."}    mounts     server/mounts)
 (def ^{:doc "See [[dev.zeko.stube.server/inspect]]."}   inspect    server/inspect)
+
+;; ---------------------------------------------------------------------------
+;; Halos / dev-tooling REPL helpers (slice 0)
+;; ---------------------------------------------------------------------------
+;;
+;; `inspect` (above) prints a compact summary; these surface the smaller
+;; views we wanted from the halos plan. All four are also rendered into
+;; the in-browser side-panel when halos are enabled.
+
+(defn tree
+  "Pretty-print the component tree for live conversation `cid` and
+  return the tree data. nil if the conversation is unknown."
+  [cid]
+  (when-let [c (server/conversation cid)]
+    (halos/tree c)))
+
+(defn instance
+  "Return the instance map for `iid` in live conversation `cid`."
+  [cid iid]
+  (some-> (server/conversation cid) (halos/instance iid)))
+
+(defn history
+  "Summarise `:conv/history` for live conversation `cid`."
+  [cid]
+  (some-> (server/conversation cid) halos/history))
+
+(defn where
+  "Return the source location captured for component `type-kw` at
+  `defcomponent` time, or nil."
+  [type-kw]
+  (halos/where type-kw))
 
 ;; ---------------------------------------------------------------------------
 ;; REPL / test surface

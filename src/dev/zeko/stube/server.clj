@@ -40,6 +40,7 @@
 (defonce ^:private !mounts        (atom (sorted-map)))
 (defonce ^:private !server        (atom nil))
 (defonce ^:private !ui-css?       (atom true))
+(defonce ^:private !halos?        (atom false))
 (defonce ^:private !reaper-stop   (atom nil))
 (defonce ^:private !timers        (atom {}))
 (defonce ^:private !subscriptions (atom {}))
@@ -450,6 +451,38 @@
   []
   @!ui-css?)
 
+(defn halos?
+  "True when the server is willing to serve the dev halos overlay.
+  Off by default; opt in with `:halos? true` on [[start!]]. Per-conv
+  activation also requires `?halos=1` on the shell URL."
+  []
+  @!halos?)
+
+(defn enable-halos!
+  "Set `:conv/halos? true` on the live conversation `cid`, emitting no
+  fragments. The shell handler calls this when `?halos=1` is on the URL
+  and the server is started with halos enabled."
+  [cid]
+  (when (and (halos?) (conversation cid))
+    (swap-conv! cid (fn [c] [(assoc c :conv/halos? true) []]))
+    nil))
+
+(defn enable-halos-and-redraw!
+  "Set `:conv/halos? true` on `cid` *and* push a freshly-decorated frame
+  to the open SSE so the page picks up halo data-attrs without a hard
+  reload.  Called from the http handler that backs the dev-mode pill."
+  [cid]
+  (when (and (halos?) (conversation cid))
+    (let [[_conv' frags]
+          (with-kernel-bindings
+            cid
+            #(swap-conv! cid (fn [c]
+                               (kernel/redraw-top
+                                 (assoc c :conv/halos? true)))))]
+      (when-let [sse-gen (sse cid)]
+        (push-fragments! sse-gen frags))
+      :enabled)))
+
 ;; ---------------------------------------------------------------------------
 ;; Lifecycle
 ;; ---------------------------------------------------------------------------
@@ -460,14 +493,20 @@
   up lazily so adding mounts after start works."
   []
   (let [;; Resolved late to avoid a circular require with dev.zeko.stube.http.
-        h     (requiring-resolve 'dev.zeko.stube.http/shell-handler)
-        sse-h (requiring-resolve 'dev.zeko.stube.http/sse-handler)
-        ev-h  (requiring-resolve 'dev.zeko.stube.http/event-handler)
-        up-h  (requiring-resolve 'dev.zeko.stube.http/upload-handler)
-        bk-h  (requiring-resolve 'dev.zeko.stube.http/back-handler)
-        css-h (requiring-resolve 'dev.zeko.stube.http/ui-css-handler)]
+        h       (requiring-resolve 'dev.zeko.stube.http/shell-handler)
+        sse-h   (requiring-resolve 'dev.zeko.stube.http/sse-handler)
+        ev-h    (requiring-resolve 'dev.zeko.stube.http/event-handler)
+        up-h    (requiring-resolve 'dev.zeko.stube.http/upload-handler)
+        bk-h    (requiring-resolve 'dev.zeko.stube.http/back-handler)
+        css-h   (requiring-resolve 'dev.zeko.stube.http/ui-css-handler)
+        halo-js (requiring-resolve 'dev.zeko.stube.http/halos-js-handler)
+        halo-p  (requiring-resolve 'dev.zeko.stube.http/halos-panel-handler)
+        halo-en (requiring-resolve 'dev.zeko.stube.http/halos-enable-handler)]
     (ring/router
       (into [["/stube/ui.css"             {:get  {:handler @css-h}}]
+             ["/stube/halos.js"           {:get  {:handler @halo-js}}]
+             ["/stube/halos/:cid/panel"   {:get  {:handler @halo-p}}]
+             ["/stube/halos/:cid/enable"  {:post {:handler @halo-en}}]
              ["/conv/:cid/sse"            {:get  {:handler @sse-h}}]
              ["/conv/:cid/back"           {:post {:handler @bk-h}}]
              ["/stube/upload/:cid/:iid"   {:post {:handler @up-h}}]
@@ -503,6 +542,7 @@
   | `:port`    | 8080                          | TCP port                              |
   | `:store`   | `(store/in-memory-store)`     | persistence backend (slice 3)         |
   | `:ui-css?` | true                          | link the stock `/stube/ui.css` file   |
+  | `:halos?`  | false                         | enable dev halos (per-conv via `?halos=1`) |
   | `:conversation-ttl` | nil                  | reaper TTL (`Duration` or millis)     |
   | `:reaper-interval` | 60000                 | reaper interval (`Duration` or millis)|
 
@@ -510,11 +550,12 @@
   listener accepts requests, so any persisted conversations are live
   in memory by the time the first browser reconnects."
   ([] (start! {}))
-  ([{:keys [port store ui-css? conversation-ttl reaper-interval]
-     :or {port 8080 ui-css? true}}]
+  ([{:keys [port store ui-css? halos? conversation-ttl reaper-interval]
+     :or {port 8080 ui-css? true halos? false}}]
    (when @!server
      (stop!))
    (reset! !ui-css? (boolean ui-css?))
+   (reset! !halos?  (boolean halos?))
    (when store
      (reset! !store store)
      (let [restored (store/load-all store)]
@@ -557,4 +598,5 @@
   (reset! !subscriptions {})
   (reset! !store         (store/in-memory-store))
   (reset! !ui-css?       true)
+  (reset! !halos?        false)
   nil)
