@@ -88,9 +88,8 @@ Seaside-style local composition.
   [design v2.1 §13 slice 2 carried-forward]
 
 - [x] **`s/decorate` demo.**
-  No example currently exercises decorations end-to-end; the unit
-  tests do. Add a tiny `with-banner` wrap in `wizard.clj` (or a new
-  `breadcrumb.clj`) so the README can point at a real call site.
+  `breadcrumb.clj` now exercises decorations end-to-end by mounting a
+  `WAPath` / `WATrail`-style wrapper around a base page component.
   [design v2.1 §13 slice 2] [ex:seaside-examples Tier 2 `WAPath`]
 
 ---
@@ -254,24 +253,24 @@ framework.
 
 ---
 
-## 8. Tier-2 demo backlog (no new primitives needed)
+## 8. Tier-2 demos (no new primitives needed)
 
-Adding any of these *first* would surface DX issues for the helpers
-above before they harden.
-After the sweep, the framework helpers they depend on are in place; keep
-these as showcase/demo tasks and add them one at a time when we want
-example coverage, not as justification for more runtime machinery.
+These now ship as showcase coverage for the helpers above. The sweep did
+not add runtime machinery; the only notable convention is that callback
+handles in persisted state should be EDN data (for example a qualified
+symbol) rather than raw function objects.
 
-- [ ] `paginated-list.clj` (`WABatchedList`) — render-callback init
-      arg, pagination state.
-- [ ] `table-report.clj` (`WATableReport`) — column config maps,
+- [x] `paginated_list.clj` (`WABatchedList`) — render-callback init
+      arg, pagination state. The demo passes the row renderer as a
+      qualified symbol so the conversation remains EDN-clean.
+- [x] `table_report.clj` (`WATableReport`) — column config maps,
       click-to-sort.
-- [ ] `tree.clj` (`WATree`) — per-node expansion set, recursive
+- [x] `tree.clj` (`WATree`) — per-node expansion set, recursive
       render.
-- [ ] `breadcrumb.clj` (`WAPath` / `WATrail`) — first real
+- [x] `breadcrumb.clj` (`WAPath` / `WATrail`) — first real
       `s/decorate` end-to-end demo.
-- [ ] `example-browser.clj` (`WAExampleBrowser`) — dynamic component
-      lookup + child swap; doubles as the demo landing page.
+- [x] `example_browser.clj` (`WAExampleBrowser`) — dynamic component
+      lookup + child swap; now doubles as the demo landing page.
 
 ---
 

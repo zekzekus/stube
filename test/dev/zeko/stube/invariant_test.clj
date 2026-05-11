@@ -40,21 +40,33 @@
           (str "no hiccup script nodes in " (.getPath f))))))
 
 (def ^:private example-namespaces
-  '[dev.zeko.stube.examples.calc
+  '[dev.zeko.stube.examples.breadcrumb
+    dev.zeko.stube.examples.calc
+    dev.zeko.stube.examples.calendar
+    dev.zeko.stube.examples.dialogs
+    dev.zeko.stube.examples.example-browser
+    dev.zeko.stube.examples.guess
     dev.zeko.stube.examples.main
     dev.zeko.stube.examples.multicounter
+    dev.zeko.stube.examples.paginated-list
     dev.zeko.stube.examples.seaside-todo
+    dev.zeko.stube.examples.table-report
     dev.zeko.stube.examples.tabs
     dev.zeko.stube.examples.todo
+    dev.zeko.stube.examples.tree
     dev.zeko.stube.examples.wizard])
 
 (def ^:private edn-clean-examples
-  [:demo/index
+  [:demo/example-browser
+   :demo/breadcrumb
    :demo/calc
    :demo/multicounter
+   :demo/paginated-list
    :demo/seaside-todo-root
+   :demo/table-report
    :demo/tabs
    :demo/todo
+   :demo/tree
    :demo/wizard])
 
 (defn- reload-edn-clean-examples! []
@@ -83,16 +95,38 @@
                                       :signals     {}}
                                      event)))))
 
+(defn- dispatch-slot-event [c slot event]
+  (let [iid (get-in (conv/top-instance c) [:instance/children slot])]
+    (binding [render/*cid* "cv-invariant"]
+      (first (kernel/dispatch c (merge {:instance-id iid
+                                        :signals     {}}
+                                       event))))))
+
 (defn- mid-flow [root c]
   (case root
     :demo/calc
     (dispatch-event c {:event :digit :payload "7"})
+
+    :demo/breadcrumb
+    (dispatch-event c {:event :open :payload :table-report})
+
+    :demo/example-browser
+    (dispatch-event c {:event :select :payload "/tree"})
+
+    :demo/paginated-list
+    (dispatch-slot-event c :slot/list {:event :next})
+
+    :demo/table-report
+    (dispatch-slot-event c :slot/report {:event :sort :payload :reviews})
 
     :demo/todo
     (dispatch-event c {:event :edit :payload 1})
 
     :demo/tabs
     (dispatch-event c {:event :tab :payload :notes})
+
+    :demo/tree
+    (dispatch-event c {:event :toggle :payload :node/docs})
 
     ;; Booted state is already mid-flow enough for embedded/static
     ;; examples: children are materialized and the stack is live.

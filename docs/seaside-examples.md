@@ -16,6 +16,16 @@ Examples already in the tree:
 | `multicounter.clj`       | `WAMultiCounter`          | `:children`, `s/render-slot`, morph-by-id |
 | `wizard.clj`             | task with back            | hand-rolled flow, child→parent `::back`   |
 | `seaside_todo.clj`       | HPI tutorial ToDo app     | login/register task, filters, Magritte-like descriptions |
+| `calc.clj`               | calculator demo           | dense structured click routing            |
+| `dialogs.clj`            | `WAYesOrNoDialog` / etc.  | stock call/answer dialog helpers          |
+| `tabs.clj`               | `WASimpleNavigation`      | inactive embedded child preservation      |
+| `calendar.clj`           | `WAMiniCalendar`          | grid rendering, structured cell payloads  |
+| `todo.clj`               | `WATodo`                  | slot-local in-place editing               |
+| `paginated_list.clj`     | `WABatchedList`           | pagination state, EDN-safe render callback |
+| `table_report.clj`       | `WATableReport`           | EDN column maps, click-to-sort            |
+| `tree.clj`               | `WATree`                  | recursive render, expansion set           |
+| `breadcrumb.clj`         | `WAPath` / `WATrail`      | `s/decorate` end-to-end                   |
+| `example_browser.clj`    | `WAExampleBrowser`        | mount/registry lookup, detail child swap  |
 
 ---
 
@@ -125,18 +135,60 @@ because it points at a small DX win or a clearly-scoped follow-up.
 
 ---
 
-## Tier 2 — implementable with current kernel, deferred
+## Tier 2 — implemented with the current kernel
 
-Worth doing once Tier 1 lands and we have feedback on the helpers
-surface. None need new primitives.
+These shipped as a full sweep after the Tier 1 helper surface hardened.
+No new primitive was needed; each demo is ordinary component state,
+structured events, embedding, or decoration.
 
-| seaside class             | demo idea                          | new patterns it would exercise                  |
-|---------------------------|------------------------------------|-------------------------------------------------|
-| `WABatchedList`           | paginated list of N items          | render callback as init arg; pagination state  |
-| `WATableReport`           | sortable column table              | column config maps; click-to-sort header        |
-| `WATree` (class browser)  | expand/collapse tree of namespaces | per-node expansion set; recursive render        |
-| `WAPath` / `WATrail`      | breadcrumb header decoration       | first real use of `s/decorate` in demos         |
-| `WAExampleBrowser`        | menu of all loaded demos           | dynamic component lookup + child swap           |
+### `paginated_list.clj` — Batched list (`WABatchedList`)
+
+* **Pattern**: reusable list component with `:items`, `:page-size`, and
+  a row renderer supplied at init.
+* **Why**: exercises pagination state and Seaside's "render block"
+  shape without adding framework callbacks.
+* **Finding**: raw functions in instance state would break the
+  EDN-clean conversation invariant. The demo passes the row renderer as
+  a qualified symbol and resolves it at render time.
+
+### `table_report.clj` — Sortable report (`WATableReport`)
+
+* **Pattern**: EDN column configuration maps drive labels, value lookup,
+  formatting, alignment, and sortability.
+* **Why**: demonstrates a report-style widget where UI behaviour comes
+  from data, not component-specific branches.
+* **Finding**: structured event payloads are enough for sortable headers:
+  every header sends `[:sort column-id]` to one handler.
+
+### `tree.clj` — Expandable tree (`WATree` / class browser)
+
+* **Pattern**: recursive render over an EDN tree plus an `:expanded`
+  set of node ids.
+* **Why**: first recursive example in the catalogue; useful for spotting
+  lazy-seq/render-slot issues.
+* **Finding**: no parent/child primitive is needed when the tree is pure
+  data owned by one component.
+
+### `breadcrumb.clj` — Breadcrumb trail (`WAPath` / `WATrail`)
+
+* **Pattern**: base page component owns path state and content; a
+  decorated component wraps the base renderer with a breadcrumb header.
+* **Why**: first shipped demo that exercises `s/decorate` end to end.
+* **Finding**: decoration remains just component-map composition. The
+  only care point is DOM ids: the decorated wrapper owns the live
+  instance id, so the inner base render has its root id stripped.
+
+### `example_browser.clj` — Example browser (`WAExampleBrowser`)
+
+* **Pattern**: menu of all shipped demos, one detail child per entry,
+  selected by slot; each detail panel reads `(s/mounts)` and `(s/help
+  flow-id)` at render time.
+* **Why**: replaces the static index with an interactive landing page
+  and exercises dynamic registry/mount introspection from user code.
+* **Finding**: eager detail children are sufficient for the browser. A
+  true "instantiate any flow on demand" preview would be a different
+  problem because task/defflow components need stack `:call`, not
+  structural embedding.
 
 ---
 
@@ -146,15 +198,13 @@ These are the demos that *should* drive whichever slice 4+ we pick up
 first. They are listed in roughly increasing order of how much they
 push the framework.
 
-| seaside class                 | demo            | what's missing in stube                                |
-|-------------------------------|-----------------|--------------------------------------------------------|
-| `WAFileUploadExample`         | file upload     | a non-SSE multipart route; an `[:upload-received]` event hook |
-| `WAClock` / `WATurboCounter`  | live clock      | timer / scheduled-tick effect (`[:after ms event]`)    |
-| `CTCounter` / `CTReport`      | shared counter  | broadcast: "patch this conv from outside its handler"  |
-| `CTChat`                      | multi-user chat | `(s/publish! topic msg)` + per-conv subscription       |
-| `WATodoItemEditor` (faithful) | in-place edit   | `[:call-in-slot]` — embedded call/answer (see todo.clj) |
-| `WASessionProtectedCounter`   | session auth    | binding a conversation to an authenticated session     |
-| `WANavigationBar` introspect  | reflective nav  | a registry-introspection helper for "list root mounts" |
+| seaside class                | demo            | what's missing in stube                                |
+|------------------------------|-----------------|--------------------------------------------------------|
+| `WAFileUploadExample`        | file upload     | a non-SSE multipart route; an `[:upload-received]` event hook |
+| `WAClock` / `WATurboCounter` | live clock      | timer / scheduled-tick effect (`[:after ms event]`)    |
+| `CTCounter` / `CTReport`     | shared counter  | broadcast: "patch this conv from outside its handler"  |
+| `CTChat`                     | multi-user chat | `(s/publish! topic msg)` + per-conv subscription       |
+| `WASessionProtectedCounter`  | session auth    | binding a conversation to an authenticated session     |
 
 ---
 

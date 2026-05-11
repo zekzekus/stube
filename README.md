@@ -65,7 +65,7 @@ This project assumes the development environment provided by `flake.nix`.
 # enter dev shell
 nix develop
 
-# run the bundled example
+# run the bundled examples and visit http://localhost:8080/
 clojure -M:examples
 
 # run tests
