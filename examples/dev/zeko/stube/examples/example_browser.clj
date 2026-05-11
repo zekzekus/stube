@@ -16,11 +16,16 @@
             [dev.zeko.stube.examples.breadcrumb]
             [dev.zeko.stube.examples.calc]
             [dev.zeko.stube.examples.calendar]
+            [dev.zeko.stube.examples.chat]
+            [dev.zeko.stube.examples.clock]
             [dev.zeko.stube.examples.dialogs]
+            [dev.zeko.stube.examples.file-upload]
             [dev.zeko.stube.examples.guess]
             [dev.zeko.stube.examples.multicounter]
             [dev.zeko.stube.examples.paginated-list]
+            [dev.zeko.stube.examples.protected-counter]
             [dev.zeko.stube.examples.seaside-todo]
+            [dev.zeko.stube.examples.shared-counter]
             [dev.zeko.stube.examples.table-report]
             [dev.zeko.stube.examples.tabs]
             [dev.zeko.stube.examples.todo]
@@ -58,11 +63,21 @@
     :blurb "WAPath/WATrail: a base page wrapped with `s/decorate`."}
    {:path "/example-browser" :title "Example browser"          :group "Tier 2"
     :blurb "WAExampleBrowser: dynamic mount/registry lookup plus detail child swapping."}
+   {:path "/file-upload"    :title "File upload"               :group "Tier 3"
+    :blurb "WAFileUploadExample: multipart upload route dispatching `:upload-received`."}
+   {:path "/clock"          :title "Clock / turbo counter"     :group "Tier 3"
+    :blurb "WAClock and WATurboCounter: cid-scoped scheduled events via `s/after`."}
+   {:path "/shared-counter" :title "Shared counter / report"   :group "Tier 3"
+    :blurb "CTCounter and CTReport: shared app state plus topic subscriptions."}
+   {:path "/chat"           :title "Chat"                      :group "Tier 3"
+    :blurb "CTChat: multi-user publish/subscribe over live conversations."}
+   {:path "/protected-counter" :title "Protected counter"      :group "Tier 3"
+    :blurb "WASessionProtectedCounter: app login composed with cid owner cookies."}
    {:path "/seaside-todo"   :title "Seaside book ToDo"         :group "Book app"
     :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}])
 
 (def ^:private group-order
-  ["Foundation" "Tier 1" "Tier 2" "Book app"])
+  ["Foundation" "Tier 1" "Tier 2" "Tier 3" "Book app"])
 
 (defn- slot-key [path]
   (keyword "slot" (-> path

@@ -26,6 +26,11 @@ Examples already in the tree:
 | `tree.clj`               | `WATree`                  | recursive render, expansion set           |
 | `breadcrumb.clj`         | `WAPath` / `WATrail`      | `s/decorate` end-to-end                   |
 | `example_browser.clj`    | `WAExampleBrowser`        | mount/registry lookup, detail child swap  |
+| `file_upload.clj`        | `WAFileUploadExample`     | multipart route, upload event             |
+| `clock.clj`              | `WAClock` / `WATurboCounter` | scheduled events, timer ownership      |
+| `shared_counter.clj`     | `CTCounter` / `CTReport`  | pub/sub delivery to live conversations    |
+| `chat.clj`               | `CTChat`                  | multi-user topic updates                  |
+| `protected_counter.clj`  | `WASessionProtectedCounter` | app login + cid owner cookie            |
 
 ---
 
@@ -192,19 +197,73 @@ structured events, embedding, or decoration.
 
 ---
 
-## Tier 3 — needs new framework functionality
+## Tier 3 — implemented with small framework hooks
 
-These are the demos that *should* drive whichever slice 4+ we pick up
-first. They are listed in roughly increasing order of how much they
-push the framework.
+These demos drove the first async / non-SSE surface.  The design rule was
+to keep conversations cid/iid-scoped and EDN-clean: timers deliver normal
+events, topic publications deliver normal events, and uploads are
+summarised as data before handlers store anything.
 
-| seaside class                | demo            | what's missing in stube                                |
-|------------------------------|-----------------|--------------------------------------------------------|
-| `WAFileUploadExample`        | file upload     | a non-SSE multipart route; an `[:upload-received]` event hook |
-| `WAClock` / `WATurboCounter` | live clock      | timer / scheduled-tick effect (`[:after ms event]`)    |
-| `CTCounter` / `CTReport`     | shared counter  | broadcast: "patch this conv from outside its handler"  |
-| `CTChat`                     | multi-user chat | `(s/publish! topic msg)` + per-conv subscription       |
-| `WASessionProtectedCounter`  | session auth    | binding a conversation to an authenticated session     |
+For the multi-tab demos, "open the same URL twice" means the standalone
+mount URL (`/chat`, `/shared-counter`).  stube intentionally mints a
+fresh conversation id for each visit; the sharing happens through
+example-level app state plus topic delivery, not by reusing a Seaside-like
+session URL.
+
+### `file_upload.clj` — File upload (`WAFileUploadExample`)
+
+* **Pattern**: a normal HTML multipart form posts to
+  `/stube/upload/:cid/:iid`, targeted at a hidden iframe so the Datastar
+  shell does not navigate away.
+* **Framework hook**: `(s/upload-attrs self)` and `(s/upload-frame self)`
+  render the zero-JS form plumbing.  The HTTP layer parses multipart
+  params and dispatches `:upload-received` to the target instance.
+* **Finding**: upload payloads must be EDN summaries, not raw
+  `java.io.File` values.  The event carries filename/content-type/size
+  and a temporary path string for immediate handler use; the demo stores
+  only safe summaries and deletes temp files via `:io`.
+
+### `clock.clj` — Clock / turbo counter (`WAClock`, `WATurboCounter`)
+
+* **Pattern**: component `:start` emits `(s/after ms event)`; each tick
+  updates state and schedules the next tick if still running.
+* **Framework hook**: `[:after delay-ms route-event]`, re-exported as
+  `(s/after delay-ms route-event)`.  The server binds a scheduler while
+  folding kernel effects; scheduled events are cid/iid-scoped and are
+  cancelled or dropped when the conversation/instance disappears.
+* **Finding**: restored or reattached conversations can accidentally
+  double-schedule timers.  The demo includes a generation payload in
+  each tick so stale timer events are ignored.
+
+### `shared_counter.clj` — Shared counter/report (`CTCounter`, `CTReport`)
+
+* **Pattern**: shared application state lives outside conversations;
+  each conversation subscribes to updates and re-renders when another
+  tab changes the shared value.
+* **Framework hook**: `(s/subscribe topic event)` / `(s/unsubscribe
+  topic)` effects plus `(s/publish! topic msg)`.  Publication is
+  asynchronous and dispatches `event` with `msg` as `:payload` to every
+  live subscriber.
+* **Finding**: stube should not own the shared database.  The framework
+  only owns topic delivery back into live conversations.
+
+### `chat.clj` — Multi-user chat (`CTChat`)
+
+* **Pattern**: same pub/sub hook as shared counter, with append-only
+  shared message data and duplicate-safe local delivery.
+* **Framework hook**: no new hook beyond topic subscriptions.  The chat
+  example is the backpressure/auth boundary reminder: production apps
+  still need their own topic policy and durable message store.
+
+### `protected_counter.clj` — Session-protected counter
+(`WASessionProtectedCounter`)
+
+* **Pattern**: app-level login gate around a counter.
+* **Framework hook**: no new auth primitive.  Slice 4 already binds cids
+  to the browser's `stube_sid` owner cookie and rejects cross-session
+  POSTs.  The authenticated app principal is ordinary conversation
+  state in this example; host applications with real auth should pass or
+  verify principals at their own boundary.
 
 ---
 

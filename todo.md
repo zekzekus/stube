@@ -215,36 +215,42 @@ Already scoped in v2.1 §13 slice 4; listed here so nothing is lost.
 
 ---
 
-## 7. Multi-user & async (drives a future slice)
+## 7. Multi-user & async (Tier-3 sweep)
 
-These are the items that *should* drive whichever slice we pick after
-slice 4. Listed in roughly increasing order of how much they push the
-framework.
+These now ship as the Tier-3 example sweep. The runtime additions are
+deliberately small: scheduled events, topic subscriptions, and a
+multipart upload side route. Shared app state, durable chat storage, and
+application auth policy stay in user code.
 
-- [ ] **`[:after ms event]` timer effect.** Live clocks, debounced
+- [x] **`[:after ms event]` timer effect.** Live clocks, debounced
       submits, polling fallbacks. (`WAClock` / `WATurboCounter`.)
-      Deferred until the first async example chooses cancellation and
-      ownership semantics; a timer must not outlive its conversation or
-      surprise another tab for the same user.
+      Landed as `(s/after delay-ms route-event)`. Timers are cid/iid
+      scoped; ending a conversation cancels outstanding futures, and a
+      missing instance makes delivery a no-op. The clock demo carries a
+      generation payload so restored/restarted timers ignore stale ticks.
       [ex:seaside-examples Tier 3]
-- [ ] **`(s/publish! topic msg)` + per-conv subscription.** Server-push
+- [x] **`(s/publish! topic msg)` + per-conv subscription.** Server-push
       for "patch this conv from outside its handler". Required for
       `CTCounter`, `CTReport`, `CTChat` ports.
-      Deferred until a multi-user example drives topic lifetime,
-      backpressure, and authorization. The current SSE path stays
-      single-conversation and handler-originated.
+      Landed as `(s/subscribe topic event)` / `(s/unsubscribe topic)`
+      effects plus asynchronous `(s/publish! topic msg)`. Topic policy,
+      backpressure, and durable message storage remain application
+      concerns; the framework only delivers payloads back into live
+      cid/iid pairs.
       [ex:seaside-examples Tier 3]
-- [ ] **File upload.** Non-SSE multipart route plus an
+- [x] **File upload.** Non-SSE multipart route plus an
       `[:upload-received]` hook routed to the active instance.
-      Deferred until an upload example fixes the public API; adding a
-      multipart side route now would widen the transport before the
-      userspace shape is clear.
+      Landed as `/stube/upload/:cid/:iid` with `(s/upload-attrs self)`
+      and `(s/upload-frame self)`. The route parses multipart data and
+      dispatches `:upload-received` with EDN-safe file summaries.
       [ex:seaside-examples Tier 3 `WAFileUploadExample`]
-- [ ] **Session auth binding.** `WASessionProtectedCounter`-style;
+- [x] **Session auth binding.** `WASessionProtectedCounter`-style;
       bind a conversation to an authenticated session.
-      Deferred separately from slice-4 cookie ownership. The framework
-      now prevents cross-session cid use; application-auth binding
-      should compose with the host app's auth model, not invent one.
+      Decision: no new auth primitive. Slice-4 cookie ownership already
+      binds a cid to the browser session and rejects cross-session POSTs.
+      `protected_counter.clj` demonstrates app-level login as ordinary
+      conversation state; host apps should compose their own principal
+      model at the boundary.
       [ex:seaside-examples Tier 3]
 - [x] **Registry introspection.** `(s/mounts)` listing root mounts,
       so a `WANavigationBar`-style index page is two lines. Landed as

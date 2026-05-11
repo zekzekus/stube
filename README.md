@@ -4,7 +4,8 @@ A Clojure component framework over [Datastar](https://data-star.dev/) — Seasid
 callable components, modelled as plain values, evaluated by a small effect kernel.
 
 > **Status:** early, but the core slices are in place: `defflow`, embedded
-> children, history/back, persistence, stock UI helpers, and basic operations.
+> children, history/back, persistence, stock UI helpers, basic operations,
+> timers, topic delivery, and multipart uploads.
 > See [`docs/v2_1.md`](./docs/v2_1.md) for the current design notes.
 
 ## Highlights
@@ -17,6 +18,8 @@ callable components, modelled as plain values, evaluated by a small effect kerne
   the Datastar runtime.
 - **Persistent history** — every dispatch snapshots the previous conversation
   to `:conv/history`. The back button is one line (slice 3).
+- **Small async surface** — scheduled events, live topic delivery, and
+  zero-JS multipart uploads route back into normal component handlers.
 
 ## Quick look
 
@@ -65,7 +68,7 @@ This project assumes the development environment provided by `flake.nix`.
 # enter dev shell
 nix develop
 
-# run the bundled examples and visit http://localhost:8080/
+# run the bundled example browser, including Tier 3 demos, then visit http://localhost:8080/
 clojure -M:examples
 
 # run tests
@@ -93,7 +96,7 @@ without starting a server.
 | `src/stube/registry.clj`     | component registry                               |
 | `src/stube/render.clj`       | hiccup → HTML, Datastar attribute helpers        |
 | `src/stube/ui.clj`           | stock dialogs and default UI classes             |
-| `src/stube/http.clj`         | ring handlers (`/`, `/conv/:cid/sse`, `…/event`) |
+| `src/stube/http.clj`         | ring handlers (`/`, SSE, event, back, upload)   |
 | `src/stube/server.clj`       | http-kit lifecycle, in-memory stores             |
 | `examples/`                   | runnable demos                                  |
 | `docs/v2.md`, `docs/v2_1.md`  | design notes and current revision               |

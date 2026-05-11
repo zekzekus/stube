@@ -2,13 +2,15 @@
   "All the side-effecting state — conversations, SSE generators, mounted
   flows — and the http-kit lifecycle.
 
-  Three small atoms hold everything:
+  A handful of small atoms hold the side-effecting runtime state:
 
   | atom               | shape                | purpose                                    |
   |--------------------|----------------------|--------------------------------------------|
   | `!conversations`   | `{cid → conv}`       | the live conversation values               |
   | `!sse-sessions`    | `{cid → sse-gen}`    | the open browser connections               |
   | `!mounts`          | `{path → flow-id}`   | the routes registered with [[mount!]]      |
+  | `!timers`          | `{cid → #{future}}`  | scheduled Tier-3 event deliveries          |
+  | `!subscriptions`   | `{topic → {[cid iid] event}}` | live pub/sub routing              |
 
   Plus `!pending-flows` (`{cid → flow-id}`), used as a one-shot baton
   between the request that minted the cid and the first SSE connect that
@@ -17,11 +19,15 @@
   All the http handlers live in [[dev.zeko.stube.http]]; this namespace only
   exposes the functions they need, so the http layer never reaches into
   raw atoms."
-  (:require [clojure.pprint     :as pprint]
-            [org.httpkit.server :as http-kit]
-            [reitit.ring        :as ring]
-            [dev.zeko.stube.conversation :as conv]
-            [dev.zeko.stube.store        :as store])
+  (:require [charred.api                         :as json]
+            [clojure.pprint                      :as pprint]
+            [org.httpkit.server                  :as http-kit]
+            [reitit.ring                         :as ring]
+            [starfederation.datastar.clojure.api :as d*]
+            [dev.zeko.stube.conversation         :as conv]
+            [dev.zeko.stube.kernel               :as kernel]
+            [dev.zeko.stube.render               :as render]
+            [dev.zeko.stube.store                :as store])
   (:import (java.time Duration Instant)))
 
 ;; ---------------------------------------------------------------------------
@@ -35,6 +41,8 @@
 (defonce ^:private !server        (atom nil))
 (defonce ^:private !ui-css?       (atom true))
 (defonce ^:private !reaper-stop   (atom nil))
+(defonce ^:private !timers        (atom {}))
+(defonce ^:private !subscriptions (atom {}))
 
 ;; Slice 3 — the configured persistence backend.  Defaults to a no-op
 ;; in-memory store, so existing tests and demos keep their slice-0
@@ -46,6 +54,45 @@
   http layer never needs to call it."
   []
   @!store)
+
+(declare dispatch! schedule-event! subscribe! unsubscribe!)
+
+(defn with-kernel-bindings
+  "Run `f` with the render cid and async hooks the kernel needs while
+  folding effects for `cid`."
+  [cid f]
+  (binding [render/*cid* cid
+            kernel/*schedule-event!* schedule-event!
+            kernel/*subscribe!* subscribe!
+            kernel/*unsubscribe!* unsubscribe!]
+    (f)))
+
+(defn- cancel-timers! [cid]
+  (doseq [f (get @!timers cid)]
+    (future-cancel f))
+  (swap! !timers dissoc cid)
+  nil)
+
+(defn- forget-timer! [cid f]
+  (swap! !timers update cid
+         (fn [fs]
+           (let [fs' (disj (or fs #{}) f)]
+             (when (seq fs') fs'))))
+  nil)
+
+(defn- remove-subscriptions-for-cid! [cid]
+  (swap! !subscriptions
+         (fn [topics]
+           (into {}
+                 (keep (fn [[topic subscribers]]
+                         (let [subscribers' (into {}
+                                                  (remove (fn [[[sub-cid _iid] _event]]
+                                                            (= sub-cid cid)))
+                                                  subscribers)]
+                           (when (seq subscribers')
+                             [topic subscribers']))))
+                 topics)))
+  nil)
 
 ;; ---------------------------------------------------------------------------
 ;; Conversation helpers
@@ -110,6 +157,8 @@
 (defn end-conversation!
   "Drop a conversation, any SSE binding, and the persisted copy."
   [cid]
+  (cancel-timers! cid)
+  (remove-subscriptions-for-cid! cid)
   (swap! !conversations dissoc cid)
   (swap! !sse-sessions  dissoc cid)
   (swap! !pending-flows dissoc cid)
@@ -186,6 +235,166 @@
 (defn sse              [cid]         (get @!sse-sessions cid))
 
 ;; ---------------------------------------------------------------------------
+;; Pushing fragments and async dispatch
+;; ---------------------------------------------------------------------------
+
+(def ^:private write-json
+  (json/write-json-fn {}))
+
+(defn- json-str ^String [m]
+  (let [w (java.io.StringWriter.)]
+    (write-json w m)
+    (str w)))
+
+(def ^:private patch-modes
+  {:outer   d*/pm-outer
+   :inner   d*/pm-inner
+   :remove  d*/pm-remove
+   :prepend d*/pm-prepend
+   :append  d*/pm-append
+   :before  d*/pm-before
+   :after   d*/pm-after
+   :replace d*/pm-replace})
+
+(defn- elements-opts [{:keys [selector patch-mode]}]
+  (cond-> {}
+    selector   (assoc d*/selector selector)
+    patch-mode (assoc d*/patch-mode (or (patch-modes patch-mode)
+                                        (throw (ex-info "Unknown patch-mode"
+                                                        {:patch-mode patch-mode}))))))
+
+(defn- push-fragment! [sse-gen {:fragment/keys [kind html data script opts]}]
+  (case kind
+    :elements (d*/patch-elements! sse-gen html (elements-opts opts))
+    :signals  (d*/patch-signals!  sse-gen (json-str data) (or opts {}))
+    :script   (d*/execute-script! sse-gen script (or opts {}))
+    :close    (d*/close-sse! sse-gen)))
+
+(defn push-fragments!
+  "Push kernel fragments to an open Datastar SSE generator."
+  [sse-gen fragments]
+  (when (seq fragments)
+    (d*/lock-sse! sse-gen
+      (doseq [f fragments]
+        (push-fragment! sse-gen f)))))
+
+(def ^:private no-payload ::no-payload)
+
+(defn- route-event->event-map [iid route-event]
+  (let [{:keys [event payload]}
+        (if (vector? route-event)
+          (let [[event & payloads] route-event]
+            {:event event
+             :payload (case (count payloads)
+                        0 no-payload
+                        1 (first payloads)
+                        (vec payloads))})
+          {:event route-event
+           :payload no-payload})]
+    (cond-> {:instance-id iid
+             :event       event
+             :signals     {}}
+      (not= no-payload payload) (assoc :payload payload))))
+
+(defn- published-event-map [iid route-event payload]
+  {:instance-id iid
+   :event       (if (vector? route-event) (first route-event) route-event)
+   :payload     payload
+   :signals     {}})
+
+(defn run-effects!
+  "Fold `effects` into conversation `cid`, push any fragments, and end
+  the conversation if the kernel marks it ended."
+  [cid effects]
+  (when (conversation cid)
+    (let [[conv' frags]
+          (with-kernel-bindings
+            cid
+            #(swap-conv! cid (fn [c] (kernel/run-effects c effects))))]
+      (when-let [sse-gen (sse cid)]
+        (push-fragments! sse-gen frags))
+      (when (:conv/ended? conv')
+        (end-conversation! cid))
+      [conv' frags])))
+
+(defn dispatch!
+  "Dispatch one event into conversation `cid` outside the request path.
+  Used by timers, uploads, and publish/subscribe delivery.  Stale cid/iid
+  pairs are ignored."
+  [cid {:keys [instance-id] :as event}]
+  (when-let [live (conversation cid)]
+    (when (and (not (:conv/ended? live))
+               (conv/instance live instance-id))
+      (let [[conv' frags]
+            (with-kernel-bindings
+              cid
+              #(swap-conv! cid (fn [c] (kernel/dispatch c event))))]
+        (when-let [sse-gen (sse cid)]
+          (push-fragments! sse-gen frags))
+        (when (:conv/ended? conv')
+          (end-conversation! cid))
+        [conv' frags]))))
+
+(defn schedule-event!
+  "Schedule a future event for a cid/iid.  The future is cancelled when
+  the conversation ends; if the instance disappears first, delivery is a
+  no-op."
+  [{:keys [cid instance-id delay-ms event]}]
+  (let [!self (atom nil)
+        f     (future
+                (try
+                  (Thread/sleep (max 0 (long delay-ms)))
+                  (dispatch! cid (route-event->event-map instance-id event))
+                  (catch InterruptedException _ nil)
+                  (catch Throwable t
+                    (binding [*out* *err*]
+                      (println "dev.zeko.stube.server: scheduled event threw —" (ex-message t))))
+                  (finally
+                    (when-let [self @!self]
+                      (forget-timer! cid self)))))]
+    (reset! !self f)
+    (swap! !timers update cid (fnil conj #{}) f)
+    f))
+
+(defn subscribe!
+  "Subscribe cid/iid to `topic`; published values arrive as `event`."
+  [{:keys [cid instance-id topic event]}]
+  (swap! !subscriptions assoc-in [topic [cid instance-id]] event)
+  nil)
+
+(defn unsubscribe!
+  "Remove one cid/iid subscription.  If `topic` is nil, remove all of the
+  instance's subscriptions."
+  [{:keys [cid instance-id topic]}]
+  (let [sub-key [cid instance-id]]
+    (swap! !subscriptions
+           (fn [topics]
+             (into {}
+                   (keep (fn [[t subscribers]]
+                           (let [subscribers' (if (or (nil? topic) (= topic t))
+                                                (dissoc subscribers sub-key)
+                                                subscribers)]
+                             (when (seq subscribers')
+                               [t subscribers']))))
+                   topics))))
+  nil)
+
+(defn subscriptions
+  "Snapshot of topic subscriptions, for tests/inspection."
+  []
+  @!subscriptions)
+
+(defn publish!
+  "Asynchronously deliver `msg` to every live subscriber of `topic`.
+  Returns the number of subscribers targeted."
+  [topic msg]
+  (let [targets (get @!subscriptions topic)]
+    (doseq [[[cid iid] route-event] targets]
+      (future
+        (dispatch! cid (published-event-map iid route-event msg))))
+    (count targets)))
+
+;; ---------------------------------------------------------------------------
 ;; Mounting flows
 ;; ---------------------------------------------------------------------------
 
@@ -254,15 +463,19 @@
         h     (requiring-resolve 'dev.zeko.stube.http/shell-handler)
         sse-h (requiring-resolve 'dev.zeko.stube.http/sse-handler)
         ev-h  (requiring-resolve 'dev.zeko.stube.http/event-handler)
+        up-h  (requiring-resolve 'dev.zeko.stube.http/upload-handler)
         bk-h  (requiring-resolve 'dev.zeko.stube.http/back-handler)
         css-h (requiring-resolve 'dev.zeko.stube.http/ui-css-handler)]
     (ring/router
       (into [["/stube/ui.css"             {:get  {:handler @css-h}}]
              ["/conv/:cid/sse"            {:get  {:handler @sse-h}}]
              ["/conv/:cid/back"           {:post {:handler @bk-h}}]
+             ["/stube/upload/:cid/:iid"   {:post {:handler @up-h}}]
              ;; The back route is listed *before* the generic
              ;; `:iid/:event` route so reitit picks the more specific
-             ;; one first.
+             ;; one first. Uploads live under `/stube/upload` instead of
+             ;; `/conv/:cid/:iid/upload`; otherwise Reitit sees a static
+             ;; `upload` segment conflicting with the generic `:event`.
              ["/conv/:cid/:iid/:event"    {:post {:handler @ev-h}}]]
             (for [[path flow-id] @!mounts]
               [path {:get {:handler (@h flow-id)}}])))))
@@ -335,10 +548,13 @@
   "Wipe all in-memory state.  Intended for tests and REPL iteration."
   []
   (stop!)
+  (doseq [cid (keys @!timers)]
+    (cancel-timers! cid))
   (reset! !conversations {})
   (reset! !sse-sessions  {})
   (reset! !pending-flows {})
   (reset! !mounts        (sorted-map))
+  (reset! !subscriptions {})
   (reset! !store         (store/in-memory-store))
   (reset! !ui-css?       true)
   nil)

@@ -101,6 +101,52 @@
   []
   (str "/conv/" (require-cid!) "/back"))
 
+(defn upload-url
+  "URL a multipart upload form POSTs to for `self`.
+
+  Uploads intentionally do not use Datastar's signal POST body: browser
+  file inputs need a normal `multipart/form-data` request.  The HTTP
+  layer turns that request back into a regular `:upload-received` event
+  for this instance and pushes any resulting fragments over the already
+  open SSE stream."
+  [self]
+  (let [iid (or (:instance/id self)
+                (throw (ex-info "dev.zeko.stube.render/upload-url requires an instance map"
+                                {:got self})))]
+    (str "/stube/upload/" (require-cid!) "/" iid)))
+
+(defn upload-target
+  "Stable hidden iframe target name for upload forms owned by `self`."
+  [self]
+  (let [iid (or (:instance/id self)
+                (throw (ex-info "dev.zeko.stube.render/upload-target requires an instance map"
+                                {:got self})))]
+    (str "stube-upload-" iid)))
+
+(defn upload-attrs
+  "Return form attributes for a zero-JS multipart upload.
+
+      [:form (s/upload-attrs self)
+       [:input {:type \"file\" :name \"file\"}]
+       [:button \"Upload\"]]
+      (s/upload-frame self)
+
+  The hidden iframe target prevents the browser from navigating away from
+  the Datastar shell while the server handles the multipart POST."
+  [self]
+  {:method  "post"
+   :action  (upload-url self)
+   :enctype "multipart/form-data"
+   :target  (upload-target self)})
+
+(defn upload-frame
+  "Hidden iframe target used by [[upload-attrs]]."
+  [self]
+  [:iframe {:name   (upload-target self)
+            :title  "stube upload target"
+            :hidden true
+            :style  "display:none; width:0; height:0; border:0;"}])
+
 (defn back-button
   "Return a small Hiccup button wired to the conversation-level `[:back]`
   effect.

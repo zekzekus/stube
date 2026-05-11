@@ -112,6 +112,8 @@
 (def ^{:doc "See [[dev.zeko.stube.render/local-signal]]."} local-signal render/local-signal)
 (def ^{:doc "See [[dev.zeko.stube.render/local-bind]]."}   local-bind   render/local-bind)
 (def ^{:doc "See [[dev.zeko.stube.render/back-button]]."}  back-button  render/back-button)
+(def ^{:doc "See [[dev.zeko.stube.render/upload-attrs]]."} upload-attrs render/upload-attrs)
+(def ^{:doc "See [[dev.zeko.stube.render/upload-frame]]."} upload-frame render/upload-frame)
 (def ^{:doc "See [[dev.zeko.stube.render/render-slot]]."} render-slot render/render-slot)
 
 (def ^{:doc "Sentinel returned by cancellable stock UI components."}
@@ -201,6 +203,40 @@
 
 (def ^{:doc "See [[dev.zeko.stube.store/in-memory-store]]."}  in-memory-store store/in-memory-store)
 (def ^{:doc "See [[dev.zeko.stube.store/file-store]]."}        file-store      store/file-store)
+
+;; ---------------------------------------------------------------------------
+;; Async / publish-subscribe (Tier 3)
+;; ---------------------------------------------------------------------------
+
+(defn after
+  "Effect: dispatch `route-event` to the current instance after `delay-ms`.
+
+      [self [(s/after 1000 :tick)]]
+
+  If the conversation or instance is gone when the timer fires, the event
+  is dropped.  `route-event` accepts the same keyword/vector shape as
+  `(s/on self :click :as route-event)`."
+  [delay-ms route-event]
+  [:after delay-ms route-event])
+
+(defn subscribe
+  "Effect: subscribe the current instance to `topic`.
+
+  Published messages arrive as `route-event` with the published value in
+  `:payload`.  Re-emit this from `:wakeup` for components that should
+  resubscribe after crash-resume."
+  [topic route-event]
+  [:subscribe topic route-event])
+
+(defn unsubscribe
+  "Effect: remove this instance's topic subscription(s)."
+  ([] [:unsubscribe])
+  ([topic] [:unsubscribe topic]))
+
+(def ^{:doc "Publish `msg` to every live instance subscribed to `topic`.
+  Delivery is asynchronous and cid/iid-scoped; stale subscribers are
+  ignored.  Returns the number of subscribers targeted."}
+  publish! server/publish!)
 
 ;; ---------------------------------------------------------------------------
 ;; Linear flows (slice 1)

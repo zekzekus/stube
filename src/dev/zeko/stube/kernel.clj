@@ -38,6 +38,9 @@
       [:patch-signals <map>]        push a Datastar signal patch
       [:execute-script <js>]        run literal JS in the browser
       [:io <fn>]                    call `(fn)` off-thread (fire-and-forget)
+      [:after ms event]             schedule a future event for this instance
+      [:subscribe topic event]      subscribe this instance to published messages
+      [:unsubscribe topic?]         remove this instance's topic subscription(s)
       [:back]                       restore the previous conversation
                                     from `:conv/history` (slice 3)
       [:end <value>]                terminate the conversation
@@ -53,11 +56,12 @@
       :stop   (fn [self] [self' effects])
       :wakeup (fn [self] [self' effects])
 
-  …which the kernel runs once immediately after instantiation.  This
-  lets \"task\" components (a wizard that exists only to sequence
-  others) launch their first `:call` without needing a synthetic user
-  event.  `:stop` runs just before a frame/subtree is removed; `:wakeup`
-  runs when a persisted or history-restored frame becomes live again."
+  `:start` runs once immediately after instantiation for both stack
+  frames and embedded children, which lets \"task\" components launch
+  their first `:call` without a synthetic user event and lets widgets
+  subscribe or schedule timers.  `:stop` runs just before a frame/subtree
+  is removed; `:wakeup` runs when a persisted or history-restored frame
+  becomes live again."
   (:require [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]))
@@ -134,6 +138,20 @@
 (defn- effect-origin [conv]
   (or *effect-iid* (conv/top-id conv)))
 
+(def ^:dynamic *schedule-event!*
+  "Optional side-effect hook bound by the server while folding effects.
+  The kernel stays ignorant of threads and SSE; it only describes the
+  delayed event that should be sent later."
+  nil)
+
+(def ^:dynamic *subscribe!*
+  "Optional side-effect hook bound by the server for `[:subscribe …]`."
+  nil)
+
+(def ^:dynamic *unsubscribe!*
+  "Optional side-effect hook bound by the server for `[:unsubscribe …]`."
+  nil)
+
 (defn- render-instance
   "Render `iid` with explicit Datastar patch `opts`, mark it and its
   rendered descendants as present in the DOM, and return `[conv' frag]`."
@@ -193,6 +211,32 @@
     (and (vector? result) (= 2 (count result)) (map? (first result))) result
     :else [self result]))
 
+(defn- run-start-hook
+  "Run `:start` for `iid` if present, without rendering the instance.
+  Callers decide which newly-started frame should be rendered; embedded
+  children usually start only to subscribe or schedule timers."
+  [conv iid]
+  (if-let [inst (conv/instance conv iid)]
+    (let [cdef (registry/lookup! (:instance/type inst))]
+      (if-let [start-fn (:start cdef)]
+        (let [[inst' fx] (lifecycle-pair inst (start-fn inst))
+              inst'      (conv/preserve-meta inst inst')
+              conv'      (conv/put-instance conv inst')
+              [conv'' frags] (binding [*effect-iid* iid]
+                                (run-effects conv' fx))]
+          [conv'' frags])
+        [conv []]))
+    [conv []]))
+
+(defn- run-start-hooks
+  "Run `:start` for each iid in order, collecting fragments."
+  [conv iids]
+  (reduce (fn [[c frags] iid]
+            (let [[c' more] (run-start-hook c iid)]
+              [c' (into frags more)]))
+          [conv []]
+          iids))
+
 (defn- run-stop-hooks
   "Run `:stop` for the instance ids, preserving any emitted fragments.
   The instances are still present while hooks run; callers remove them
@@ -226,13 +270,22 @@
         [conv []]))
     [conv []]))
 
+(defn- run-wakeup-hooks
+  "Run `:wakeup` for each iid in order, collecting fragments."
+  [conv iids]
+  (reduce (fn [[c frags] iid]
+            (let [[c' more] (wakeup-frame c iid)]
+              [c' (into frags more)]))
+          [conv []]
+          iids))
+
 (defn resume-top
   "Run `:wakeup` for the current top frame and render it as a restored
   frame.  Used by the http layer when a persisted conversation reattaches."
   [conv]
   (if-let [iid (conv/top-id conv)]
     (let [conv'          (assoc-in conv [:conv/instances iid :instance/rendered?] false)
-          [conv'' wake]  (wakeup-frame conv' iid)
+          [conv'' wake]  (run-wakeup-hooks conv' (conv/descendant-ids conv' iid))
           [conv''' frag] (render-frame conv'' iid)]
       [conv''' (conj (vec wake) frag)])
     [conv []]))
@@ -262,37 +315,30 @@
                       (conv/push-instance inst)
                       (conv/put-many descendants))
         iid       (:instance/id inst)]
-    (if-let [start-fn (:start cdef)]
-      ;; "Task" components carry a `:start` hook that runs once on
-      ;; instantiation.  This is what makes hand-rolled flows (slice 0)
-      ;; readable: the wizard can immediately delegate without waiting
-      ;; for a synthetic user event.
-      (let [[inst' fx]   (start-fn inst)
-            inst'        (conv/preserve-meta inst inst')
-            conv''       (conv/put-instance conv' inst')
-            [conv''' fr] (binding [*effect-iid* iid]
-                            (run-effects conv'' fx))]
-        ;; Three outcomes after `:start`:
-        ;;  1. it produced HTML directly (e.g. via `:call`-ing a child);
-        ;;     we don't add a placeholder render on top.
-        ;;  2. it `:answer`-ed or `:end`-ed and the frame is gone;
-        ;;     there is nothing here to render.  This is the common
-        ;;     `defflow` case where the body had zero `await`s and
-        ;;     completed synchronously.
-        ;;  3. the frame is still here with no HTML yet; render the
-        ;;     placeholder so the page sees *something*.
-        (cond
-          (some #(= :elements (:fragment/kind %)) fr)
-          [conv''' fr]
+    ;; `:start` runs for the whole instantiated subtree.  Stack/task
+    ;; components still get the old behaviour, while embedded children can
+    ;; subscribe or schedule timers as soon as their parent is booted.
+    (let [[conv'' fr] (run-start-hooks conv'
+                                       (into [iid] (map :instance/id descendants)))]
+      ;; Three outcomes after `:start`:
+      ;;  1. it produced HTML directly (e.g. via `:call`-ing a child);
+      ;;     we don't add a placeholder render on top.
+      ;;  2. it `:answer`-ed or `:end`-ed and the frame is gone;
+      ;;     there is nothing here to render.  This is the common
+      ;;     `defflow` case where the body had zero `await`s and
+      ;;     completed synchronously.
+      ;;  3. the frame is still here with no HTML yet; render the
+      ;;     placeholder so the page sees *something*.
+      (cond
+        (some #(= :elements (:fragment/kind %)) fr)
+        [conv'' fr]
 
-          (nil? (conv/instance conv''' iid))
-          [conv''' fr]
+        (nil? (conv/instance conv'' iid))
+        [conv'' fr]
 
-          :else
-          (let [[c f] (render-frame conv''' iid)]
-            [c (conj (vec fr) f)])))
-      (let [[conv'' frag] (render-frame conv' iid)]
-        [conv'' [frag]]))))
+        :else
+        (let [[c f] (render-frame conv'' iid)]
+          [c (conj (vec fr) f)])))))
 
 (defn- render-slot-overlay
   "Render the child currently occupying `slot` after a `:call-in-slot`.
@@ -326,24 +372,18 @@
                       (conv/set-child-slot parent-id slot iid)
                       (conv/put-instance inst)
                       (conv/put-many descendants))]
-    (if-let [start-fn (:start cdef)]
-      (let [[inst' fx]   (start-fn inst)
-            inst'        (conv/preserve-meta inst inst')
-            conv''       (conv/put-instance conv' inst')
-            [conv''' fr] (binding [*effect-iid* iid]
-                            (run-effects conv'' fx))]
-        (cond
-          (some #(= :elements (:fragment/kind %)) fr)
-          [conv''' fr]
+    (let [[conv'' fr] (run-start-hooks conv'
+                                       (into [iid] (map :instance/id descendants)))]
+      (cond
+        (some #(= :elements (:fragment/kind %)) fr)
+        [conv'' fr]
 
-          (nil? (conv/instance conv''' iid))
-          [conv''' fr]
+        (nil? (conv/instance conv'' iid))
+        [conv'' fr]
 
-          :else
-          (let [[c f] (render-slot-overlay conv''' parent-id old-iid iid)]
-            [c (conj (vec fr) f)])))
-      (let [[conv'' frag] (render-slot-overlay conv' parent-id old-iid iid)]
-        [conv'' [frag]]))))
+        :else
+        (let [[c f] (render-slot-overlay conv'' parent-id old-iid iid)]
+          [c (conj (vec fr) f)])))))
 
 (defn- resume-parent
   "Deliver `value` to `parent-id` under `resume-key`, then render the
@@ -450,8 +490,19 @@
         conv'    (-> conv-popped
                      (conv/push-instance new-inst)
                      (conv/put-many descendants))
-        [conv'' frag] (render-frame conv' (:instance/id new-inst))]
-    [conv'' (conj (vec stop-frags) frag)]))
+        iid      (:instance/id new-inst)
+        [conv'' start-frags] (run-start-hooks conv'
+                                              (into [iid] (map :instance/id descendants)))]
+    (cond
+      (some #(= :elements (:fragment/kind %)) start-frags)
+      [conv'' (into (vec stop-frags) start-frags)]
+
+      (nil? (conv/instance conv'' iid))
+      [conv'' (into (vec stop-frags) start-frags)]
+
+      :else
+      (let [[conv''' frag] (render-frame conv'' iid)]
+        [conv''' (conj (into (vec stop-frags) start-frags) frag)]))))
 
 (defmethod step :patch
   [conv [_ hiccup]]
@@ -474,6 +525,32 @@
   (future (try (f)
                (catch Throwable t
                  (println "stube :io effect threw:" (ex-message t)))))
+  [conv []])
+
+(defmethod step :after
+  [conv [_ delay-ms route-event]]
+  (when-let [schedule! *schedule-event!*]
+    (schedule! {:cid         (:conv/id conv)
+                :instance-id (effect-origin conv)
+                :delay-ms    delay-ms
+                :event       route-event}))
+  [conv []])
+
+(defmethod step :subscribe
+  [conv [_ topic route-event]]
+  (when-let [subscribe! *subscribe!*]
+    (subscribe! {:cid         (:conv/id conv)
+                 :instance-id (effect-origin conv)
+                 :topic       topic
+                 :event       route-event}))
+  [conv []])
+
+(defmethod step :unsubscribe
+  [conv [_ topic]]
+  (when-let [unsubscribe! *unsubscribe!*]
+    (unsubscribe! {:cid         (:conv/id conv)
+                   :instance-id (effect-origin conv)
+                   :topic       topic}))
   [conv []])
 
 (defmethod step :back
@@ -503,7 +580,7 @@
                                      [iid (assoc inst :instance/rendered? false)])
                                    m)))))]
       (if-let [iid (conv/top-id restored)]
-        (let [[c wake] (wakeup-frame restored iid)
+        (let [[c wake] (run-wakeup-hooks restored (conv/descendant-ids restored iid))
               [c' f]  (render-frame c iid)]
           [c' (conj (vec wake) f)])
         ;; Empty stack: nothing to render.  Surface as :end so the

@@ -1,12 +1,14 @@
 (ns dev.zeko.stube.http
   "Ring handlers that bridge HTTP to the kernel.
 
-  Three endpoints implement the entire client/server contract:
+  Five endpoints implement the client/server contract:
 
   | route                       | method | purpose                                                                       |
   |-----------------------------|--------|-------------------------------------------------------------------------------|
   | `/<mount-path>`             | GET    | mint a conversation, serve the shell HTML                                     |
   | `/conv/:cid/sse`            | GET    | open the long-lived SSE stream for the conversation                           |
+  | `/conv/:cid/back`           | POST   | restore the previous conversation snapshot                                    |
+  | `/stube/upload/:cid/:iid`   | POST   | parse multipart data and dispatch `:upload-received`                          |
   | `/conv/:cid/:iid/:event`    | POST   | dispatch one event; the iid and event live in the path, signals in the body  |
 
   The shell page is a trivial HTML document.  All real UI is delivered
@@ -16,6 +18,7 @@
             [clojure.java.io                                  :as io]
             [clojure.string                                   :as str]
             [dev.onionpancakes.chassis.core                    :as chassis]
+            [ring.middleware.multipart-params                  :as multipart]
             [starfederation.datastar.clojure.api               :as d*]
             [starfederation.datastar.clojure.adapter.http-kit  :as hk]
             [dev.zeko.stube.conversation                                :as conv]
@@ -246,6 +249,33 @@
                "Cache-Control" "no-store"}
      :body    "stube conversation is stale; please reload."}))
 
+(defn- multipart-file? [v]
+  (and (map? v) (contains? v :filename) (contains? v :tempfile)))
+
+(defn- upload-file-summary [field {:keys [filename content-type tempfile size]}]
+  (let [file (when tempfile (io/file tempfile))]
+    (cond-> {:field        (name field)
+             :filename     (or filename "")
+             :content-type (or content-type "application/octet-stream")
+             :size         (or size (when (and file (.exists file)) (.length file)) 0)}
+      file (assoc :tempfile (.getAbsolutePath file)))))
+
+(defn- upload-payload [req]
+  (let [params (:multipart-params req)]
+    {:fields (into {}
+                   (keep (fn [[k v]]
+                           (when-not (multipart-file? v)
+                             [(keyword (name k)) v])))
+                   params)
+     :files  (mapv (fn [[k v]] (upload-file-summary k v))
+                   (filter (fn [[_ v]] (multipart-file? v)) params))}))
+
+(defn- upload-ok-response []
+  {:status  200
+   :headers {"Content-Type" "text/html; charset=utf-8"
+             "Cache-Control" "no-store"}
+   :body    "<!doctype html><title>uploaded</title>uploaded"})
+
 ;; ---------------------------------------------------------------------------
 ;; Handlers
 ;; ---------------------------------------------------------------------------
@@ -314,10 +344,10 @@
                   (server/swap-conv!
                     cid
                     (fn [c]
-                      (binding [render/*cid* cid]
-                        (kernel/run-effects c (kernel/boot pending)))))]
-              (binding [render/*cid* cid]
-                (push-fragments! sse-gen frags))
+                      (server/with-kernel-bindings
+                        cid
+                        #(kernel/run-effects c (kernel/boot pending)))))]
+              (push-fragments! sse-gen frags)
               (when (:conv/ended? conv')
                 (server/end-conversation! cid)))
 
@@ -329,10 +359,10 @@
                   (server/swap-conv!
                     cid
                     (fn [c]
-                      (binding [render/*cid* cid]
-                        (resume-render c))))]
-              (binding [render/*cid* cid]
-                (push-fragments! sse-gen frags)))
+                      (server/with-kernel-bindings
+                        cid
+                        #(resume-render c))))]
+              (push-fragments! sse-gen frags))
 
             ;; Path 3 — unknown cid; the conversation is gone.  Leave
             ;; the SSE channel empty; the browser will simply see no
@@ -360,18 +390,41 @@
       :else
       (with-mdc {:cid cid}
         (fn []
-          (let [[conv' frags] (binding [render/*cid* cid]
-                                (server/swap-conv!
-                                  cid
-                                  (fn [c]
-                                    (binding [render/*cid* cid]
-                                      (kernel/run-effects c [[:back]])))))]
-            (when-let [sse-gen (server/sse cid)]
-              (binding [render/*cid* cid]
-                (push-fragments! sse-gen frags)))
-            (when (:conv/ended? conv')
-              (server/end-conversation! cid))
-            {:status 204}))))))
+          (server/run-effects! cid [[:back]])
+          {:status 204})))))
+
+(defn upload-handler
+  "POST `/stube/upload/:cid/:iid` — parse a multipart request and route it
+  to the target instance as `:upload-received`.
+
+  Upload responses are written into a hidden iframe by `s/upload-attrs`;
+  the visible page updates over the normal SSE stream."
+  [{:keys [path-params] :as req}]
+  (let [{:keys [cid iid]} path-params
+        live (server/conversation cid)]
+    (cond
+      (nil? live)
+      (stale-response! cid)
+
+      (not (authorized? req cid))
+      (forbidden-response)
+
+      (or (:conv/ended? live)
+          (nil? (conv/instance live iid)))
+      (stale-response! cid)
+
+      :else
+      (with-mdc {:cid cid :iid iid}
+        (fn []
+          (let [req'    (if (:multipart-params req)
+                          req
+                          (multipart/multipart-params-request req))
+                payload (upload-payload req')]
+            (server/dispatch! cid {:instance-id iid
+                                   :event       :upload-received
+                                   :payload     payload
+                                   :signals     {}})
+            (upload-ok-response)))))))
 
 (defn event-handler
   "Dispatch one client event into the conversation.  The instance id
@@ -398,13 +451,6 @@
                 ev      {:instance-id iid
                          :event       (keyword event)
                          :payload     (read-event-payload req)
-                         :signals     signals}
-                [conv' frags] (binding [render/*cid* cid]
-                                (server/swap-conv! cid
-                                                   (fn [c] (kernel/dispatch c ev))))]
-            (when-let [sse-gen (server/sse cid)]
-              (binding [render/*cid* cid]
-                (push-fragments! sse-gen frags)))
-            (when (:conv/ended? conv')
-              (server/end-conversation! cid))
+                         :signals     signals}]
+            (server/dispatch! cid ev)
             {:status 204}))))))

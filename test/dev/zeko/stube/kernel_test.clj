@@ -95,6 +95,31 @@
         "only the leaf renders; task placeholder was suppressed")
     (is (re-find #"leaf" (:fragment/html (first (elements-fragments frags)))))))
 
+(deftest start-fires-for-eager-embedded-children
+  (let [scheduled (atom [])]
+    (registry/register!
+      {:component/id     :t/child-with-start
+       :component/init   (constantly {:started? false})
+       :component/render (fn [s] [:div {:id (:instance/id s)} "child"])
+       :start           (fn [s]
+                          [(assoc s :started? true)
+                           [(s/after 10 :tick)]])})
+    (registry/register!
+      {:component/id     :t/parent-with-started-child
+       :children         {:slot/child (conv/embed :t/child-with-start)}
+       :component/render (fn [s]
+                           [:div {:id (:instance/id s)}
+                            (s/render-slot s :slot/child)])})
+    (let [[c] (binding [kernel/*schedule-event!* #(swap! scheduled conj %)]
+                (run-boot :t/parent-with-started-child))
+          child-iid (get-in (conv/top-instance c) [:instance/children :slot/child])]
+      (is (true? (:started? (conv/instance c child-iid))))
+      (is (= [{:cid         (:conv/id c)
+               :instance-id child-iid
+               :delay-ms    10
+               :event       :tick}]
+             @scheduled)))))
+
 (deftest stop-fires-when-frame-is-popped
   (registry/register!
     {:component/id     :t/leaf
@@ -247,6 +272,38 @@
     (is (some #(= :elements (:fragment/kind %)) f))
     (is (some #(= :signals  (:fragment/kind %)) f))
     (is (some #(= :script   (:fragment/kind %)) f))))
+
+(deftest async-effects-call-bound-server-hooks
+  (let [scheduled     (atom [])
+        subscribed    (atom [])
+        unsubscribed  (atom [])]
+    (registry/register!
+      {:component/id     :t/async
+       :component/render (fn [s] [:div {:id (:instance/id s)}])
+       :component/handle (fn [s _]
+                           [s [(s/after 25 [:tick 1])
+                               (s/subscribe :topic/chat :message)
+                               (s/unsubscribe :topic/chat)]])})
+    (let [[c0] (run-boot :t/async)
+          iid  (conv/top-id c0)]
+      (binding [kernel/*schedule-event!* #(swap! scheduled conj %)
+                kernel/*subscribe!*      #(swap! subscribed conj %)
+                kernel/*unsubscribe!*    #(swap! unsubscribed conj %)]
+        (kernel/dispatch c0 {:instance-id iid :event :go :signals {}}))
+      (is (= [{:cid         (:conv/id c0)
+               :instance-id iid
+               :delay-ms    25
+               :event       [:tick 1]}]
+             @scheduled))
+      (is (= [{:cid         (:conv/id c0)
+               :instance-id iid
+               :topic       :topic/chat
+               :event       :message}]
+             @subscribed))
+      (is (= [{:cid         (:conv/id c0)
+               :instance-id iid
+               :topic       :topic/chat}]
+             @unsubscribed)))))
 
 ;; ---------------------------------------------------------------------------
 ;; History

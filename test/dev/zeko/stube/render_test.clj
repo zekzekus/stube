@@ -51,3 +51,17 @@
                      (keyword "data-on:click") "@post('/conv/cv-001/back')"}
             "Back"]
            (render/back-button "Back")))))
+
+(deftest upload-attrs-use-multipart-route-and-hidden-frame
+  (binding [render/*cid* "cv-001"]
+    (let [self {:instance/id "ix-9"}]
+      (is (= {:method  "post"
+              :action  "/stube/upload/cv-001/ix-9"
+              :enctype "multipart/form-data"
+              :target  "stube-upload-ix-9"}
+             (render/upload-attrs self)))
+      (is (= [:iframe {:name   "stube-upload-ix-9"
+                       :title  "stube upload target"
+                       :hidden true
+                       :style  "display:none; width:0; height:0; border:0;"}]
+             (render/upload-frame self))))))

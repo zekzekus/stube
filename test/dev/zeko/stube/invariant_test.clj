@@ -43,13 +43,18 @@
   '[dev.zeko.stube.examples.breadcrumb
     dev.zeko.stube.examples.calc
     dev.zeko.stube.examples.calendar
+    dev.zeko.stube.examples.chat
+    dev.zeko.stube.examples.clock
     dev.zeko.stube.examples.dialogs
     dev.zeko.stube.examples.example-browser
+    dev.zeko.stube.examples.file-upload
     dev.zeko.stube.examples.guess
     dev.zeko.stube.examples.main
     dev.zeko.stube.examples.multicounter
     dev.zeko.stube.examples.paginated-list
+    dev.zeko.stube.examples.protected-counter
     dev.zeko.stube.examples.seaside-todo
+    dev.zeko.stube.examples.shared-counter
     dev.zeko.stube.examples.table-report
     dev.zeko.stube.examples.tabs
     dev.zeko.stube.examples.todo
@@ -60,9 +65,14 @@
   [:demo/example-browser
    :demo/breadcrumb
    :demo/calc
+   :demo/chat
+   :demo/clock
+   :demo/file-upload
    :demo/multicounter
    :demo/paginated-list
+   :demo/protected-counter
    :demo/seaside-todo-root
+   :demo/shared-counter
    :demo/table-report
    :demo/tabs
    :demo/todo
