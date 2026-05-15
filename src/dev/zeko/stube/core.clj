@@ -126,6 +126,98 @@
                         {:file ~*file* :line ~(:line (meta &form))}))
 
 ;; ---------------------------------------------------------------------------
+;; Effect constructors
+;; ---------------------------------------------------------------------------
+;;
+;; Handlers and lifecycle hooks emit effect vectors.  Use these named
+;; constructors instead of writing the wire-shape vectors by hand:
+;;
+;;     [self [(s/call :ui/prompt {:text "Hi"} :on-pick)]]
+;;     [self [(s/answer total)]]
+;;     [self [(s/patch [:p "done"])]]
+;;
+;; The wire format is unchanged — `(s/call ...)` returns the same
+;; `[:call <embed> :resume <k>]` vector the kernel has always understood
+;; — so existing literal-vector code keeps working.
+
+(defn call
+  "Push a child onto the stack.  On `:answer`, the parent's resume key
+  is invoked with the answered value.
+
+      (s/call :ui/prompt)                  ; no args, no resume
+      (s/call :ui/prompt :on-pick)         ; no args, resume :on-pick
+      (s/call :ui/prompt {:text \"Hi\"})     ; args, no resume
+      (s/call :ui/prompt {:text \"Hi\"} :on-pick) ; args + resume
+
+  Wraps the component id with [[embed]] internally; pass an existing
+  embed spec via [[dev.zeko.stube.effects/call]] if you already have one."
+  ([component-id]
+   (effects/call (conv/embed component-id)))
+  ([component-id args-or-resume]
+   (if (keyword? args-or-resume)
+     (effects/call (conv/embed component-id) args-or-resume)
+     (effects/call (conv/embed component-id args-or-resume))))
+  ([component-id args resume]
+   (effects/call (conv/embed component-id args) resume)))
+
+(defn become
+  "Pop the current frame and push another in its place (Seaside
+  `become:`).  The replacement inherits the original parent linkage
+  and resume key, so an eventual `:answer` still flows back to whoever
+  called the original frame.
+
+      (s/become :wizard/step-2)
+      (s/become :wizard/step-2 {:from data})
+
+  Named `become` instead of `replace` to avoid shadowing
+  `clojure.core/replace`."
+  ([component-id]
+   (effects/replace (conv/embed component-id)))
+  ([component-id args]
+   (effects/replace (conv/embed component-id args))))
+
+(defn call-in-slot
+  "Temporarily swap an embedded slot's child; the new child answers
+  back to the parent without taking over the page.
+
+      (s/call-in-slot :slot/main :feature/edit)
+      (s/call-in-slot :slot/main :feature/edit {:id 7} :on-saved)"
+  ([slot component-id]
+   (effects/call-in-slot slot (conv/embed component-id)))
+  ([slot component-id args-or-resume]
+   (if (keyword? args-or-resume)
+     (effects/call-in-slot slot (conv/embed component-id) args-or-resume)
+     (effects/call-in-slot slot (conv/embed component-id args-or-resume))))
+  ([slot component-id args resume]
+   (effects/call-in-slot slot (conv/embed component-id args) resume)))
+
+(def ^{:doc "Pop this frame; deliver `value` to the parent under its
+  resume key.  See [[dev.zeko.stube.effects/answer]]."}
+  answer effects/answer)
+
+(def ^{:doc "Emit an extra DOM patch without changing the stack.
+  See [[dev.zeko.stube.effects/patch]]."}
+  patch effects/patch)
+
+(def ^{:doc "Push a Datastar signal patch (writes signal values back
+  to the browser).  See [[dev.zeko.stube.effects/patch-signals]]."}
+  patch-signals effects/patch-signals)
+
+(def ^{:doc "Run literal JS in the browser.  Last-resort escape hatch;
+  prefer Datastar attributes for most needs.  See
+  [[dev.zeko.stube.effects/execute-script]]."}
+  execute-script effects/execute-script)
+
+(def ^{:doc "Fire-and-forget `(thunk)` off the request thread.
+  See [[dev.zeko.stube.effects/io]]."}
+  io effects/io)
+
+(def ^{:doc "Terminate the conversation with a final value.  After
+  this the SSE channel closes and the conversation is forgotten.
+  See [[dev.zeko.stube.effects/end]]."}
+  end effects/end)
+
+;; ---------------------------------------------------------------------------
 ;; Compositional helpers
 ;; ---------------------------------------------------------------------------
 
