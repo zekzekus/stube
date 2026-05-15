@@ -237,29 +237,14 @@
           (cond
             ;; Path 1 — fresh shell visit; instantiate the root flow.
             (some? pending)
-            (let [[conv' frags]
-                  (server/swap-conv!
-                    cid
-                    (fn [c]
-                      (server/with-kernel-bindings
-                        cid
-                        #(kernel/run-effects c (kernel/boot pending)))))]
-              (f/push! sse-gen frags)
-              (when (:conv/ended? conv')
-                (server/end-conversation! cid)))
+            (server/apply-conv! cid
+              (fn [c] (kernel/run-effects c (kernel/boot pending))))
 
             ;; Path 2 — re-attach to a conversation that survives in
             ;; memory (loaded from the persistence store at startup,
             ;; or carried across a hot reload of the http layer).
             (some? live)
-            (let [[_conv frags]
-                  (server/swap-conv!
-                    cid
-                    (fn [c]
-                      (server/with-kernel-bindings
-                        cid
-                        #(resume-render c))))]
-              (f/push! sse-gen frags))
+            (server/apply-conv! cid resume-render)
 
             ;; Path 3 — unknown cid; the conversation is gone.  Leave
             ;; the SSE channel empty; the browser will simply see no

@@ -19,6 +19,7 @@
             [dev.zeko.stube.async                :as async]
             [dev.zeko.stube.conversation         :as conv]
             [dev.zeko.stube.fragments            :as f]
+            [dev.zeko.stube.halos                :as halos]
             [dev.zeko.stube.kernel               :as kernel]
             [dev.zeko.stube.render               :as render]
             [dev.zeko.stube.store                :as store])
@@ -203,20 +204,31 @@
   Re-export of [[dev.zeko.stube.fragments/push!]]."}
   push-fragments! f/push!)
 
-(defn run-effects!
-  "Fold `effects` into conversation `cid`, push any fragments, and end
-  the conversation if the kernel marks it ended."
-  [cid effects]
+(defn apply-conv!
+  "Apply `(f conv) → [conv' fragments]` under `cid` with kernel bindings
+  in scope, push any fragments to the open SSE, and end the conversation
+  if the kernel marked it ended.  Returns `[conv' fragments]` or nil if
+  `cid` is unknown.
+
+  Single chokepoint for every code path that mutates a live
+  conversation: [[run-effects!]], [[dispatch!]], and the SSE-attach
+  boot/resume in the http layer."
+  [cid f]
   (when (conversation cid)
-    (let [[conv' frags]
-          (with-kernel-bindings
-            cid
-            #(swap-conv! cid (fn [c] (kernel/run-effects c effects))))]
+    (let [[conv' frags] (with-kernel-bindings
+                          cid
+                          #(swap-conv! cid f))]
       (when-let [sse-gen (sse cid)]
         (push-fragments! sse-gen frags))
       (when (:conv/ended? conv')
         (end-conversation! cid))
       [conv' frags])))
+
+(defn run-effects!
+  "Fold `effects` into conversation `cid`, push any fragments, and end
+  the conversation if the kernel marks it ended."
+  [cid effects]
+  (apply-conv! cid (fn [c] (kernel/run-effects c effects))))
 
 (defn dispatch!
   "Dispatch one event into conversation `cid` outside the request path.
@@ -226,15 +238,7 @@
   (when-let [live (conversation cid)]
     (when (and (not (:conv/ended? live))
                (conv/instance live instance-id))
-      (let [[conv' frags]
-            (with-kernel-bindings
-              cid
-              #(swap-conv! cid (fn [c] (kernel/dispatch c event))))]
-        (when-let [sse-gen (sse cid)]
-          (push-fragments! sse-gen frags))
-        (when (:conv/ended? conv')
-          (end-conversation! cid))
-        [conv' frags]))))
+      (apply-conv! cid (fn [c] (kernel/dispatch c event))))))
 
 ;; Install our dispatch! into the async layer so timer fires and
 ;; pub/sub deliveries can route events back into conversations.
@@ -273,33 +277,13 @@
 
 (defn mounts [] @!mounts)
 
-(defn- instance-summary [inst]
-  {:id       (:instance/id inst)
-   :type     (:instance/type inst)
-   :parent   (:instance/parent inst)
-   :resume   (:instance/resume inst)
-   :children (:instance/children inst)
-   :state    (apply dissoc inst conv/instance-meta-keys)})
-
-(defn- conversation-summary [c]
-  {:id            (:conv/id c)
-   :created       (:conv/created c)
-   :touched       (:conv/touched c)
-   :ended?        (boolean (:conv/ended? c))
-   :history-count (count (:conv/history c))
-   :last-event    (:conv/last-event c)
-   :stack         (mapv #(instance-summary (conv/instance c %))
-                        (:conv/stack c))
-   :instances     (into (sorted-map)
-                        (map (fn [[iid inst]] [iid (instance-summary inst)]))
-                        (:conv/instances c))})
-
 (defn inspect
   "Pretty-print and return a compact summary of live conversation `cid`.
-  Returns nil if the conversation is not active."
+  Returns nil if the conversation is not active.  Summary shape lives
+  in [[dev.zeko.stube.halos]] alongside the rest of the REPL/dev tooling."
   [cid]
   (when-let [c (conversation cid)]
-    (let [summary (conversation-summary c)]
+    (let [summary (halos/inspect-summary c)]
       (pprint/pprint summary)
       summary)))
 

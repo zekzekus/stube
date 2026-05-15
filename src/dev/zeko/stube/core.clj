@@ -68,32 +68,40 @@
 ;; Component definition
 ;; ---------------------------------------------------------------------------
 
+(def ^:private colocated-keys
+  "Top-level `defcomponent` keys lifted to their `:component/<name>`
+  homes so the kernel finds them."
+  [:init :render :handle :keep :doc])
+
+(defn- lift-colocated [opts]
+  (reduce (fn [m k]
+            (if (contains? m k)
+              (-> m
+                  (assoc (keyword "component" (name k)) (get m k))
+                  (dissoc k))
+              m))
+          opts
+          colocated-keys))
+
 (defn register-component!
-  "Plain function form of [[defcomponent]]. Useful from data-driven
-  callers that don't want the macro's source-meta capture; the macro
-  delegates here after attaching `:component/source`."
-  [id opts]
-  (registry/register!
-    (-> opts
-        (assoc :component/id id)
-        ;; Lift colocated lifecycle keys into the namespaced shape the
-        ;; kernel actually reads.  Resume keys (`:on-foo`) stay in the
-        ;; top-level map verbatim.
-        (cond->
-          (contains? opts :init)   (-> (assoc :component/init   (:init   opts))
-                                       (dissoc :init))
-          (contains? opts :render) (-> (assoc :component/render (:render opts))
-                                       (dissoc :render))
-          (contains? opts :handle) (-> (assoc :component/handle (:handle opts))
-                                       (dissoc :handle))
-          (contains? opts :keep)   (-> (assoc :component/keep   (:keep   opts))
-                                       (dissoc :keep))
-          (contains? opts :doc)    (-> (assoc :component/doc    (:doc    opts))
-                                       (dissoc :doc))))))
+  "Plain function form of [[defcomponent]].  Two arities:
+
+      (register-component! id opts)
+      (register-component! id opts source-map)
+
+  `source-map` is `{:file ... :line ...}` to be attached under
+  `:component/source` (so the halos dev tool can jump to a definition).
+  The macro supplies it from call-site `&form` meta; hand-rolled
+  data-driven callers can pass nil."
+  ([id opts]
+   (register-component! id opts nil))
+  ([id opts source]
+   (registry/register!
+     (cond-> (-> opts lift-colocated (assoc :component/id id))
+       source (assoc :component/source source)))))
 
 (defmacro defcomponent
-  "Define a component and add it to the global registry. Conventionally
-  called as
+  "Define a component and add it to the global registry.
 
       (s/defcomponent :auth/login
         :doc    \"Prompt for credentials.\"
@@ -105,15 +113,17 @@
         :on-foo (fn [self answer-value]    ;; resume keys, optional
                   [self' effects]))
 
-  The macro captures the call-site `:file`/`:line` under
-  `:component/source` so the halos dev tool can jump to the definition.
-  Use [[register-component!]] from data-driven code that prefers a
-  function shape."
+  The macro captures the call-site `:file`/`:line` so the halos dev
+  tool can jump to the definition.  Use [[register-component!]] from
+  data-driven code that prefers a function shape."
   [id & opts]
-  (let [src {:file *file*
-             :line (:line (meta &form))}]
-    `(register-component! ~id (assoc (hash-map ~@opts)
-                                     :component/source ~src))))
+  ;; `*file*` is bound during compilation, so unquote it here to embed
+  ;; the literal source path of the call site into the expansion.
+  ;; Without the unquote we'd emit a reference to `*file*` itself,
+  ;; which reads "NO_SOURCE_PATH" at eval time.
+  `(register-component! ~id
+                        (hash-map ~@opts)
+                        {:file ~*file* :line ~(:line (meta &form))}))
 
 ;; ---------------------------------------------------------------------------
 ;; Compositional helpers

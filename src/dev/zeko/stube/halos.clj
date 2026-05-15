@@ -110,6 +110,30 @@
                                        :instance/type)})
                  (:conv/history conv))))
 
+(defn- instance-summary [inst]
+  {:id       (:instance/id inst)
+   :type     (:instance/type inst)
+   :parent   (:instance/parent inst)
+   :resume   (:instance/resume inst)
+   :children (:instance/children inst)
+   :state    (apply dissoc inst conv/instance-meta-keys)})
+
+(defn inspect-summary
+  "Compact summary of a conversation value, used by `s/inspect` to
+  pretty-print at the REPL.  Pure: returns plain data, no I/O."
+  [c]
+  {:id            (:conv/id c)
+   :created       (:conv/created c)
+   :touched       (:conv/touched c)
+   :ended?        (boolean (:conv/ended? c))
+   :history-count (count (:conv/history c))
+   :last-event    (:conv/last-event c)
+   :stack         (mapv #(instance-summary (conv/instance c %))
+                        (:conv/stack c))
+   :instances     (into (sorted-map)
+                        (map (fn [[iid inst]] [iid (instance-summary inst)]))
+                        (:conv/instances c))})
+
 (defn where
   "Return the registered source location for component `type-kw`
   (`{:file … :line …}` if available), captured by the `defcomponent`
