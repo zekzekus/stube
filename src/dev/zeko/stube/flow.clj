@@ -45,7 +45,8 @@
     treat them as a separate concern."
     (:refer-clojure :exclude [await])
     (:require [cloroutine.core :as cr]
-           [dev.zeko.stube.registry :as registry]))
+              [dev.zeko.stube.effects  :as e]
+              [dev.zeko.stube.registry :as registry]))
 
 ;; ---------------------------------------------------------------------------
 ;; Coroutine plumbing
@@ -147,8 +148,8 @@
   (let [coro (::coro self)
         [outcome value] (step! coro answer)]
     (case outcome
-      :yield [self [[:call value :resume resume-key]]]
-      :done  [self [[:answer value]]])))
+      :yield [self [(e/call value resume-key)]]
+      :done  [self [(e/answer value)]])))
 
 ;; ---------------------------------------------------------------------------
 ;; The macro

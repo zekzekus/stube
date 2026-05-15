@@ -63,6 +63,7 @@
   is removed; `:wakeup` runs when a persisted or history-restored frame
   becomes live again."
   (:require [dev.zeko.stube.conversation :as conv]
+            [dev.zeko.stube.effects      :as e]
             [dev.zeko.stube.halos        :as halos]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]))
@@ -324,8 +325,10 @@
   (fn [_conv [op & _]] op))
 
 (defmethod step :call
-  [conv [_ embed-spec & {:keys [resume]}]]
-  (let [parent-id (conv/top-id conv)
+  [conv eff]
+  (let [embed-spec (e/call-embed eff)
+        resume     (e/call-resume eff)
+        parent-id (conv/top-id conv)
         cdef      (registry/lookup! (:embed/type embed-spec))
         ;; `instantiate-tree` materialises the called component *and*
         ;; every child its `:children` map declares.  Children live in
@@ -375,8 +378,11 @@
     (render-frame conv parent-id)))
 
 (defmethod step :call-in-slot
-  [conv [_ slot embed-spec & {:keys [resume]}]]
-  (let [parent-id (or (effect-origin conv)
+  [conv eff]
+  (let [slot       (e/slot-call-slot eff)
+        embed-spec (e/slot-call-embed eff)
+        resume     (e/slot-call-resume eff)
+        parent-id (or (effect-origin conv)
                       (throw (ex-info ":call-in-slot needs an emitting parent"
                                       {:slot slot})))
         parent    (or (conv/instance conv parent-id)
@@ -419,7 +425,7 @@
     ;; Answering the root means the conversation is done.  We translate
     ;; this into an `:end` so behaviour is consistent.
     (nil? parent-id)
-    (step conv [:end value])
+    (step conv (e/end value))
 
     ;; Bare child answer with no resume key — nothing to deliver to the
     ;; parent.  Just re-render the parent so the user sees something.
@@ -479,8 +485,9 @@
       [conv'' (into (vec stop-frags) frags)])))
 
 (defmethod step :answer
-  [conv [_ value]]
-  (let [origin-id (effect-origin conv)
+  [conv eff]
+  (let [value     (e/answer-value eff)
+        origin-id (effect-origin conv)
         leaving   (conv/instance conv origin-id)]
     (cond
       (nil? leaving)
@@ -493,8 +500,9 @@
       (answer-from-slot conv leaving value))))
 
 (defmethod step :replace
-  [conv [_ embed-spec]]
-  (let [old-inst              (conv/top-instance conv)
+  [conv eff]
+  (let [embed-spec            (e/replace-embed eff)
+        old-inst              (conv/top-instance conv)
         old-id                (:instance/id old-inst)
         stop-iids             (conv/descendant-ids conv old-id)
         [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
@@ -528,52 +536,53 @@
         [conv''' (conj (into (vec stop-frags) start-frags) frag)]))))
 
 (defmethod step :patch
-  [conv [_ hiccup]]
-  [conv [(elements-fragment (render/html hiccup))]])
+  [conv eff]
+  [conv [(elements-fragment (render/html (e/patch-hiccup eff)))]])
 
 (defmethod step :patch-signals
-  [conv [_ m]]
-  [conv [(signals-fragment m)]])
+  [conv eff]
+  [conv [(signals-fragment (e/patch-signals-map eff))]])
 
 (defmethod step :execute-script
-  [conv [_ js]]
-  [conv [(script-fragment js)]])
+  [conv eff]
+  [conv [(script-fragment (e/script-source eff))]])
 
 (defmethod step :io
-  [conv [_ f]]
+  [conv eff]
   ;; Fire and forget.  Side-effecting work belongs off the request
   ;; thread so SSE pushes stay snappy.  If you want to feed results back
   ;; into the conversation, the `f` itself can call back into the
   ;; framework via the public dispatch API.
-  (future (try (f)
-               (catch Throwable t
-                 (println "stube :io effect threw:" (ex-message t)))))
+  (let [f (e/io-thunk eff)]
+    (future (try (f)
+                 (catch Throwable t
+                   (println "stube :io effect threw:" (ex-message t))))))
   [conv []])
 
 (defmethod step :after
-  [conv [_ delay-ms route-event]]
+  [conv eff]
   (when-let [schedule! *schedule-event!*]
     (schedule! {:cid         (:conv/id conv)
                 :instance-id (effect-origin conv)
-                :delay-ms    delay-ms
-                :event       route-event}))
+                :delay-ms    (e/after-delay eff)
+                :event       (e/after-event eff)}))
   [conv []])
 
 (defmethod step :subscribe
-  [conv [_ topic route-event]]
+  [conv eff]
   (when-let [subscribe! *subscribe!*]
     (subscribe! {:cid         (:conv/id conv)
                  :instance-id (effect-origin conv)
-                 :topic       topic
-                 :event       route-event}))
+                 :topic       (e/subscribe-topic eff)
+                 :event       (e/subscribe-event eff)}))
   [conv []])
 
 (defmethod step :unsubscribe
-  [conv [_ topic]]
+  [conv eff]
   (when-let [unsubscribe! *unsubscribe!*]
     (unsubscribe! {:cid         (:conv/id conv)
                    :instance-id (effect-origin conv)
-                   :topic       topic}))
+                   :topic       (e/unsubscribe-topic eff)}))
   [conv []])
 
 (defmethod step :back
@@ -608,12 +617,12 @@
           [c' (conj (vec wake) f)])
         ;; Empty stack: nothing to render.  Surface as :end so the
         ;; conversation tears down cleanly.
-        (step restored [:end nil])))
+        (step restored (e/end nil))))
     ;; No history → nothing to do, no fragments emitted.
     [conv []]))
 
 (defmethod step :end
-  [conv [_ _value]]
+  [conv _eff]
   (let [stop-iids (vec (mapcat #(conv/descendant-ids conv %) (:conv/stack conv)))
         [conv' stop-frags] (run-stop-hooks conv stop-iids)]
     [(assoc conv' :conv/ended? true) (conj (vec stop-frags) close-fragment)]))
@@ -655,7 +664,7 @@
   whose root flow is `flow-id`.  Pulled out so the http layer can ask
   for them on first SSE connect."
   [flow-id]
-  [[:call (conv/embed flow-id) :resume nil]])
+  [(e/call (conv/embed flow-id))])
 
 (defn dispatch
   "Apply one client event to a conversation.  `event` is the map
@@ -694,7 +703,7 @@
         ;; and "restore" the same state, leaving the user stuck.  So
         ;; we look at the produced effects and skip the snapshot in
         ;; that case.  Every other dispatch behaves as before.
-        back?      (some #(= :back (first %)) fx)
+        back?      (some #(e/op? :back %) fx)
         conv*      (cond-> conv
                      (not back?) conv/snapshot
                      true        conv/touch

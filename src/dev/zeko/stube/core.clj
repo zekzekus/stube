@@ -49,6 +49,7 @@
   ;; Shadow `clojure.core/await`; see [[dev.zeko.stube.flow]] for the rationale.
   (:refer-clojure :exclude [await])
   (:require [dev.zeko.stube.conversation :as conv]
+            [dev.zeko.stube.effects      :as effects]
             ;; `:refer [await]` is intentional — it makes `dev.zeko.stube.core/await`
             ;; resolve to the *same var* as `dev.zeko.stube.flow/await`, which is
             ;; required for cloroutine to recognise `(s/await …)` calls in
@@ -213,7 +214,7 @@
   When emitted from a top-level handler, it pops the most recent
   conversation snapshot off `:conv/history` and re-renders the
   restored top frame.  No-op if the history is empty."}
-  back [:back])
+  back effects/back)
 
 (def ^{:doc "See [[dev.zeko.stube.store/in-memory-store]]."}  in-memory-store store/in-memory-store)
 (def ^{:doc "See [[dev.zeko.stube.store/file-store]]."}        file-store      store/file-store)
@@ -222,30 +223,25 @@
 ;; Async / publish-subscribe (Tier 3)
 ;; ---------------------------------------------------------------------------
 
-(defn after
-  "Effect: dispatch `route-event` to the current instance after `delay-ms`.
+(def ^{:doc "Effect: dispatch `route-event` to the current instance after
+  `delay-ms`.
 
       [self [(s/after 1000 :tick)]]
 
   If the conversation or instance is gone when the timer fires, the event
   is dropped.  `route-event` accepts the same keyword/vector shape as
-  `(s/on self :click :as route-event)`."
-  [delay-ms route-event]
-  [:after delay-ms route-event])
+  `(s/on self :click :as route-event)`."}
+  after effects/after)
 
-(defn subscribe
-  "Effect: subscribe the current instance to `topic`.
+(def ^{:doc "Effect: subscribe the current instance to `topic`.
 
   Published messages arrive as `route-event` with the published value in
   `:payload`.  Re-emit this from `:wakeup` for components that should
-  resubscribe after crash-resume."
-  [topic route-event]
-  [:subscribe topic route-event])
+  resubscribe after crash-resume."}
+  subscribe effects/subscribe)
 
-(defn unsubscribe
-  "Effect: remove this instance's topic subscription(s)."
-  ([] [:unsubscribe])
-  ([topic] [:unsubscribe topic]))
+(def ^{:doc "Effect: remove this instance's topic subscription(s)."}
+  unsubscribe effects/unsubscribe)
 
 (def ^{:doc "Publish `msg` to every live instance subscribed to `topic`.
   Delivery is asynchronous and cid/iid-scoped; stale subscribers are
