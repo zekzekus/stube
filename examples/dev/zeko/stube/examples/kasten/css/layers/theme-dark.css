@@ -1,0 +1,243 @@
+/* ── Dark theme ─────────────────────────────────────────────────────
+   Activated by `data-theme="dark"` on <html>. Overrides the warm
+   paper palette with a low-glare ink-on-warm-charcoal scheme that
+   keeps the same accent hue (slightly brightened for contrast). The
+   layer comes last so its rules win over every earlier layer; the
+   transition on body smooths the toggle. */
+
+@layer theme-dark {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --notes-bg: #15110c;
+    --notes-paper: #1d1812;
+    --notes-surface: #221c14;
+    --notes-ink: #ede4d0;
+    --notes-dim: #998d77;
+    --notes-rule: #3a3128;
+    --notes-accent: #e88a4f;
+    --notes-accent-hover: #f8a06a;
+    --notes-accent-subtle: rgba(232, 138, 79, 0.13);
+    --notes-accent-border: rgba(232, 138, 79, 0.30);
+    --notes-spine: #2a2218;
+    --notes-quote: #e0d3b8;
+    --notes-code: #f3a677;
+    --notes-external-link: #f0b48d;
+    --notes-card-summary: #c2b8a3;
+    --notes-code-bg: rgba(8, 6, 4, 0.95);
+    --notes-code-fg: #f0e8d5;
+
+    --notes-shadow: rgba(0, 0, 0, 0.45);
+    --notes-shadow-strong: rgba(0, 0, 0, 0.70);
+
+    --notes-focus-ring: rgba(232, 138, 79, 0.55);
+  }
+
+  /* Smooth color transition when the user flips themes; only the few
+     properties that actually change cross-theme. */
+  :root[data-theme="dark"] body.notes-page,
+  :root[data-theme="dark"] body.notes-page * {
+    transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease;
+  }
+
+  :root[data-theme="dark"] body.notes-page {
+    background:
+      radial-gradient(circle at top left, color-mix(in srgb, var(--notes-accent) 8%, transparent), transparent 28%),
+      radial-gradient(circle at 85% 14%, rgba(80, 70, 52, 0.18), transparent 28%),
+      linear-gradient(180deg, #1a160f 0%, var(--notes-bg) 100%);
+  }
+
+  /* ── Translucent "glass" surfaces — the light theme uses
+        rgba(255,255,255,X) overlays; in dark we flip to a warm
+        ink-tinted overlay that reads as glass without lighting up the
+        page. ───────────────────────────────────────────────────────── */
+
+  [data-theme="dark"] :is(.note-column__close,
+                          .note-column__zoom,
+                          .note-column__header-action) {
+    background: rgba(255, 246, 224, 0.04);
+  }
+  [data-theme="dark"] :is(.note-column__close,
+                          .note-column__zoom,
+                          .note-column__header-action):hover {
+    background: rgba(255, 246, 224, 0.10);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  }
+
+  [data-theme="dark"] .note-disc-card {
+    background:
+      linear-gradient(180deg, rgba(255, 246, 224, 0.04) 0%, rgba(255, 240, 210, 0.02) 100%),
+      radial-gradient(circle at top right, var(--notes-accent-subtle), transparent 36%);
+  }
+
+  [data-theme="dark"] .notes-topbar {
+    background: color-mix(in srgb, var(--notes-paper) 86%, transparent);
+    border-color: color-mix(in srgb, var(--notes-rule) 90%, transparent);
+  }
+
+  [data-theme="dark"] .notes-topbar__hint kbd {
+    background: rgba(255, 246, 224, 0.06);
+  }
+
+  [data-theme="dark"] :is(.notes-control, .note-chip) {
+    background: rgba(255, 246, 224, 0.05);
+  }
+
+  [data-theme="dark"] .notes-control--primary {
+    background: color-mix(in srgb, var(--notes-accent) 18%, transparent);
+    color: var(--notes-accent-hover);
+  }
+  [data-theme="dark"] .notes-control--primary:hover {
+    background: color-mix(in srgb, var(--notes-accent) 28%, transparent);
+  }
+  [data-theme="dark"] .notes-control--danger:hover {
+    background: color-mix(in srgb, var(--notes-accent) 14%, transparent);
+  }
+
+  [data-theme="dark"] .note-column {
+    box-shadow: -8px 0 22px -14px rgba(0, 0, 0, 0.7);
+  }
+
+  /* Black shadows vanish on dark surfaces — replace the focused-column
+     glow with an accent-tinted halo plus a brighter inset border so
+     focus is unambiguous. */
+  [data-theme="dark"] .note-column.is-focused {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--notes-accent) 40%, transparent),
+      0 0 18px -6px color-mix(in srgb, var(--notes-accent) 18%, transparent);
+  }
+
+  [data-theme="dark"] .note-column.is-focused .note-column__panel {
+    border-inline-start-color: color-mix(in srgb, var(--notes-accent) 45%, transparent);
+  }
+
+  [data-theme="dark"] .note-column__spine {
+    background: linear-gradient(180deg, #2f2719 0%, var(--notes-spine) 100%);
+  }
+
+  [data-theme="dark"] .note-chip--ghost {
+    background: rgba(255, 246, 224, 0.04);
+  }
+
+  [data-theme="dark"] .note-link--unresolved {
+    background: rgba(255, 246, 224, 0.04);
+    border-bottom-color: rgba(170, 158, 138, 0.6);
+  }
+
+  /* ── Forms ─────────────────────────────────────────────────────── */
+
+  [data-theme="dark"] .notes-compose {
+    background: linear-gradient(180deg,
+                                rgba(255, 246, 224, 0.03) 0%,
+                                rgba(255, 246, 224, 0.015) 100%);
+  }
+
+  [data-theme="dark"] .notes-compose__input,
+  [data-theme="dark"] .note-edit__cm-editor .cm-editor {
+    background: rgba(255, 246, 224, 0.04);
+  }
+
+  /* CodeMirror overrides — the editor inherits page color but its
+     internal selection layer needs a darker hue or the highlight
+     disappears against the new background. */
+  [data-theme="dark"] .note-edit__cm-editor .cm-selectionBackground,
+  [data-theme="dark"] .note-edit__cm-editor.cm-focused .cm-selectionBackground {
+    background-color: color-mix(in srgb, var(--notes-accent) 30%, transparent) !important;
+  }
+
+
+  /* ── Desk index (homepage) surfaces ────────────────────────────── */
+
+  [data-theme="dark"] .desk-index {
+    --desk-paper: linear-gradient(180deg, rgba(255, 246, 224, 0.04) 0%, rgba(255, 240, 210, 0.02) 100%);
+    --desk-paper-warm: linear-gradient(165deg, rgba(255, 246, 224, 0.05) 0%, rgba(232, 138, 79, 0.06) 100%);
+    --desk-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 32px -22px rgba(0, 0, 0, 0.7);
+    --desk-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.5), 0 22px 40px -18px rgba(0, 0, 0, 0.85);
+  }
+
+  [data-theme="dark"] .desk-hero {
+    background:
+      radial-gradient(circle at 88% 14%, color-mix(in srgb, var(--notes-accent) 18%, transparent), transparent 44%),
+      radial-gradient(circle at 12% 110%, rgba(80, 70, 52, 0.28), transparent 38%),
+      linear-gradient(168deg, #1f1a13 0%, #15110c 100%);
+  }
+
+  [data-theme="dark"] .desk-hero::before {
+    background-image:
+      linear-gradient(to right, rgba(255, 246, 224, 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 246, 224, 0.04) 1px, transparent 1px);
+  }
+
+  [data-theme="dark"] .desk-hero__compose,
+  [data-theme="dark"] .desk-stat {
+    background: rgba(255, 246, 224, 0.04);
+  }
+
+  [data-theme="dark"] .notes-control--ghost:hover {
+    background: rgba(255, 246, 224, 0.06);
+  }
+
+  [data-theme="dark"] .desk-featured__hero {
+    background:
+      radial-gradient(circle at 84% -10%, color-mix(in srgb, var(--notes-accent) 22%, transparent), transparent 48%),
+      linear-gradient(170deg, rgba(255, 246, 224, 0.05) 0%, rgba(232, 138, 79, 0.05) 100%);
+  }
+
+  /* Tag pills use a hue-mixed background that bakes-in white — replace
+     with a hue-tinted dark surface that keeps the tag's identity. */
+  [data-theme="dark"] .desk-tag-pill {
+    background: color-mix(in srgb, hsl(var(--tag-hue, 30) 60% 30%) 45%, rgba(20, 16, 12, 0.8));
+    color: color-mix(in srgb, hsl(var(--tag-hue, 30) 70% 78%) 90%, var(--notes-ink));
+    border-color: color-mix(in srgb, hsl(var(--tag-hue, 30) 50% 55%) 38%, var(--notes-rule));
+  }
+  [data-theme="dark"] .desk-tag-pill:hover {
+    box-shadow: 0 6px 14px -8px rgba(0, 0, 0, 0.6);
+  }
+  [data-theme="dark"] .desk-tag-pill__count {
+    background: rgba(255, 246, 224, 0.08);
+    color: var(--notes-ink);
+  }
+
+  [data-theme="dark"] .desk-card__excerpt {
+    background: rgba(255, 246, 224, 0.03);
+  }
+
+  [data-theme="dark"] .desk-card__meta-pill {
+    background: rgba(255, 246, 224, 0.05);
+  }
+
+  [data-theme="dark"] .desk-ribbon__card {
+    background: linear-gradient(180deg, rgba(255, 246, 224, 0.04), rgba(232, 138, 79, 0.04));
+  }
+
+  /* ── Overlays ──────────────────────────────────────────────────── */
+
+  [data-theme="dark"] .notes-zoom-backdrop {
+    background: rgba(0, 0, 0, 0.65);
+  }
+
+  [data-theme="dark"] .notes-search-backdrop {
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  [data-theme="dark"] .notes-search-dialog__close {
+    background: rgba(255, 246, 224, 0.05);
+  }
+
+  [data-theme="dark"] .notes-search-dialog__footer {
+    background: rgba(255, 246, 224, 0.025);
+  }
+
+  [data-theme="dark"] .notes-search-hint kbd {
+    background: rgba(255, 246, 224, 0.06);
+  }
+
+  /* ── Theme toggle button ───────────────────────────────────────── */
+
+  /* Sun visible in dark (offer to switch to light), moon visible in
+     light. Layout sets both icons; theme decides which is shown. */
+  .notes-theme-toggle__icon--sun { display: none; }
+  .notes-theme-toggle__icon--moon { display: inline-flex; }
+  [data-theme="dark"] .notes-theme-toggle__icon--sun { display: inline-flex; }
+  [data-theme="dark"] .notes-theme-toggle__icon--moon { display: none; }
+}

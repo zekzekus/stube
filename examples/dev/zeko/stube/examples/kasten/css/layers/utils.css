@@ -1,0 +1,33 @@
+/* ── Utils ──────────────────────────────────────────────────────── */
+
+@layer utils {
+  /* Shared ghost-button surface — close/zoom/actions on columns */
+  :is(.note-column__close,
+      .note-column__zoom,
+      .note-column__header-action) {
+    appearance: none;
+    border: 1px solid color-mix(in srgb, var(--notes-rule) 70%, transparent);
+    background: rgba(255, 255, 255, 0.6);
+    color: var(--notes-dim);
+    font-family: var(--notes-sans);
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  }
+
+  :is(.note-column__close,
+      .note-column__zoom,
+      .note-column__header-action):hover {
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--notes-ink);
+    border-color: var(--notes-rule);
+    box-shadow: 0 1px 4px rgba(40, 30, 15, 0.08);
+  }
+
+  /* Shared card surface — disc (grid) cards */
+  .note-disc-card {
+    border: 1px solid color-mix(in srgb, var(--notes-rule) 94%, transparent);
+    border-radius: var(--notes-radius-md);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(249, 243, 231, 0.96) 100%),
+      radial-gradient(circle at top right, var(--notes-accent-subtle), transparent 36%);
+  }
+}

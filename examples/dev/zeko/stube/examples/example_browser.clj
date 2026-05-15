@@ -21,6 +21,7 @@
             [dev.zeko.stube.examples.dialogs]
             [dev.zeko.stube.examples.file-upload]
             [dev.zeko.stube.examples.guess]
+            [dev.zeko.stube.examples.kasten.desk]
             [dev.zeko.stube.examples.multicounter]
             [dev.zeko.stube.examples.paginated-list]
             [dev.zeko.stube.examples.protected-counter]
@@ -74,7 +75,9 @@
    {:path "/protected-counter" :title "Protected counter"      :group "Tier 3"
     :blurb "WASessionProtectedCounter: app login composed with cid owner cookies."}
    {:path "/seaside-todo"   :title "Seaside book ToDo"         :group "Book app"
-    :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}])
+    :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}
+   {:path "/kasten"         :title "Kasten notes desk"         :group "Book app"
+    :blurb "Port of the kasten notes UI: horizontal stack of open note columns, wiki-links, embedded children via :call-in-slot."}])
 
 (def ^:private group-order
   ["Foundation" "Tier 1" "Tier 2" "Tier 3" "Book app"])

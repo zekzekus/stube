@@ -1,0 +1,31 @@
+/* ── Accessibility & User Preferences ───────────────────────────── */
+
+@layer a11y {
+  @media (prefers-reduced-motion: reduce) {
+    .ledger-scroller {
+      scroll-behavior: auto;
+    }
+
+    .note-column {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+
+    .notes-zoom-backdrop {
+      transition-duration: 0.01ms !important;
+    }
+
+    .notes-search-dialog {
+      animation: none;
+    }
+
+    .notes-action-pulse {
+      animation: none;
+    }
+
+    .note-disc-card:hover {
+      transform: none;
+    }
+  }
+}

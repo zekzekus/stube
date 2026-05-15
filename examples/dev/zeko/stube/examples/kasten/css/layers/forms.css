@@ -1,0 +1,165 @@
+/* ── Forms & Compose ────────────────────────────────────────────── */
+
+@layer forms {
+  .note-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 100%;
+  }
+
+  .notes-compose {
+    container-type: inline-size;
+    max-width: min(760px, 100%);
+    padding: var(--notes-space-6) 26px 26px;
+    border: 1px solid var(--notes-rule);
+    border-radius: var(--notes-radius-xl);
+    background: linear-gradient(180deg, rgba(252, 248, 241, 0.96) 0%, rgba(251, 247, 238, 0.92) 100%);
+    box-shadow: 0 16px 34px -26px var(--notes-shadow-strong);
+  }
+
+  .notes-compose__eyebrow {
+    margin: 0;
+    color: var(--notes-dim);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .notes-compose__form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: var(--notes-space-5);
+  }
+
+  .notes-compose__fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .notes-compose__fields--stacked {
+    grid-template-columns: 1fr;
+  }
+
+  .notes-compose__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--notes-space-2);
+  }
+
+  .notes-compose__label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--notes-dim);
+  }
+
+  .notes-compose__input {
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--notes-rule) 94%, transparent);
+    border-radius: var(--notes-radius-sm);
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--notes-ink);
+    font: inherit;
+  }
+
+  .notes-compose__input:focus-visible {
+    outline: 2px solid var(--notes-focus-ring);
+    outline-offset: var(--notes-focus-offset);
+    border-color: var(--notes-focus-ring);
+  }
+
+  .note-edit__cm-editor {
+    min-height: 320px;
+  }
+
+  .note-edit__cm-editor .cm-editor {
+    min-height: 320px;
+    border: 1px solid color-mix(in srgb, var(--notes-rule) 94%, transparent);
+    border-radius: var(--notes-radius-sm);
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--notes-ink);
+    font-family: var(--notes-serif);
+    font-size: 1.1rem;
+    line-height: 1.5;
+  }
+
+  .note-edit__cm-editor .cm-editor.cm-focused {
+    outline: 2px solid var(--notes-focus-ring);
+    outline-offset: var(--notes-focus-offset);
+    border-color: var(--notes-focus-ring);
+  }
+
+  .note-edit__cm-editor .cm-scroller {
+    padding: 2px 6px;
+    overflow: auto;
+    font-family: inherit;
+  }
+
+  .note-edit__cm-editor .cm-content {
+    font-family: var(--notes-serif);
+    caret-color: var(--notes-accent);
+    padding: 0;
+  }
+
+  .note-edit__cm-editor .cm-line {
+    padding: 0;
+  }
+
+  /* Subtle vertical rhythm between paragraph-like lines */
+  .note-edit__cm-editor .cm-line + .cm-line {
+    margin-top: 0.05rem;
+  }
+
+  .note-edit__cm-editor .cm-cursor,
+  .note-edit__cm-editor .cm-dropCursor {
+    border-left-color: var(--notes-accent);
+    border-left-width: 2px;
+  }
+
+  .note-edit__cm-editor .cm-selectionBackground,
+  .note-edit__cm-editor.cm-focused .cm-selectionBackground {
+    background-color: color-mix(in srgb, var(--notes-accent) 20%, transparent) !important;
+  }
+
+  /* Placeholder uses serif italic so it blends into typed text */
+  .note-edit__cm-editor .cm-placeholder {
+    color: var(--notes-dim);
+    font-style: italic;
+  }
+
+  /* Wiki-link decorations — tuned to the warm palette */
+  .note-edit__cm-editor .cm-wikilink-bracket {
+    color: color-mix(in srgb, var(--notes-accent) 45%, transparent);
+    font-family: var(--notes-mono);
+    font-size: 0.92em;
+  }
+
+  .note-edit__cm-editor .cm-wikilink-content {
+    color: var(--notes-accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: color-mix(in srgb, var(--notes-accent) 40%, transparent);
+    text-underline-offset: 0.18em;
+    text-decoration-thickness: 1px;
+  }
+
+  .notes-compose__error {
+    margin: 0;
+    color: var(--notes-accent);
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+
+  .notes-compose__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--notes-space-3);
+  }
+}

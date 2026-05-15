@@ -1,0 +1,37 @@
+/* ── States ─────────────────────────────────────────────────────── */
+
+@layer states {
+  .note-column.is-focused .note-column__panel {
+    border-inline-start-color: color-mix(in srgb, var(--notes-accent) 40%, transparent);
+  }
+
+  .note-column.is-focused {
+    box-shadow:
+      0 0 24px -4px var(--notes-shadow-strong),
+      0 0 0 2px var(--notes-accent-border),
+      0 0 40px -6px rgba(40, 30, 15, 0.2);
+  }
+
+  :where(.notes-control,
+    .note-chip,
+    .note-column__close,
+    .note-column__zoom,
+    .note-link,
+    .note-link-action,
+    .notes-topbar__home,
+    .notes-topbar__about):focus-visible {
+    outline: 2px solid var(--notes-focus-ring);
+    outline-offset: var(--notes-focus-offset);
+  }
+
+  :where(.notes-control,
+    .note-chip,
+    .note-column__close,
+    .note-column__zoom,
+    .note-link,
+    .note-link-action,
+    .notes-topbar__home,
+    .notes-topbar__about):focus:not(:focus-visible) {
+    outline: none;
+  }
+}

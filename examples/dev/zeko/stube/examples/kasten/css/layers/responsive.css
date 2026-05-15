@@ -1,0 +1,54 @@
+/* ── Responsive ─────────────────────────────────────────────────── */
+
+@layer responsive {
+  @container (max-width: 42rem) {
+    .notes-topbar {
+      grid-template-columns: 1fr;
+    }
+
+    .notes-topbar__status {
+      justify-content: flex-start;
+    }
+
+    .notes-compose__fields {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 640px) {
+    :root {
+      --notes-page-padding: 12px;
+      --notes-column-min-width: 280px;
+      --notes-column-max-width: calc(100vw - 24px);
+      --notes-header-reserve: 208px;
+    }
+
+    .notes-app {
+      padding: var(--notes-page-padding);
+    }
+
+    .notes-topbar {
+      padding: 13px 14px;
+      border-radius: var(--notes-radius-sm);
+    }
+
+    .note-column__body {
+      padding: var(--notes-space-5) var(--notes-space-4) 22px;
+    }
+
+    .note-column__title,
+    .notes-about__title {
+      font-size: clamp(1.4rem, 8vw, 2rem);
+    }
+
+    .note-column__paragraph,
+    .notes-about__panel p {
+      font-size: 1.08rem;
+    }
+
+    .notes-empty-state,
+    .notes-about__panel {
+      padding: 20px var(--notes-space-4) 22px;
+    }
+  }
+}

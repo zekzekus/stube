@@ -1,0 +1,92 @@
+/* ── Links & Chips ──────────────────────────────────────────────── */
+
+@layer links {
+  .note-chip {
+    padding: 0.6rem 0.92rem;
+    border-radius: var(--notes-radius-pill);
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .note-chip--ghost {
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  .note-chip--large,
+  .note-chip--link {
+    padding-inline: 1.05rem;
+  }
+
+  .note-link {
+    appearance: none;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--notes-accent);
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    overflow-wrap: anywhere;
+    text-decoration: none;
+  }
+
+  .note-link-cluster {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.42rem;
+    align-items: baseline;
+  }
+
+  .note-link--internal {
+    color: var(--notes-accent);
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: color-mix(in srgb, var(--notes-accent) 40%, transparent);
+    text-underline-offset: 0.18em;
+    text-decoration-thickness: 1px;
+  }
+
+  .note-link--external {
+    border-bottom: 1px solid color-mix(in srgb, var(--notes-accent) 36%, transparent);
+    color: var(--notes-external-link);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--notes-accent) 36%, transparent);
+    text-underline-offset: 0.15em;
+    text-decoration-thickness: 1px;
+  }
+
+  .note-link--internal:hover,
+  .note-link--external:hover {
+    color: var(--notes-accent-hover);
+  }
+
+  .note-link--unresolved {
+    padding: 0.02rem 0.28rem 0.06rem;
+    border-radius: 0.48rem;
+    background: rgba(138, 130, 114, 0.1);
+    border-bottom: 1px dashed rgba(138, 130, 114, 0.8);
+    color: var(--notes-dim);
+    font-style: normal;
+    cursor: default;
+  }
+
+  .note-link-action {
+    appearance: none;
+    padding: 0.08rem 0.52rem 0.14rem;
+    border: 1px solid color-mix(in srgb, var(--notes-accent) 24%, transparent);
+    border-radius: var(--notes-radius-pill);
+    background: var(--notes-accent-subtle);
+    color: var(--notes-accent);
+    font: inherit;
+    font-size: 0.86em;
+    line-height: 1.3;
+    cursor: pointer;
+  }
+
+  .note-link-action:hover {
+    color: var(--notes-accent-hover);
+  }
+}

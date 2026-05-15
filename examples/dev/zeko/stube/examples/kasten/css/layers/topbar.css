@@ -1,0 +1,182 @@
+/* ── Topbar ─────────────────────────────────────────────────────── */
+
+@layer topbar {
+  .notes-topbar {
+    container-type: inline-size;
+    position: sticky;
+    top: var(--notes-space-3);
+    z-index: var(--notes-z-topbar);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 11px var(--notes-space-4);
+    border: 1px solid color-mix(in srgb, var(--notes-rule) 92%, transparent);
+    border-radius: var(--notes-radius-sm);
+    background: rgba(251, 247, 238, 0.88);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 12px 30px -24px var(--notes-shadow-strong);
+  }
+
+  .notes-topbar__brand {
+    display: flex;
+    gap: var(--notes-space-3);
+    align-items: baseline;
+  }
+
+  .notes-topbar__home,
+  .notes-topbar__about {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .notes-topbar__home {
+    font-family: var(--notes-serif);
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .notes-topbar__about {
+    color: var(--notes-dim);
+    font-size: 0.92rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .notes-topbar__status {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 14px;
+    color: var(--notes-dim);
+    font-size: 0.9rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .notes-topbar__status strong {
+    color: var(--notes-ink);
+  }
+
+  .notes-topbar__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--notes-space-2);
+  }
+
+  .notes-topbar__hint {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--notes-dim);
+    font-size: 0.9rem;
+    letter-spacing: 0.02em;
+  }
+
+  .notes-topbar__hint kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.7em;
+    margin: 0 0.12em;
+    padding: 0.14rem 0.42rem;
+    border: 1px solid var(--notes-rule);
+    border-bottom-width: 2px;
+    border-radius: var(--notes-radius-pill);
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--notes-ink);
+    font: inherit;
+    font-size: 0.82rem;
+  }
+
+  .notes-control,
+  .note-chip {
+    appearance: none;
+    border: 1px solid var(--notes-rule);
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--notes-ink);
+    font: inherit;
+  }
+
+  .notes-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--notes-radius-pill);
+    font-size: 0.88rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .note-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+  }
+
+  .notes-action-indicator {
+    color: var(--notes-dim);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    animation: notes-action-pulse 800ms ease-in-out infinite alternate;
+  }
+
+  @keyframes notes-action-pulse {
+    from {
+      opacity: 0.45;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  .notes-control--danger {
+    border-color: color-mix(in srgb, var(--notes-accent) 35%, transparent);
+    color: var(--notes-accent);
+  }
+
+  .notes-control--danger:hover {
+    background: color-mix(in srgb, var(--notes-accent) 9%, transparent);
+    border-color: color-mix(in srgb, var(--notes-accent) 55%, transparent);
+  }
+
+  .notes-control--primary {
+    border-color: var(--notes-focus-ring);
+    background: color-mix(in srgb, var(--notes-accent) 12%, transparent);
+    color: var(--notes-accent);
+  }
+
+  .notes-control--primary:hover {
+    background: color-mix(in srgb, var(--notes-accent) 18%, transparent);
+  }
+
+  .notes-control:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  /* Icon-only theme toggle: square footprint, centered glyph. The
+     CSS in the `theme-dark` layer flips which of the two child icons
+     is visible based on `[data-theme="dark"]`. */
+  .notes-theme-toggle {
+    width: 2.2rem;
+    height: 2.2rem;
+    padding: 0;
+    border-radius: var(--notes-radius-pill);
+  }
+
+  .notes-theme-toggle__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+  }
+}

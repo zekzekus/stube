@@ -1,0 +1,72 @@
+/* ── Tokens ─────────────────────────────────────────────────────── */
+
+@layer tokens {
+  :root {
+    color-scheme: light;
+
+    /* Palette */
+    --notes-bg: #f4efe6;
+    --notes-paper: #fbf7ee;
+    --notes-surface: #fcf8f1;
+    --notes-ink: #1e1a14;
+    --notes-dim: #736b5e;
+    --notes-rule: #d9d1bd;
+    --notes-accent: #a84418;
+    --notes-accent-hover: #7c2f08;
+    --notes-accent-subtle: rgba(168, 68, 24, 0.08);
+    --notes-accent-border: rgba(168, 68, 24, 0.18);
+    --notes-spine: #ece3cd;
+    --notes-quote: #34281a;
+    --notes-code: #5f260d;
+    --notes-external-link: #6d3112;
+    --notes-card-summary: #3c3228;
+    --notes-code-bg: rgba(33, 26, 18, 0.98);
+    --notes-code-fg: #f5ecdd;
+
+    /* Shadows */
+    --notes-shadow: rgba(40, 30, 15, 0.16);
+    --notes-shadow-strong: rgba(40, 30, 15, 0.24);
+
+    /* Spacing */
+    --notes-space-1: 4px;
+    --notes-space-2: 8px;
+    --notes-space-3: 12px;
+    --notes-space-4: 16px;
+    --notes-space-5: 18px;
+    --notes-space-6: 24px;
+    --notes-page-padding: 18px;
+
+    /* Radii */
+    --notes-radius-sm: 16px;
+    --notes-radius-md: 18px;
+    --notes-radius-lg: 22px;
+    --notes-radius-xl: 24px;
+    --notes-radius-pill: 999px;
+
+    /* Sizing */
+    --notes-spine-width: 44px;
+    --notes-column-min-width: 320px;
+    --notes-column-max-width: 644px;
+    --notes-column-width: clamp(var(--notes-column-min-width),
+        calc(100vw - (var(--notes-page-padding) * 2)),
+        var(--notes-column-max-width));
+    --notes-header-reserve: 156px;
+    --notes-column-height: calc(100dvh - var(--notes-header-reserve));
+
+    /* Z-index scale */
+    --notes-z-column: 1;
+    --notes-z-topbar: 40;
+    --notes-z-overlay: 100;
+    --notes-z-dialog: 110;
+
+    /* Focus */
+    --notes-focus-ring: rgba(168, 68, 24, 0.45);
+    --notes-focus-offset: 2px;
+
+    /* Typography */
+    --notes-sans: "IBM Plex Sans", system-ui, "Helvetica Neue", Arial, sans-serif;
+    --notes-serif: "Newsreader", "Source Serif Pro", "Charter", "Iowan Old Style", "Georgia", serif;
+    --notes-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  }
+
+}

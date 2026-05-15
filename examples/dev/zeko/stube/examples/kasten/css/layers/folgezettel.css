@@ -1,0 +1,130 @@
+/* ── Folgezettel ─────────────────────────────────────────────────── */
+
+@layer folgezettel {
+  .note-folgezettel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--notes-space-3);
+    min-width: 0;
+  }
+
+  /* Each panel is its own bounded scroll region; no global divider
+     because each panel's own sticky head announces which group you're
+     in, even mid-scroll. */
+  .note-folgezettel__panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    max-height: 18rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid color-mix(in srgb, var(--notes-rule) 55%, transparent);
+    border-radius: var(--notes-radius-sm);
+    background: color-mix(in srgb, var(--notes-paper) 92%, transparent);
+  }
+
+  .note-folgezettel__panel-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5em;
+    padding: 0.5rem 0.75rem;
+    background: linear-gradient(180deg,
+                                color-mix(in srgb, var(--notes-rule) 14%, var(--notes-paper)) 0%,
+                                color-mix(in srgb, var(--notes-rule) 6%, var(--notes-paper)) 100%);
+    border-bottom: 1px solid color-mix(in srgb, var(--notes-rule) 60%, transparent);
+    color: var(--notes-dim);
+    font-family: var(--notes-sans);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .note-folgezettel__panel-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .note-folgezettel__panel-count {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5em;
+    padding: 0.5em 0.5em;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--notes-rule) 35%, transparent);
+    color: var(--notes-ink);
+    font-family: var(--notes-serif);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 0.78rem;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .note-folgezettel__panel-list {
+    display: flex;
+    flex-direction: column;
+    padding: 0 0.75rem;
+  }
+
+  .note-folgezettel__chip {
+    appearance: none;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    width: 100%;
+    max-width: 100%;
+    padding: 0.42rem 0;
+    border: none;
+    border-bottom: 1px dashed color-mix(in srgb, var(--notes-rule) 45%, transparent);
+    border-radius: 0;
+    background: transparent;
+    color: var(--notes-ink);
+    font-family: var(--notes-serif);
+    font-size: 0.92rem;
+    font-style: italic;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .note-folgezettel__chip:last-child {
+    border-bottom: none;
+  }
+
+  .note-folgezettel__chip:hover {
+    color: var(--notes-accent);
+  }
+
+  .note-folgezettel__chip:focus-visible {
+    outline: 2px solid var(--notes-focus-ring);
+    outline-offset: var(--notes-focus-offset);
+  }
+
+  .note-folgezettel__panel--in .note-folgezettel__chip::before {
+    content: "←";
+    flex-shrink: 0;
+    color: var(--notes-dim);
+    font-style: normal;
+    font-size: 0.78rem;
+  }
+
+  .note-folgezettel__panel--out .note-folgezettel__chip::before {
+    content: "→";
+    flex-shrink: 0;
+    color: var(--notes-dim);
+    font-style: normal;
+    font-size: 0.78rem;
+  }
+}

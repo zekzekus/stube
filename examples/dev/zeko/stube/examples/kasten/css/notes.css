@@ -1,0 +1,24 @@
+/* ================================================================
+   Kasten — notes.css (stube example port)
+   Cascade order pinned by the master @layer declaration. Each per-
+   layer file under ./layers/ wraps its rules in `@layer <name> { ... }`.
+   ================================================================ */
+
+@layer tokens, base, utils, layout, topbar, ledger, typography, links, folgezettel, forms, cards, states, responsive, overlays, a11y, theme-dark;
+
+@import url("./layers/tokens.css");
+@import url("./layers/base.css");
+@import url("./layers/utils.css");
+@import url("./layers/layout.css");
+@import url("./layers/topbar.css");
+@import url("./layers/ledger.css");
+@import url("./layers/typography.css");
+@import url("./layers/links.css");
+@import url("./layers/folgezettel.css");
+@import url("./layers/forms.css");
+@import url("./layers/cards.css");
+@import url("./layers/states.css");
+@import url("./layers/responsive.css");
+@import url("./layers/overlays.css");
+@import url("./layers/a11y.css");
+@import url("./layers/theme-dark.css");
