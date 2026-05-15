@@ -1,9 +1,13 @@
 (ns ^{:dev.zeko.stube/rationale
-      "The kernel is temporarily over the §15.4 350-line budget because
-      embedding, lifecycle, history, and slot-local calls still live in
-      one explicit file. Keep the single-multimethod shape; split only
-      when an extraction makes the runtime easier to read."}
-  dev.zeko.stube.kernel
+      "After the Phase 5 split (lifecycle.clj, frame.clj, fragments.clj,
+       effects.clj all extracted), the kernel still hosts the full step
+       multimethod plus dispatch.  The step methods carry the semantics
+       of embedding, history rewind, slot-local calls, and the resume-
+       parent continuation; together with their cond-on-elements
+       branches they push the file over the §15.4 350-line budget.
+       Keep the single-multimethod shape; further splitting would break
+       readability of the effect language without a clear runtime win."}
+    dev.zeko.stube.kernel
   "The pure runtime: `step`, `run-effects`, `dispatch`.
 
   Reading guide
@@ -65,35 +69,22 @@
   (:require [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.effects      :as e]
             [dev.zeko.stube.fragments    :as f]
-            [dev.zeko.stube.halos        :as halos]
+            [dev.zeko.stube.frame        :as frame]
+            [dev.zeko.stube.lifecycle    :as lc]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]))
 
 ;; ---------------------------------------------------------------------------
-;; Rendering a frame
+;; Kernel-bound hooks (set by the server)
 ;; ---------------------------------------------------------------------------
-
-(defn- default-render
-  "Default renderer for components that don't supply one (e.g. tasks).
-  An empty hidden div with the instance id keeps the morph-by-id wire
-  contract intact."
-  [self]
-  [:div {:id (:instance/id self) :hidden true}])
 
 (defn- default-handle
   "Default handler: ignore the event, no effects."
   [self _event]
   [self []])
 
-(def ^:dynamic ^:private *effect-iid*
-  "Instance id whose handler/lifecycle hook emitted the effects currently
-  being folded.  Stack calls historically used `(conv/top-id conv)`, but
-  embedded children can also handle events; slot-local effects need the
-  actual emitting instance."
-  nil)
-
 (defn- effect-origin [conv]
-  (or *effect-iid* (conv/top-id conv)))
+  (or e/*effect-iid* (conv/top-id conv)))
 
 (def ^:dynamic *schedule-event!*
   "Optional side-effect hook bound by the server while folding effects.
@@ -109,142 +100,22 @@
   "Optional side-effect hook bound by the server for `[:unsubscribe …]`."
   nil)
 
-(defn- render-instance
-  "Render `iid` with explicit Datastar patch `opts`, mark it and its
-  rendered descendants as present in the DOM, and return `[conv' frag]`.
-
-  When `:conv/halos?` is set, the outer hiccup is decorated with
-  `data-stube-*` attrs and the resulting HTML is cached on the instance
-  under `:instance/last-html` so the dev panel's HTML tab can show it."
-  [conv iid opts]
-  (let [inst      (conv/instance conv iid)
-        cdef      (registry/lookup! (:instance/type inst))
-        render-fn (or (:component/render cdef) default-render)
-        halos?    (boolean (:conv/halos? conv))
-        html      (binding [render/*conv* conv]
-                    ;; Keep the dynamic conversation bound through HTML
-                    ;; serialization too: user render fns may return lazy
-                    ;; seqs whose elements call `s/render-slot` only when
-                    ;; Chassis walks the tree.
-                    (let [hiccup (cond-> (render-fn inst)
-                                   halos? (halos/decorate-root inst))]
-                      (render/html hiccup)))
-        marked    (conv/mark-rendered conv iid)
-        conv'     (cond-> marked
-                    halos? (assoc-in [:conv/instances iid :instance/last-html]
-                                     html))]
-    [conv' (f/elements html opts)]))
-
-(defn- render-frame
-  "Produce the elements fragment for `iid` and return
-  `[conv' fragment]`.
-
-  Patching strategy (slice 2):
-
-  * **First render of a frame** — its id is not yet in the DOM, so we
-    target the shell's `<div id=\"root\">` with `mode inner`.  This
-    case covers the very first SSE message of a conversation, every
-    `:call`-pushed top frame, and the result of `:replace`.
-  * **Subsequent renders** — the id is in the DOM (either we put it
-    there last time as a top frame, or its parent inlined it via
-    `s/render-slot`), so we let Datastar's default morph-by-id do the
-    work.  Sibling DOM state — input focus, selection, scroll
-    position — is preserved.
-
-  `*conv*` is bound around the user's `:render` so `s/render-slot` can
-  resolve embedded children."
-  [conv iid]
-  (let [inst        (conv/instance conv iid)
-        first-time? (not (:instance/rendered? inst))
-        opts        (if first-time?
-                      {:selector "#root" :patch-mode :inner}
-                      ;; No selector → Datastar morphs by element id.
-                      {})]
-    (render-instance conv iid opts)))
-
 (declare run-effects)
 
 ;; ---------------------------------------------------------------------------
-;; Lifecycle hooks
+;; Lifecycle / frame thin wrappers
 ;; ---------------------------------------------------------------------------
+;;
+;; Lifecycle and frame each take `run-effects` as a parameter to keep
+;; the dep direction one-way (they don't require the kernel).  Hide the
+;; threading from step methods with these one-liners.
 
-(defn- lifecycle-pair
-  "Normalise a lifecycle hook result.  Hooks mirror `:start` and should
-  return `[self' effects]`, but accepting nil keeps cleanup-only hooks
-  terse."
-  [self result]
-  (cond
-    (nil? result) [self []]
-    (and (vector? result) (= 2 (count result)) (map? (first result))) result
-    :else [self result]))
+(defn- run-start-hooks  [conv iids] (lc/run-start-hooks  run-effects conv iids))
+(defn- run-stop-hooks   [conv iids] (lc/run-stop-hooks   run-effects conv iids))
+(defn- run-wakeup-hooks [conv iids] (lc/run-wakeup-hooks run-effects conv iids))
 
-(defn- run-start-hook
-  "Run `:start` for `iid` if present, without rendering the instance.
-  Callers decide which newly-started frame should be rendered; embedded
-  children usually start only to subscribe or schedule timers."
-  [conv iid]
-  (if-let [inst (conv/instance conv iid)]
-    (let [cdef (registry/lookup! (:instance/type inst))]
-      (if-let [start-fn (:start cdef)]
-        (let [[inst' fx] (lifecycle-pair inst (start-fn inst))
-              inst'      (conv/preserve-meta inst inst')
-              conv'      (conv/put-instance conv inst')
-              [conv'' frags] (binding [*effect-iid* iid]
-                                (run-effects conv' fx))]
-          [conv'' frags])
-        [conv []]))
-    [conv []]))
-
-(defn- run-start-hooks
-  "Run `:start` for each iid in order, collecting fragments."
-  [conv iids]
-  (reduce (fn [[c frags] iid]
-            (let [[c' more] (run-start-hook c iid)]
-              [c' (into frags more)]))
-          [conv []]
-          iids))
-
-(defn- run-stop-hooks
-  "Run `:stop` for the instance ids, preserving any emitted fragments.
-  The instances are still present while hooks run; callers remove them
-  afterwards."
-  [conv iids]
-  (reduce (fn [[c frags] iid]
-            (if-let [inst (conv/instance c iid)]
-              (let [cdef (registry/lookup! (:instance/type inst))]
-                (if-let [stop-fn (:stop cdef)]
-                  (let [[_ fx] (lifecycle-pair inst (stop-fn inst))
-                        [c' more] (binding [*effect-iid* iid]
-                                    (run-effects c fx))]
-                    [c' (into frags more)])
-                  [c frags]))
-              [c frags]))
-          [conv []]
-          iids))
-
-(defn- wakeup-frame
-  "Run `:wakeup` for `iid`, updating the instance before rendering."
-  [conv iid]
-  (if-let [inst (conv/instance conv iid)]
-    (let [cdef (registry/lookup! (:instance/type inst))]
-      (if-let [wakeup-fn (:wakeup cdef)]
-        (let [[inst' fx] (lifecycle-pair inst (wakeup-fn inst))
-              inst'      (conv/preserve-meta inst inst')
-              conv'      (conv/put-instance conv inst')
-              [conv'' frags] (binding [*effect-iid* iid]
-                                (run-effects conv' fx))]
-          [conv'' frags])
-        [conv []]))
-    [conv []]))
-
-(defn- run-wakeup-hooks
-  "Run `:wakeup` for each iid in order, collecting fragments."
-  [conv iids]
-  (reduce (fn [[c frags] iid]
-            (let [[c' more] (wakeup-frame c iid)]
-              [c' (into frags more)]))
-          [conv []]
-          iids))
+(def ^:private render-frame    frame/render-frame)
+(def ^:private render-instance frame/render-instance)
 
 (defn resume-top
   "Run `:wakeup` for the current top frame and render it as a restored
@@ -321,17 +192,6 @@
         (let [[c f] (render-frame conv'' iid)]
           [c (conj (vec fr) f)])))))
 
-(defn- render-slot-overlay
-  "Render the child currently occupying `slot` after a `:call-in-slot`.
-  If the slot already had a DOM root, patch that root `outer`; otherwise
-  fall back to re-rendering the parent because there is no child anchor
-  yet."
-  [conv parent-id old-iid new-iid]
-  (if old-iid
-    (render-instance conv new-iid {:selector (str "#" old-iid)
-                                   :patch-mode :outer})
-    (render-frame conv parent-id)))
-
 (defmethod step :call-in-slot
   [conv eff]
   (let [slot       (e/slot-call-slot eff)
@@ -366,7 +226,7 @@
         [conv'' fr]
 
         :else
-        (let [[c f] (render-slot-overlay conv'' parent-id old-iid iid)]
+        (let [[c f] (frame/render-slot-overlay conv'' parent-id old-iid iid)]
           [c (conj (vec fr) f)])))))
 
 (defn- resume-parent
@@ -398,8 +258,8 @@
           [parent' fx]   (resume-fn parent value)
           parent'        (conv/preserve-meta parent parent')
           conv'          (conv/put-instance conv parent')
-          [conv'' more]  (binding [*effect-iid* parent-id]
-                            (run-effects conv' fx))
+          [conv'' more]  (e/with-origin parent-id
+                           (run-effects conv' fx))
           ;; If the resume produced no further element fragments,
           ;; re-render the parent so its state changes are visible.
           [conv-final extra]
@@ -667,8 +527,8 @@
         ;; handler.
         self'      (conv/preserve-meta (conv/instance conv* instance-id) self')
         conv**     (conv/put-instance conv* self')
-        [conv''' more-frags] (binding [*effect-iid* instance-id]
-                                (run-effects conv** fx))
+        [conv''' more-frags] (e/with-origin instance-id
+                               (run-effects conv** fx))
         ;; If the handler produced no frame-changing effect, re-render
         ;; the same instance so the user sees state changes.  Skip the
         ;; re-render if the instance no longer exists (the handler must

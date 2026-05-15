@@ -30,6 +30,25 @@
   (:refer-clojure :exclude [replace]))
 
 ;; ---------------------------------------------------------------------------
+;; Effect-origin context
+;; ---------------------------------------------------------------------------
+
+(def ^:dynamic *effect-iid*
+  "Instance id whose handler/lifecycle hook emitted the effects currently
+  being folded.  Stack calls historically used the top frame, but
+  embedded children can also handle events; slot-local effects need the
+  actual emitting instance.  Bound by the kernel/lifecycle around any
+  call to `run-effects`."
+  nil)
+
+(defmacro with-origin
+  "Bind [[*effect-iid*]] to `iid` while running `body`.  Use whenever
+  you fold effects whose origin is not the current top frame."
+  [iid & body]
+  `(binding [*effect-iid* ~iid]
+     ~@body))
+
+;; ---------------------------------------------------------------------------
 ;; Predicates
 ;; ---------------------------------------------------------------------------
 
