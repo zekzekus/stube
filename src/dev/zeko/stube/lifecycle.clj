@@ -13,15 +13,31 @@
             [dev.zeko.stube.effects      :as e]
             [dev.zeko.stube.registry     :as registry]))
 
-(defn- lifecycle-pair
-  "Normalise a lifecycle hook result.  Hooks mirror `:start` and should
-  return `[self' effects]`, but accepting nil keeps cleanup-only hooks
-  terse."
+(defn coerce-return
+  "Normalise whatever a handler or lifecycle hook returned into the
+  kernel's canonical `[self' effects]` pair.  Accepted shapes:
+
+      nil          → [self []]      ; explicit no-op (cleanup hooks)
+      <map>        → [<map> []]     ; state change, no effects
+      [<map> <v>]  → as-is          ; the canonical pair
+      <vec>        → [self <vec>]   ; effects only, same self
+
+  The map and pair cases let `:handle` return `(assoc self :n 1)` or
+  `[(s/answer :ok)]` directly when one side of the pair would be
+  ceremony; the original `[self' effects]` form keeps working."
   [self result]
   (cond
-    (nil? result) [self []]
-    (and (vector? result) (= 2 (count result)) (map? (first result))) result
-    :else [self result]))
+    (nil? result)
+    [self []]
+
+    (map? result)
+    [result []]
+
+    (and (vector? result) (= 2 (count result)) (map? (first result)))
+    result
+
+    :else
+    [self result]))
 
 (defn run-start-hook
   "Run `:start` for `iid` if present, without rendering the instance.
@@ -30,7 +46,7 @@
   (if-let [inst (conv/instance conv iid)]
     (let [cdef (registry/lookup! (:instance/type inst))]
       (if-let [start-fn (:start cdef)]
-        (let [[inst' fx] (lifecycle-pair inst (start-fn inst))
+        (let [[inst' fx] (coerce-return inst (start-fn inst))
               inst'      (conv/preserve-meta inst inst')
               conv'      (conv/put-instance conv inst')
               [conv'' frags] (e/with-origin iid
@@ -57,7 +73,7 @@
             (if-let [inst (conv/instance c iid)]
               (let [cdef (registry/lookup! (:instance/type inst))]
                 (if-let [stop-fn (:stop cdef)]
-                  (let [[_ fx] (lifecycle-pair inst (stop-fn inst))
+                  (let [[_ fx] (coerce-return inst (stop-fn inst))
                         [c' more] (e/with-origin iid
                                     (run-effects-fn c fx))]
                     [c' (into frags more)])
@@ -72,7 +88,7 @@
   (if-let [inst (conv/instance conv iid)]
     (let [cdef (registry/lookup! (:instance/type inst))]
       (if-let [wakeup-fn (:wakeup cdef)]
-        (let [[inst' fx] (lifecycle-pair inst (wakeup-fn inst))
+        (let [[inst' fx] (coerce-return inst (wakeup-fn inst))
               inst'      (conv/preserve-meta inst inst')
               conv'      (conv/put-instance conv inst')
               [conv'' frags] (e/with-origin iid

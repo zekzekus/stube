@@ -509,9 +509,10 @@
         self       (conv/merged-self conv instance-id signals)
         cdef       (registry/lookup! (:instance/type self))
         handle     (or (:component/handle cdef) default-handle)
-        [self' fx] (handle self {:event   event
-                                 :payload payload
-                                 :signals signals})
+        [self' fx] (lc/coerce-return self
+                                     (handle self {:event   event
+                                                   :payload payload
+                                                   :signals signals}))
         ;; A handler that walks history backwards (`[:back]`) must NOT
         ;; have its own pre-state pushed onto that history first — if
         ;; it did, `:back` would just pop the snapshot we'd just taken
