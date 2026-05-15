@@ -30,9 +30,9 @@
   :keep   #{:answer}
 
   :render (fn [self]
-            [:form (merge {:id    (:instance/id self)
-                           :class "stube-prompt"}
-                          (s/on self :submit))
+            [:form (s/root-attrs self
+                     {:class "stube-prompt"}
+                     (s/on self :submit))
              [:p (:text self)]
              [:input (merge {:type "number" :name "answer" :autofocus true}
                             (s/bind :answer))]
@@ -42,11 +42,11 @@
             (let [parsed (parse-long (str (:answer self)))]
               (if parsed
                 ;; Answer the parent (the wizard) with the parsed number.
-                [self [[:answer parsed]]]
+                [(s/answer parsed)]
                 ;; Bad input: re-render with an error message.  Returning
                 ;; the same self with no effects causes the kernel to
                 ;; auto-render this instance (see `dispatch` semantics).
-                [(assoc self :text "Please enter a number.") []]))))
+                (assoc self :text "Please enter a number.")))))
 
 ;; A passive notification with a "Continue" button that answers back to
 ;; the parent so the wizard knows to move on.
@@ -55,15 +55,14 @@
             {:text text})
 
   :render (fn [self]
-            [:div {:id    (:instance/id self)
-                   :class "stube-info"}
+            [:div (s/root-attrs self {:class "stube-info"})
              [:p (:text self)]
              [:button (merge {:type "button"}
                              (s/on self :click :as :ack))
               "Continue"]])
 
   :handle (fn [self _evt]
-            [self [[:answer :ack]]]))
+            [(s/answer :ack)]))
 
 ;; ---------------------------------------------------------------------------
 ;; The flow

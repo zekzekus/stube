@@ -96,11 +96,11 @@
     (let [ym    (YearMonth/of (int (:year self)) (int (:month self)))
           cells (ym-cells ym)
           weeks (partition 7 cells)]
-      [:section {:id    (:instance/id self)
-                 :style "display:inline-block; padding:1rem;
-                         border:1px solid #888; border-radius:0.5rem;
-                         font-family:system-ui, sans-serif;
-                         background:#fff;"}
+      [:section (s/root-attrs self
+                  {:style "display:inline-block; padding:1rem;
+                           border:1px solid #888; border-radius:0.5rem;
+                           font-family:system-ui, sans-serif;
+                           background:#fff;"})
        [:header {:style "display:flex; justify-content:space-between;
                           align-items:center; margin-bottom:0.5rem;"}
         (nav-button self "‹" :prev)
@@ -129,22 +129,20 @@
       (cond
         (= event :prev)
         (let [ym' (.minusMonths ym 1)]
-          [(assoc self :year (.getYear ym') :month (.getMonthValue ym'))
-           []])
+          (assoc self :year (.getYear ym') :month (.getMonthValue ym')))
 
         (= event :next)
         (let [ym' (.plusMonths ym 1)]
-          [(assoc self :year (.getYear ym') :month (.getMonthValue ym'))
-           []])
+          (assoc self :year (.getYear ym') :month (.getMonthValue ym')))
 
         (= event :cancel)
-        [self [[:answer ::cancel]]]
+        [(s/answer ::cancel)]
 
         (= event :pick-day)
-        [self [[:answer (.atDay ym payload)]]]
+        [(s/answer (.atDay ym payload))]
 
         :else
-        [self []]))))
+        nil))))
 
 ;; ---------------------------------------------------------------------------
 ;; A trivial driver flow so we can see what the picker answers
@@ -153,16 +151,16 @@
 (s/defcomponent :ui/show-date
   :init   (fn [{:keys [date]}] {:date date})
   :render (fn [self]
-            [:section {:id    (:instance/id self)
-                       :style "padding:1rem; max-width:24rem;
-                               font-family:system-ui, sans-serif;"}
+            [:section (s/root-attrs self
+                        {:style "padding:1rem; max-width:24rem;
+                                 font-family:system-ui, sans-serif;"})
              [:h3 "You picked"]
              [:p [:strong (str (:date self))]]
              [:button (merge {:type "button"
                               :style "padding:0.4rem 1rem;"}
                              (s/on self :click :as :again))
               "Pick another"]])
-  :handle (fn [self _] [self [[:answer :again]]]))
+  :handle (fn [self _] [(s/answer :again)]))
 
 (s/defflow :demo/calendar []
   (loop []

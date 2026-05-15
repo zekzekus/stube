@@ -127,11 +127,10 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :style "display:inline-block; padding:1rem; margin:1rem;
-                       font-family:system-ui, sans-serif;
-                       border:1px solid #ccc; border-radius:0.5rem;
-                       background:#fff; max-width:18rem;"}
+    [:section (s/root-attrs self {:style "display:inline-block; padding:1rem; margin:1rem;
+                                          font-family:system-ui, sans-serif;
+                                          border:1px solid #ccc; border-radius:0.5rem;
+                                          background:#fff; max-width:18rem;"})
      [:h2 {:style "margin-top:0;"} "Calculator"]
      [:div {:style "background:#222; color:#0f0; font-family:monospace;
                     font-size:1.6rem; padding:0.5rem 0.75rem;
@@ -176,14 +175,13 @@
 
   :handle
   (fn [self {:keys [event payload]}]
-    [(case event
-       :digit (press-digit self payload)
-       :op    (press-op self payload)
-       :eq    (press-eq self)
-       :clear (press-clear self)
-       :neg   (press-neg self)
-       self)
-     []]))
+    (case event
+      :digit (press-digit self payload)
+      :op    (press-op self payload)
+      :eq    (press-eq self)
+      :clear (press-clear self)
+      :neg   (press-neg self)
+      self)))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

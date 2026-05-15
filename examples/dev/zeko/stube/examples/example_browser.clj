@@ -112,9 +112,8 @@
     (let [{:keys [path title group blurb]} (:entry self)
           flow-id (get (s/mounts) path)
           doc     (some-> flow-id s/help first-paragraph)]
-      [:article {:id    (:instance/id self)
-                 :class "stube-card"
-                 :style "min-height:20rem;"}
+      [:article (s/root-attrs self {:class "stube-card"
+                                    :style "min-height:20rem;"})
        [:div {:style "display:flex; align-items:baseline; gap:0.75rem;
                       flex-wrap:wrap;"}
         [:h2 {:style "margin-top:0;"} title]
@@ -175,9 +174,8 @@
                      (:selected self)
                      (:path (first demo-catalog)))
           mounts   (s/mounts)]
-      [:section {:id    (:instance/id self)
-                 :style "max-width:72rem; margin:1rem auto; padding:1rem;
-                         font-family:system-ui, sans-serif; color:#222;"}
+      [:section (s/root-attrs self {:style "max-width:72rem; margin:1rem auto; padding:1rem;
+                                            font-family:system-ui, sans-serif; color:#222;"})
        [:header {:style "margin-bottom:1rem;"}
         [:h1 {:style "margin:0 0 0.35rem;"} "stube examples"]
         [:p {:style "color:#555; max-width:56rem;"}
@@ -205,8 +203,8 @@
   :handle
   (fn [self {:keys [event payload]}]
     (case event
-      :select [(assoc self :selected payload) []]
-      [self []])))
+      :select (assoc self :selected payload)
+      nil)))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

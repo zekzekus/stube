@@ -272,9 +272,8 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card stube-modal"
-               :style "font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self {:class "stube-card stube-modal"
+                                  :style "font-family:system-ui, sans-serif;"})
      [:h1 {:style "margin-top:0;"} "ToDo Application"]
      [:p "Please login with e-mail and password:"]
      (render-message (:message self))
@@ -310,16 +309,16 @@
       (let [email (normalize-email (:email self))
             user  (db-user (:db self) email)]
         (if (and user (= (:password-hash user) (hash-password (:password self))))
-          [self [[:answer {:op :login :email email}]]]
+          [(s/answer {:op :login :email email})]
           [(assoc self
                   :password ""
                   :message  (message :error "Login failed."))
-           [[:patch-signals {(s/local-signal self :password) ""}]]]))
+           [(s/patch-signals {(s/local-signal self :password) ""})]]))
 
       :register
-      [self [[:answer {:op :register}]]]
+      [(s/answer {:op :register})]
 
-      [self []])))
+      nil)))
 
 (s/defcomponent :demo/seaside-todo-register
   :init (fn [{:keys [db]}]
@@ -334,9 +333,8 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card stube-modal"
-               :style "font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self {:class "stube-card stube-modal"
+                                  :style "font-family:system-ui, sans-serif;"})
      [:h1 {:style "margin-top:0;"} "Register"]
      (render-message (:message self))
      [:form (merge {:style "margin-top:0.75rem;"}
@@ -377,31 +375,31 @@
       (let [email (normalize-email (:email self))]
         (cond
           (str/blank? (:user-name self))
-          [(assoc self :message (message :info "Please choose a username!")) []]
+          (assoc self :message (message :info "Please choose a username!"))
 
           (str/blank? email)
-          [(assoc self :message (message :info "Please enter your e-mail address!")) []]
+          (assoc self :message (message :info "Please enter your e-mail address!"))
 
           (db-user (:db self) email)
-          [(assoc self :message (message :error "The e-mail address is already registered!")) []]
+          (assoc self :message (message :error "The e-mail address is already registered!"))
 
           (str/blank? (:password self))
-          [(assoc self :message (message :info "Please choose a password!")) []]
+          (assoc self :message (message :info "Please choose a password!"))
 
           (not= (:password self) (:repeated-password self))
-          [(assoc self :message (message :info "Your repeated password does not match!")) []]
+          (assoc self :message (message :info "Your repeated password does not match!"))
 
           :else
-          [self [[:answer {:op   :registered
-                           :user (new-user {:user-name (:user-name self)
-                                            :email     email
-                                            :password  (:password self)
-                                            :tasks     []})}]]]))
+          [(s/answer {:op   :registered
+                      :user (new-user {:user-name (:user-name self)
+                                       :email     email
+                                       :password  (:password self)
+                                       :tasks     []})})]))
 
       :cancel
-      [self [[:answer s/cancel]]]
+      [(s/answer s/cancel)]
 
-      [self []])))
+      nil)))
 
 ;; ---------------------------------------------------------------------------
 ;; Menu component: Seaside-style callback entries as parent events
@@ -419,8 +417,7 @@
   :render
   (fn [self]
     (let [parent {:instance/id (:instance/parent self)}]
-      [:nav {:id    (:instance/id self)
-             :style "display:flex; flex-direction:column; gap:0.35rem;"}
+      [:nav (s/root-attrs self {:style "display:flex; flex-direction:column; gap:0.35rem;"})
        (for [[label route] menu-entries]
          [:button (merge {:key   label
                           :type  "button"
@@ -490,10 +487,9 @@
 
   :render
   (fn [self]
-    [:div {:id    (:instance/id self)
-           :style "position:fixed; inset:0; background:rgb(0 0 0 / 22%);
-                   display:flex; align-items:flex-start; justify-content:center;
-                   padding:3rem 1rem; z-index:10;"}
+    [:div (s/root-attrs self {:style "position:fixed; inset:0; background:rgb(0 0 0 / 22%);
+                                      display:flex; align-items:flex-start; justify-content:center;
+                                      padding:3rem 1rem; z-index:10;"})
      [:section {:class "stube-card"
                 :style "width:min(40rem, 100%);"}
       [:h2 {:style "margin-top:0;"}
@@ -517,14 +513,14 @@
       :submit
       (let [task (editor-task self)]
         (if-let [problem (validate-task task)]
-          [(assoc self :message (message :error problem)) []]
-          [self [[:answer {:op   (:mode self)
-                           :task task}]]]))
+          (assoc self :message (message :error problem))
+          [(s/answer {:op   (:mode self)
+                      :task task})]))
 
       :cancel
-      [self [[:answer s/cancel]]]
+      [(s/answer s/cancel)]
 
-      [self []])))
+      nil)))
 
 ;; ---------------------------------------------------------------------------
 ;; Logged-in application component
@@ -654,8 +650,7 @@
   :render
   (fn [self]
     (let [user (db-user (:db self) (:email self))]
-      [:section {:id    (:instance/id self)
-                 :style page-style}
+      [:section (s/root-attrs self {:style page-style})
        [:header {:style "display:flex; align-items:baseline; gap:0.75rem;
                          flex-wrap:wrap; margin-bottom:1rem;"}
         [:h1 {:style "margin:0;"} "ToDo-List of " (:user-name user)]
@@ -674,64 +669,60 @@
   (fn [self {:keys [event payload]}]
     (case event
       :filter
-      [(assoc self :filter payload :message nil) []]
+      (assoc self :filter payload :message nil)
 
       :sort
-      [(if (= (:sort-key self) payload)
-         (update self :sort-dir {:asc :desc :desc :asc})
-         (assoc self :sort-key payload :sort-dir :asc))
-       []]
+      (if (= (:sort-key self) payload)
+        (update self :sort-dir {:asc :desc :desc :asc})
+        (assoc self :sort-key payload :sort-dir :asc))
 
       :toggle
-      [(-> self
-           (update :db db-update-task (:email self) payload
-                   #(update % :completed not))
-           (assoc :message nil))
-       []]
+      (-> self
+          (update :db db-update-task (:email self) payload
+                  #(update % :completed not))
+          (assoc :message nil))
 
       :new-task
       [(assoc self :dialog-open? true :message nil)
-       [[:call-in-slot :slot/dialog
-         (s/embed :demo/seaside-todo-task-editor {:mode :new})
-         :resume :on-editor]]]
+       [(s/call-in-slot :slot/dialog
+                        :demo/seaside-todo-task-editor {:mode :new}
+                        :on-editor)]]
 
       :edit
       (if-let [task (task-by-id (:db self) (:email self) payload)]
         [(assoc self :dialog-open? true :message nil)
-         [[:call-in-slot :slot/dialog
-           (s/embed :demo/seaside-todo-task-editor {:mode :edit :task task})
-           :resume :on-editor]]]
-        [(assoc self :message (message :error "That task no longer exists.")) []])
+         [(s/call-in-slot :slot/dialog
+                          :demo/seaside-todo-task-editor {:mode :edit :task task}
+                          :on-editor)]]
+        (assoc self :message (message :error "That task no longer exists.")))
 
       :logout
-      [self [[:answer {:op :logout :db (:db self)}]]]
+      [(s/answer {:op :logout :db (:db self)})]
 
-      [self []]))
+      nil))
 
   :on-editor
   (fn [self answer]
     (cond
       (= answer s/cancel)
-      [(assoc self :dialog-open? false :message nil) []]
+      (assoc self :dialog-open? false :message nil)
 
       (= :new (:op answer))
-      [(-> self
-           (update :db db-add-task (:email self) (:task answer))
-           (assoc :dialog-open? false
-                  :filter :all
-                  :message (message :info "Task created.")))
-       []]
+      (-> self
+          (update :db db-add-task (:email self) (:task answer))
+          (assoc :dialog-open? false
+                 :filter :all
+                 :message (message :info "Task created.")))
 
       (= :edit (:op answer))
       (let [task (:task answer)]
-        [(-> self
-             (update :db db-update-task (:email self) (:id task) merge task)
-             (assoc :dialog-open? false
-                    :message (message :info "Task saved.")))
-         []])
+        (-> self
+            (update :db db-update-task (:email self) (:id task) merge task)
+            (assoc :dialog-open? false
+                   :message (message :info "Task saved."))))
 
       :else
-      [(assoc self :dialog-open? false) []])))
+      (assoc self :dialog-open? false))))
 
 ;; ---------------------------------------------------------------------------
 ;; Root task: login/register/logged-in flow
@@ -742,42 +733,37 @@
 
   :start
   (fn [self]
-    [self [[:call (s/embed :demo/seaside-todo-login {:db (:db self)})
-            :resume :on-login]]])
+    [(s/call :demo/seaside-todo-login {:db (:db self)} :on-login)])
 
   :on-login
   (fn [self answer]
     (case (:op answer)
       :register
-      [self [[:call (s/embed :demo/seaside-todo-register {:db (:db self)})
-              :resume :on-register]]]
+      [(s/call :demo/seaside-todo-register {:db (:db self)} :on-register)]
 
       :login
       [(assoc self :email (:email answer))
-       [[:call (s/embed :demo/seaside-todo-logged-in
-                        {:db (:db self) :email (:email answer)})
-         :resume :on-logged-in]]]
+       [(s/call :demo/seaside-todo-logged-in
+                {:db (:db self) :email (:email answer)}
+                :on-logged-in)]]
 
-      [self [[:call (s/embed :demo/seaside-todo-login {:db (:db self)})
-              :resume :on-login]]]))
+      [(s/call :demo/seaside-todo-login {:db (:db self)} :on-login)]))
 
   :on-register
   (fn [self answer]
     (if (= answer s/cancel)
-      [self [[:call (s/embed :demo/seaside-todo-login {:db (:db self)})
-              :resume :on-login]]]
+      [(s/call :demo/seaside-todo-login {:db (:db self)} :on-login)]
       (let [db'   (db-add-user (:db self) (:user answer))
             email (get-in answer [:user :email])]
         [(assoc self :db db' :email email)
-         [[:call (s/embed :demo/seaside-todo-logged-in {:db db' :email email})
-           :resume :on-logged-in]]])))
+         [(s/call :demo/seaside-todo-logged-in {:db db' :email email}
+                  :on-logged-in)]])))
 
   :on-logged-in
   (fn [self answer]
     (let [db' (or (:db answer) (:db self))]
       [(assoc self :db db' :email nil)
-       [[:call (s/embed :demo/seaside-todo-login {:db db'})
-         :resume :on-login]]])))
+       [(s/call :demo/seaside-todo-login {:db db'} :on-login)]])))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

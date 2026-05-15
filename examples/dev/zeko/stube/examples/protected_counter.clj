@@ -23,9 +23,9 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card"
-               :style "max-width:28rem; margin:1rem; font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self
+                {:class "stube-card"
+                 :style "max-width:28rem; margin:1rem; font-family:system-ui, sans-serif;"})
      [:h2 {:style "margin-top:0;"} "Protected counter"]
      (if-let [user (:user self)]
        [:div
@@ -64,13 +64,13 @@
       :login
       (let [user (str/trim (str (:user-name self)))]
         (if (str/blank? user)
-          [self []]
-          [(assoc self :user user :user-name "" :n 0) []]))
+          nil
+          (assoc self :user user :user-name "" :n 0)))
 
-      :logout [(assoc self :user nil :n 0) []]
-      :inc    [(update self :n inc) []]
-      :dec    [(update self :n dec) []]
-      [self []])))
+      :logout (assoc self :user nil :n 0)
+      :inc    (update self :n inc)
+      :dec    (update self :n dec)
+      nil)))
 
 (s/mount! "/protected-counter" :demo/protected-counter)
 

@@ -34,7 +34,7 @@
 
 (defn- cleanup-effects [files]
   (mapv (fn [path]
-          [:io #(io/delete-file path true)])
+          (s/io #(io/delete-file path true)))
         (keep :tempfile files)))
 
 (s/defcomponent :demo/file-upload
@@ -44,9 +44,8 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card"
-               :style "max-width:42rem; margin:1rem; font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self {:class "stube-card"
+                                  :style "max-width:42rem; margin:1rem; font-family:system-ui, sans-serif;"})
      [:h2 {:style "margin-top:0;"} "File upload"]
      [:p {:style "color:#555;"}
       "The form is plain HTML multipart.  Its response lands in a hidden "
@@ -87,7 +86,7 @@
             entries (mapv #(safe-summary fields %) files)]
         [(update self :uploads into entries)
          (cleanup-effects files)])
-      [self []])))
+      nil)))
 
 (s/mount! "/file-upload" :demo/file-upload)
 

@@ -152,9 +152,8 @@
   (fn [self]
     (let [{:keys [items page pages start] :as window} (visible-window self)
           render-row (resolve-renderer (:render-row self))]
-      [:section {:id    (:instance/id self)
-                 :class "stube-card"
-                 :style "max-width:46rem;"}
+      [:section (s/root-attrs self {:class "stube-card"
+                                    :style "max-width:46rem;"})
        [:header {:style "display:flex; align-items:baseline; gap:1rem;
                           margin-bottom:0.75rem;"}
         [:h3 {:style "margin:0;"} (:caption self)]
@@ -181,10 +180,10 @@
     (let [pages (page-count (:items self) (:page-size self))
           move  (fn [n] (assoc self :page (clamp 0 n (dec pages))))]
       (case event
-        :prev [(move (dec (:page self))) []]
-        :next [(move (inc (:page self))) []]
-        :page [(move payload) []]
-        [self []]))))
+        :prev (move (dec (:page self)))
+        :next (move (inc (:page self)))
+        :page (move payload)
+        nil))))
 
 ;; ---------------------------------------------------------------------------
 ;; Demo wrapper
@@ -201,8 +200,7 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :style "padding:1rem; font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self {:style "padding:1rem; font-family:system-ui, sans-serif;"})
      [:h2 "Paginated list"]
      [:p {:style "max-width:42rem; color:#555;"}
       "A reusable list component owns only pagination state.  The row "

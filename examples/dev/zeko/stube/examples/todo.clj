@@ -104,9 +104,7 @@
 
   :render
   (fn [self]
-    [:form (merge {:id    (:instance/id self)
-                   :style "display:flex; gap:0.25rem;"}
-                  (s/on self :submit))
+    [:form (s/root-attrs self {:style "display:flex; gap:0.25rem;"} (s/on self :submit))
      [:input (merge {:name      "text"
                      :value     (:text self)
                      :autofocus true
@@ -119,10 +117,10 @@
 
   :handle
   (fn [self {:keys [event]}]
-    [self [[:answer (if (= event :cancel)
-                      s/cancel
-                      {:id   (:id self)
-                       :text (:text self)})]]]))
+    [(s/answer (if (= event :cancel)
+                 s/cancel
+                 {:id   (:id self)
+                  :text (:text self)}))]))
 
 (s/defcomponent :demo/todo
   :init (constantly
@@ -138,10 +136,9 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :style "max-width:32rem; margin:1rem; padding:1rem;
-                       border:1px solid #ccc; border-radius:0.4rem;
-                       font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self {:style "max-width:32rem; margin:1rem; padding:1rem;
+                                          border:1px solid #ccc; border-radius:0.4rem;
+                                          font-family:system-ui, sans-serif;"})
      [:h2 {:style "margin-top:0;"} "Todo"]
      [:form (merge {:style "display:flex; gap:0.4rem; margin-bottom:0.5rem;"}
                    (s/on self :submit :as :add))
@@ -167,39 +164,36 @@
   (fn [self {:keys [event payload]}]
     (cond
       (= event :add)
-      [(add-item self (:draft self)) []]
+      (add-item self (:draft self))
 
       (= event :edit)
       (if-let [item (some #(when (= (:id %) payload) %) (:items self))]
         [(assoc self :editing-id payload)
-         [[:call-in-slot :slot/editor
-           (s/embed :demo/todo-editor {:id payload :text (:text item)})
-           :resume :on-edit]]]
-        [self []])
+         [(s/call-in-slot :slot/editor
+                          :demo/todo-editor {:id payload :text (:text item)}
+                          :on-edit)]]
+        nil)
 
       (= event :delete)
-      [(-> self (delete-item payload)
+      (-> self (delete-item payload)
                 (cond-> (= (:editing-id self) payload)
                   (assoc :editing-id nil)))
-       []]
 
       (= event :toggle)
-      [(update-item self payload update :done? not)
-       []]
+      (update-item self payload update :done? not)
 
-      :else [self []]))
+      :else nil))
 
   :on-edit
   (fn [self answer]
     (if (= answer s/cancel)
-      [(assoc self :editing-id nil) []]
+      (assoc self :editing-id nil)
       (let [{:keys [id text]} answer
             t (str/trim (str text))]
-        [(-> self
-             (cond-> (not (str/blank? t))
-               (update-item id assoc :text t))
-             (assoc :editing-id nil))
-         []]))))
+        (-> self
+            (cond-> (not (str/blank? t))
+              (update-item id assoc :text t))
+            (assoc :editing-id nil))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

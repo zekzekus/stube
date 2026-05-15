@@ -10,8 +10,7 @@
   The base page component owns navigation state and content.  The mounted
   demo is a decorated component definition that wraps the base renderer
   with a breadcrumb trail, exercising `s/decorate` end to end."
-  (:require [dev.zeko.stube.core :as s]
-            [dev.zeko.stube.registry :as registry]))
+  (:require [dev.zeko.stube.core :as s]))
 
 ;; ---------------------------------------------------------------------------
 ;; Page model
@@ -68,9 +67,8 @@
 (defn- render-page-body [self]
   (let [current             (peek (:path self))
         {:keys [label summary children]} (page current)]
-    [:article {:id    (:instance/id self)
-               :class "stube-card"
-               :style "max-width:42rem;"}
+    [:article (s/root-attrs self {:class "stube-card"
+                                  :style "max-width:42rem;"})
      [:h2 {:style "margin-top:0;"} label]
      [:p summary]
      (if (seq children)
@@ -85,13 +83,12 @@
 
 (defn- handle-navigation [self {:keys [event payload]}]
   (case event
-    :jump [(update self :path #(subvec (vec %) 0 (inc payload))) []]
+    :jump (update self :path #(subvec (vec %) 0 (inc payload)))
     :open (let [current  (peek (:path self))
                 children (set (:children (page current)))]
-            (if (contains? children payload)
-              [(update self :path conj payload) []]
-              [self []]))
-    [self []]))
+            (when (contains? children payload)
+              (update self :path conj payload)))
+    nil))
 
 (s/defcomponent :demo/breadcrumb-page
   :doc "Undecorated breadcrumb demo page: owns path state and content navigation."
@@ -120,22 +117,20 @@
         (when-not last? [:span {:style "color:#999;"} "›"])]))])
 
 (def ^:private breadcrumb-component
-  (registry/register!
-    (s/decorate (s/registry-lookup :demo/breadcrumb-page)
-      (fn [base]
-        {:component/id  :demo/breadcrumb
-         :component/doc "WAPath/WATrail port: a base page decorated with a breadcrumb trail via s/decorate."
-         :component/render
-         (fn [self]
-           [:section {:id    (:instance/id self)
-                      :style "padding:1rem; font-family:system-ui, sans-serif;"}
-            [:h2 "Breadcrumb decoration"]
-            [:p {:style "max-width:42rem; color:#555;"}
-             "The mounted component is not the base page.  It is a decorated "
-             "component definition that reuses the base init/handler and wraps "
-             "the base render output with this breadcrumb trail."]
-            (render-trail self)
-            (without-root-id ((:component/render base) self))])}))))
+  (s/decorate! (s/registry-lookup :demo/breadcrumb-page)
+    (fn [base]
+      {:component/id  :demo/breadcrumb
+       :component/doc "WAPath/WATrail port: a base page decorated with a breadcrumb trail via s/decorate."
+       :component/render
+       (fn [self]
+         [:section (s/root-attrs self {:style "padding:1rem; font-family:system-ui, sans-serif;"})
+          [:h2 "Breadcrumb decoration"]
+          [:p {:style "max-width:42rem; color:#555;"}
+           "The mounted component is not the base page.  It is a decorated "
+           "component definition that reuses the base init/handler and wraps "
+           "the base render output with this breadcrumb trail."]
+          (render-trail self)
+          (without-root-id ((:component/render base) self))])})))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

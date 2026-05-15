@@ -43,11 +43,11 @@
   :render (fn [self]
             ;; The element id MUST be the instance id — that is what
             ;; Datastar morphs against on subsequent renders.
-            [:div {:id    (:instance/id self)
-                   :class "stube-counter"
-                   :style "display:inline-flex; gap:0.5rem; align-items:center;
-                           padding:0.25rem 0.5rem; border:1px solid #ccc;
-                           border-radius:0.25rem; margin:0.25rem;"}
+            [:div (s/root-attrs self
+                    {:class "stube-counter"
+                     :style "display:inline-flex; gap:0.5rem; align-items:center;
+                             padding:0.25rem 0.5rem; border:1px solid #ccc;
+                             border-radius:0.25rem; margin:0.25rem;"})
              ;; Buttons fire a real `click` DOM event; we route it on
              ;; the server to a meaningful name (`:inc` / `:dec`) so the
              ;; `:handle` `case` can branch on intent rather than on
@@ -59,9 +59,9 @@
 
   :handle (fn [self {:keys [event]}]
             (case event
-              :inc [(update self :n inc) []]
-              :dec [(update self :n dec) []]
-              [self []])))
+              :inc (update self :n inc)
+              :dec (update self :n dec)
+              nil)))
 
 ;; ---------------------------------------------------------------------------
 ;; The embedding parent
@@ -79,9 +79,9 @@
 
   :render (fn [self]
             [:section
-             {:id    (:instance/id self)
-              :class "stube-multicounter"
-              :style "font-family:system-ui, sans-serif; padding:1rem;"}
+             (s/root-attrs self
+               {:class "stube-multicounter"
+                :style "font-family:system-ui, sans-serif; padding:1rem;"})
              [:h1 "Multicounter"]
              [:p {:style "color:#555;"}
               "Three independent counters, embedded as children. "

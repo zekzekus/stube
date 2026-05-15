@@ -43,15 +43,14 @@
 
   :init (constantly {:name "Ada" :draft "" :messages @!messages})
   :keep #{:name :draft}
-  :start  (fn [self] [self (subscribe-effects)])
+  :start  (fn [_self] (subscribe-effects))
   :wakeup (fn [self] [(assoc self :messages @!messages) (subscribe-effects)])
-  :stop   (fn [self] [self [(s/unsubscribe topic)]])
+  :stop   (fn [_self] [(s/unsubscribe topic)])
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card"
-               :style "max-width:42rem; margin:1rem; font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self {:class "stube-card"
+                                  :style "max-width:42rem; margin:1rem; font-family:system-ui, sans-serif;"})
      [:h2 {:style "margin-top:0;"} "Chat"]
      [:p {:style "color:#555;"}
       "Open the standalone " [:code "/chat"] " URL in two tabs.  Each visit "
@@ -83,18 +82,17 @@
     (case event
       :send
       (let [text (str/trim (str (:draft self)))]
-        (if (str/blank? text)
-          [self []]
+        (when-not (str/blank? text)
           (let [msg (new-message (:name self) text)]
             [(-> self
                  (assoc :draft "")
                  (update :messages remember msg))
-             [[:io #(publish-message! msg)]]])))
+             [(s/io #(publish-message! msg))]])))
 
       :chat-message
-      [(update self :messages remember payload) []]
+      (update self :messages remember payload)
 
-      [self []])))
+      nil)))
 
 (s/mount! "/chat" :demo/chat)
 

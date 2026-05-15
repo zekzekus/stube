@@ -157,11 +157,11 @@
           editing? (:editing? self)
           focused? (:focused? self)]
       [:article.note-column
-       {:id (:instance/id self)
-        :class (when focused? "is-focused")
-        :style (str "--stack-index:" stack-index ";"
-                    " left:" (* stack-index 44) "px;"
-                    " z-index:" (inc stack-index) ";")}
+       (s/root-attrs self
+                     {:class (when focused? "is-focused")
+                      :style (str "--stack-index:" stack-index ";"
+                                  " left:" (* stack-index 44) "px;"
+                                  " z-index:" (inc stack-index) ";")})
        [:div.note-column__spine
         [:span.note-column__spine-title (:note/title note)]
         [:span.note-column__spine-index (:note/tag note)]]
@@ -182,23 +182,22 @@
   (fn [self {:keys [event payload]}]
     (case event
       :edit
-      [(-> self
-           (assoc :editing? true)
-           (assoc :draft-title (get-in mock/catalog [:notes-by-id (:note-id self) :note/title]))
-           (assoc :draft-markdown (get-in mock/catalog [:notes-by-id (:note-id self) :note/markdown])))
-       []]
+      (-> self
+          (assoc :editing? true)
+          (assoc :draft-title (get-in mock/catalog [:notes-by-id (:note-id self) :note/title]))
+          (assoc :draft-markdown (get-in mock/catalog [:notes-by-id (:note-id self) :note/markdown])))
 
       :cancel-edit
-      [(assoc self :editing? false :draft-title nil :draft-markdown nil) []]
+      (assoc self :editing? false :draft-title nil :draft-markdown nil)
 
       :save
       ;; Mock save: just leave edit mode; real app would update the catalog.
-      [(assoc self :editing? false :draft-title nil :draft-markdown nil) []]
+      (assoc self :editing? false :draft-title nil :draft-markdown nil)
 
       :close
-      [self [[:answer [:close (:note-id self)]]]]
+      [(s/answer [:close (:note-id self)])]
 
       :delete
-      [self [[:answer [:close (:note-id self)]]]]
+      [(s/answer [:close (:note-id self)])]
 
-      [self []])))
+      nil)))

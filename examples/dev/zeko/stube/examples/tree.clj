@@ -103,9 +103,8 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card"
-               :style "max-width:48rem; margin:1rem; font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self {:class "stube-card"
+                                  :style "max-width:48rem; margin:1rem; font-family:system-ui, sans-serif;"})
      [:header {:style "display:flex; align-items:baseline; gap:0.75rem;"}
       [:h2 {:style "margin-top:0;"} "Tree"]
       [:span {:style "color:#666; font-size:0.9rem;"}
@@ -126,10 +125,10 @@
   :handle
   (fn [self {:keys [event payload]}]
     (case event
-      :toggle       [(update self :expanded toggle payload) []]
-      :expand-all   [(assoc self :expanded (branch-ids (:tree self))) []]
-      :collapse-all [(assoc self :expanded #{}) []]
-      [self []])))
+      :toggle       (update self :expanded toggle payload)
+      :expand-all   (assoc self :expanded (branch-ids (:tree self)))
+      :collapse-all (assoc self :expanded #{})
+      nil)))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

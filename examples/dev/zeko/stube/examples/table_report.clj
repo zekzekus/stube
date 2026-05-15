@@ -114,9 +114,8 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card"
-               :style "max-width:52rem; overflow-x:auto;"}
+    [:section (s/root-attrs self {:class "stube-card"
+                                  :style "max-width:52rem; overflow-x:auto;"})
      [:h3 {:style "margin-top:0;"} (:caption self)]
      [:table {:style "width:100%; border-collapse:collapse; font-size:0.95rem;"}
       [:thead
@@ -135,8 +134,8 @@
   :handle
   (fn [self {:keys [event payload]}]
     (case event
-      :sort [(update self :sort next-sort payload) []]
-      [self []])))
+      :sort (update self :sort next-sort payload)
+      nil)))
 
 ;; ---------------------------------------------------------------------------
 ;; Demo wrapper
@@ -152,8 +151,7 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :style "padding:1rem; font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self {:style "padding:1rem; font-family:system-ui, sans-serif;"})
      [:h2 "Table report"]
      [:p {:style "max-width:42rem; color:#555;"}
       "The report component is driven entirely by EDN column maps.  Each "

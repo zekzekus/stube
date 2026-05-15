@@ -50,8 +50,7 @@
   :keep   #{:text}
 
   :render (fn [self]
-            [:section {:id    (:instance/id self)
-                       :style "padding:1rem;"}
+            [:section (s/root-attrs self {:style "padding:1rem;"})
              [:h3 {:style "margin-top:0;"} "Notes"]
              [:textarea (merge {:rows 6 :cols 40
                                 :style "width:100%; font-family:inherit;"
@@ -62,7 +61,7 @@
              [:p {:style "color:#666; font-size:0.9rem;"}
               "Length: " [:strong (count (:text self))] " chars"]])
 
-  :handle (fn [self _] [self []]))
+  :handle (fn [_self _] nil))
 
 ;; ---------------------------------------------------------------------------
 ;; Tab 3: a static about panel
@@ -70,8 +69,8 @@
 
 (s/defcomponent :demo/about-text
   :render (fn [self]
-            [:section {:id    (:instance/id self)
-                       :style "padding:1rem; max-width:36rem;"}
+            [:section (s/root-attrs self
+                        {:style "padding:1rem; max-width:36rem;"})
              [:h3 {:style "margin-top:0;"} "About"]
              [:p "This page demonstrates stube's tabbed-navigation pattern. "
                  "All three tabs are instantiated at boot; only the active "
@@ -111,9 +110,9 @@
   :init   (constantly {:active :counter})
 
   :render (fn [self]
-            [:section {:id    (:instance/id self)
-                       :style "font-family:system-ui, sans-serif;
-                               padding:1rem; max-width:42rem;"}
+            [:section (s/root-attrs self
+                        {:style "font-family:system-ui, sans-serif;
+                                 padding:1rem; max-width:42rem;"})
              [:h2 "Tabbed navigation"]
              [:nav {:style "display:flex; gap:0.25rem;"}
               (for [t tabs] (header-button self t))]
@@ -126,8 +125,8 @@
 
   :handle (fn [self {:keys [event payload]}]
             (if (= event :tab)
-              [(assoc self :active payload) []]
-              [self []])))
+              (assoc self :active payload)
+              nil)))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

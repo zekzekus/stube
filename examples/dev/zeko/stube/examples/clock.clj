@@ -39,13 +39,12 @@
                      :generation 0})
 
   :start  (fn [self] (restart self schedule-clock))
-  :wakeup (fn [self] (if (:running? self) (restart self schedule-clock) [self []]))
+  :wakeup (fn [self] (when (:running? self) (restart self schedule-clock)))
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card"
-               :style "min-width:18rem;"}
+    [:section (s/root-attrs self {:class "stube-card"
+                                  :style "min-width:18rem;"})
      [:h3 {:style "margin-top:0;"} "Live clock"]
      [:div {:style "font-size:2rem; font-variant-numeric:tabular-nums;"}
       (:now self)]
@@ -61,19 +60,17 @@
     (case event
       :toggle
       (if (:running? self)
-        [(assoc self :running? false) []]
-        (let [[self' fx] (restart (assoc self :running? true) schedule-clock)]
-          [self' fx]))
+        (assoc self :running? false)
+        (restart (assoc self :running? true) schedule-clock))
 
       :tick
-      (if (and (:running? self) (= payload (:generation self)))
+      (when (and (:running? self) (= payload (:generation self)))
         [(-> self
              (assoc :now (now-string))
              (update :ticks inc))
-         [(schedule-clock self)]]
-        [self []])
+         [(schedule-clock self)]])
 
-      [self []])))
+      nil)))
 
 (s/defcomponent :demo/turbo-counter
   :doc "WATurboCounter-style auto-incrementing counter driven by s/after."
@@ -81,13 +78,12 @@
   :init (constantly {:n 0 :running? true :generation 0})
 
   :start  (fn [self] (restart self schedule-turbo))
-  :wakeup (fn [self] (if (:running? self) (restart self schedule-turbo) [self []]))
+  :wakeup (fn [self] (when (:running? self) (restart self schedule-turbo)))
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card"
-               :style "min-width:18rem;"}
+    [:section (s/root-attrs self {:class "stube-card"
+                                  :style "min-width:18rem;"})
      [:h3 {:style "margin-top:0;"} "Turbo counter"]
      [:div {:style "font-size:2rem; font-variant-numeric:tabular-nums;"}
       (:n self)]
@@ -106,19 +102,17 @@
     (case event
       :toggle
       (if (:running? self)
-        [(assoc self :running? false) []]
-        (let [[self' fx] (restart (assoc self :running? true) schedule-turbo)]
-          [self' fx]))
+        (assoc self :running? false)
+        (restart (assoc self :running? true) schedule-turbo))
 
       :reset
-      [(assoc self :n 0) []]
+      (assoc self :n 0)
 
       :tick
-      (if (and (:running? self) (= payload (:generation self)))
-        [(update self :n inc) [(schedule-turbo self)]]
-        [self []])
+      (when (and (:running? self) (= payload (:generation self)))
+        [(update self :n inc) [(schedule-turbo self)]])
 
-      [self []])))
+      nil)))
 
 (s/defcomponent :demo/clock
   :doc "Tier-3 timer demo containing WAClock and WATurboCounter ports."
@@ -128,8 +122,7 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :style "padding:1rem; font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self {:style "padding:1rem; font-family:system-ui, sans-serif;"})
      [:h2 "Timers"]
      [:p {:style "max-width:46rem; color:#555;"}
       "Both widgets are ordinary components.  Their " [:code ":start"]

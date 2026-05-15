@@ -160,13 +160,13 @@
         already-open? (and (some #{note-id} (:stack self)) true)]
     (if already-open?
       ;; Already mounted; just shift focus, re-render parent.
-      [self' []]
+      self'
       [self'
-       [[:call-in-slot (slot-key note-id)
-         (s/embed :kasten/column {:note-id note-id
-                                  :stack-index (dec (count stack'))
-                                  :parent-id (:instance/id self)})
-         :resume :on-column]]])))
+       [(s/call-in-slot (slot-key note-id)
+                        :kasten/column {:note-id note-id
+                                        :stack-index (dec (count stack'))
+                                        :parent-id (:instance/id self)}
+                        :on-column)]])))
 
 (s/defcomponent :kasten/desk
   :doc "Kasten desk: stack of open note columns plus topbar."
@@ -180,8 +180,7 @@
 
   :render
   (fn [self]
-    [:div {:id (:instance/id self)
-           :class "notes-app"}
+    [:div (s/root-attrs self {:class "notes-app"})
      [:style {:type "text/css"} bundled-css]
      [:div.notes-shell
       (topbar self)
@@ -203,25 +202,24 @@
                            first)]
         (if available
           (open-effects self available)
-          [self []]))
+          nil))
 
       :prev
-      [(update self :focus shift-focus -1 (:stack self)) []]
+      (update self :focus shift-focus -1 (:stack self))
 
       :next
-      [(update self :focus shift-focus 1 (:stack self)) []]
+      (update self :focus shift-focus 1 (:stack self))
 
       :close-current
       (let [stack (:stack self)
             focus (:focus self)]
         (if-let [target (get stack focus)]
-          [(-> self
-               (update :stack close-from-stack target)
-               (update :focus #(max 0 (min % (max 0 (- (count (close-from-stack stack target)) 1))))))
-           []]
-          [self []]))
+          (-> self
+              (update :stack close-from-stack target)
+              (update :focus #(max 0 (min % (max 0 (- (count (close-from-stack stack target)) 1))))))
+          nil))
 
-      [self []]))
+      nil))
 
   ;; Resume from `:kasten/column` — the column answers `[:close id]` or
   ;; `[:open id]`.
@@ -230,14 +228,13 @@
     (let [[op note-id] (when (vector? answer) answer)]
       (case op
         :close
-        [(-> self
-             (update :stack close-from-stack note-id)
-             (update :focus #(max 0 (min % (max 0 (dec (count (close-from-stack (:stack self) note-id))))))))
-         []]
+        (-> self
+            (update :stack close-from-stack note-id)
+            (update :focus #(max 0 (min % (max 0 (dec (count (close-from-stack (:stack self) note-id))))))))
 
         :open
         (open-effects self note-id)
 
-        [self []]))))
+        nil))))
 
 (s/mount! "/kasten" :kasten/desk)

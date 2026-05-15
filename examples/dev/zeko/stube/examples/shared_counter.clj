@@ -28,15 +28,15 @@
   :doc "CTCounter port: local component state follows a shared atom through topic updates."
 
   :init (constantly {:value @!value :last-source "initial"})
-  :start  (fn [self] [self (subscription-effects)])
+  :start  (fn [_self] (subscription-effects))
   :wakeup (fn [self] [(assoc self :value @!value) (subscription-effects)])
-  :stop   (fn [self] [self [(s/unsubscribe topic)]])
+  :stop   (fn [_self] [(s/unsubscribe topic)])
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card"
-               :style "min-width:18rem;"}
+    [:section (s/root-attrs self
+                {:class "stube-card"
+                 :style "min-width:18rem;"})
      [:h3 {:style "margin-top:0;"} "Shared counter"]
      [:div {:style "font-size:2rem; font-variant-numeric:tabular-nums;"}
       (:value self)]
@@ -55,32 +55,31 @@
     (case event
       :inc (let [v (swap! !value inc)]
              [(assoc self :value v :last-source "this tab")
-              [[:io #(publish-value! v (:instance/id self))]]])
+              [(s/io #(publish-value! v (:instance/id self)))]])
       :dec (let [v (swap! !value dec)]
              [(assoc self :value v :last-source "this tab")
-              [[:io #(publish-value! v (:instance/id self))]]])
+              [(s/io #(publish-value! v (:instance/id self)))]])
       :shared-update
-      [(assoc self
-              :value (:value payload)
-              :last-source (if (= (:source payload) (:instance/id self))
-                             "this tab"
-                             "another tab"))
-       []]
-      [self []])))
+      (assoc self
+             :value (:value payload)
+             :last-source (if (= (:source payload) (:instance/id self))
+                            "this tab"
+                            "another tab"))
+      nil)))
 
 (s/defcomponent :demo/shared-report
   :doc "CTReport port: subscribes to the shared counter topic and keeps a short event log."
 
   :init (constantly {:events []})
-  :start  (fn [self] [self (subscription-effects)])
-  :wakeup (fn [self] [self (subscription-effects)])
-  :stop   (fn [self] [self [(s/unsubscribe topic)]])
+  :start  (fn [_self] (subscription-effects))
+  :wakeup (fn [_self] (subscription-effects))
+  :stop   (fn [_self] [(s/unsubscribe topic)])
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :class "stube-card"
-               :style "min-width:24rem;"}
+    [:section (s/root-attrs self
+                {:class "stube-card"
+                 :style "min-width:24rem;"})
      [:h3 {:style "margin-top:0;"} "Report"]
      (if (seq (:events self))
        [:ol {:style "padding-left:1.25rem; margin-bottom:0;"}
@@ -95,11 +94,10 @@
   (fn [self {:keys [event payload]}]
     (case event
       :shared-update
-      [(update self :events #(->> (cons payload %)
-                                  (take 8)
-                                  vec))
-       []]
-      [self []])))
+      (update self :events #(->> (cons payload %)
+                                 (take 8)
+                                 vec))
+      nil)))
 
 (s/defcomponent :demo/shared-counter
   :doc "Tier-3 shared-state demo using per-conversation topic subscriptions."
@@ -109,8 +107,8 @@
 
   :render
   (fn [self]
-    [:section {:id    (:instance/id self)
-               :style "padding:1rem; font-family:system-ui, sans-serif;"}
+    [:section (s/root-attrs self
+                {:style "padding:1rem; font-family:system-ui, sans-serif;"})
      [:h2 "Shared counter"]
      [:p {:style "max-width:48rem; color:#555;"}
       "Open the standalone " [:code "/shared-counter"] " URL twice.  Each "

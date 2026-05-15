@@ -36,8 +36,7 @@
         ├── (call) :demo/wizard-step  ← \"What's your name?\"
         ├── (call) :demo/wizard-step  ← \"Favourite colour?\"
         └── (call) :demo/wizard-summary ← shows answers + Back button"
-  (:require [dev.zeko.stube.core :as s]
-            [dev.zeko.stube.registry :as registry]))
+  (:require [dev.zeko.stube.core :as s]))
 
 ;; ---------------------------------------------------------------------------
 ;; A reusable text-prompt step
@@ -66,10 +65,9 @@
   :keep   #{:answer}
 
   :render (fn [self]
-            [:form (merge {:id (:instance/id self)
-                           :style "max-width:24rem; padding:1rem;
-                                   font-family:system-ui, sans-serif;"}
-                          (s/on self :submit))
+            [:form (s/root-attrs self {:style "max-width:24rem; padding:1rem;
+                                               font-family:system-ui, sans-serif;"}
+                                 (s/on self :submit))
              [:label {:style "display:block; margin-bottom:0.5rem;"}
               (:label self)]
              ;; `value` seeds the DOM; Datastar's `data-bind` then
@@ -96,9 +94,9 @@
 
   :handle (fn [self {:keys [event]}]
             (case event
-              :submit     [self [[:answer (get self :answer (:initial self))]]]
-              :back-click [self [[:answer ::back]]]
-              [self []])))
+              :submit     [(s/answer (get self :answer (:initial self)))]
+              :back-click [(s/answer ::back)]
+              nil)))
 
 ;; ---------------------------------------------------------------------------
 ;; The summary screen
@@ -109,9 +107,8 @@
             {:name name :colour colour})
 
   :render (fn [self]
-            [:section {:id (:instance/id self)
-                       :style "max-width:24rem; padding:1rem;
-                               font-family:system-ui, sans-serif;"}
+            [:section (s/root-attrs self {:style "max-width:24rem; padding:1rem;
+                                                  font-family:system-ui, sans-serif;"})
              [:h2 "All set, " [:span (:name self)] "!"]
              [:p "Your favourite colour is "
               [:strong {:style (str "color:" (:colour self) ";")}
@@ -128,28 +125,27 @@
             (case event
               ;; A non-`::back` answer ends the wizard cleanly via the
               ;; wizard task's `:on-done` resume key.
-              :restart    [self [[:answer ::restart]]]
-              :back-click [self [[:answer ::back]]]
-              [self []])))
+              :restart    [(s/answer ::restart)]
+              :back-click [(s/answer ::back)]
+              nil)))
 
 ;; Tiny end-to-end `s/decorate` call site: the wizard uses the decorated
 ;; summary below, while the original component remains independently
 ;; registered and reusable.  The wrapper keeps the same root id so the
 ;; kernel's morph-by-id contract stays intact.
-(registry/register!
-  (s/decorate
-    (s/registry-lookup :demo/wizard-summary)
-    (fn [base]
-      {:component/id :demo/wizard-summary-with-banner
-       :component/render
-       (fn [self]
-         (let [[tag attrs & body] ((:component/render base) self)]
-           (into [tag attrs
-                  [:div {:style "padding:0.4rem 0.6rem; margin-bottom:0.75rem;
-                                 background:#eef; border:1px solid #ccd;
-                                 border-radius:0.25rem;"}
-                   "Decorated with " [:code "s/decorate"]]]
-                 body)))})))
+(s/decorate!
+  (s/registry-lookup :demo/wizard-summary)
+  (fn [base]
+    {:component/id :demo/wizard-summary-with-banner
+     :component/render
+     (fn [self]
+       (let [[tag attrs & body] ((:component/render base) self)]
+         (into [tag attrs
+                [:div {:style "padding:0.4rem 0.6rem; margin-bottom:0.75rem;
+                               background:#eef; border:1px solid #ccd;
+                               border-radius:0.25rem;"}
+                 "Decorated with " [:code "s/decorate"]]]
+               body)))}))
 
 ;; ---------------------------------------------------------------------------
 ;; The wizard task
@@ -179,57 +175,57 @@
   ;; `:start` runs once when this task is instantiated; we descend
   ;; into the first prompt straight away.
   :start  (fn [self]
-            [self [[:call (s/embed :demo/wizard-step
-                                   {:label       "What's your name?"
-                                    :placeholder "Ada"
-                                    :initial     (:name self)})
-                    :resume :on-name]]])
+            [(s/call :demo/wizard-step
+                     {:label       "What's your name?"
+                      :placeholder "Ada"
+                      :initial     (:name self)}
+                     :on-name)])
 
   :on-name   (fn [self ans]
                (case ans
                  ;; Back from step 1 — there is nowhere to go, so end.
-                 ::back  [self [[:end {:wizard :cancelled}]]]
+                 ::back  [(s/end {:wizard :cancelled})]
 
                  (let [self' (assoc self :name ans)]
                    [self'
-                    [[:call (s/embed :demo/wizard-step
-                                     {:label       "Favourite colour?"
-                                      :placeholder "rebeccapurple"
-                                      :initial     (:colour self')})
-                      :resume :on-colour]]])))
+                    [(s/call :demo/wizard-step
+                             {:label       "Favourite colour?"
+                              :placeholder "rebeccapurple"
+                              :initial     (:colour self')}
+                             :on-colour)]])))
 
   :on-colour (fn [self ans]
                (case ans
                  ::back  [self
-                          [[:call (s/embed :demo/wizard-step
-                                           {:label       "What's your name?"
-                                            :placeholder "Ada"
-                                            :initial     (:name self)})
-                            :resume :on-name]]]
+                          [(s/call :demo/wizard-step
+                                   {:label       "What's your name?"
+                                    :placeholder "Ada"
+                                    :initial     (:name self)}
+                                   :on-name)]]
 
                  (let [self' (assoc self :colour ans)]
                    [self'
-                    [[:call (s/embed :demo/wizard-summary-with-banner
-                                     {:name   (:name self')
-                                      :colour (:colour self')})
-                      :resume :on-done]]])))
+                    [(s/call :demo/wizard-summary-with-banner
+                             {:name   (:name self')
+                              :colour (:colour self')}
+                             :on-done)]])))
 
   :on-done   (fn [self ans]
                (case ans
                  ;; From the summary's Back button — re-call the colour step.
                  ::back  [self
-                          [[:call (s/embed :demo/wizard-step
-                                           {:label       "Favourite colour?"
-                                            :placeholder "rebeccapurple"
-                                            :initial     (:colour self)})
-                            :resume :on-colour]]]
+                          [(s/call :demo/wizard-step
+                                   {:label       "Favourite colour?"
+                                    :placeholder "rebeccapurple"
+                                    :initial     (:colour self)}
+                                   :on-colour)]]
                  ;; From the summary's "Start over" button — wipe and reboot.
                  ::restart [(assoc self :name nil :colour nil)
-                            [[:call (s/embed :demo/wizard-step
-                                             {:label       "What's your name?"
-                                              :placeholder "Ada"})
-                              :resume :on-name]]]
-                 [self [[:end {:wizard :complete}]]])))
+                            [(s/call :demo/wizard-step
+                                     {:label       "What's your name?"
+                                      :placeholder "Ada"}
+                                     :on-name)]]
+                 [(s/end {:wizard :complete})])))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring
