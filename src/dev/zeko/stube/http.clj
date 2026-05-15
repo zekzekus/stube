@@ -22,6 +22,7 @@
             [starfederation.datastar.clojure.api               :as d*]
             [starfederation.datastar.clojure.adapter.http-kit  :as hk]
             [dev.zeko.stube.conversation                                :as conv]
+            [dev.zeko.stube.fragments                                   :as f]
             [dev.zeko.stube.halos                                       :as halos]
             [dev.zeko.stube.kernel                                      :as kernel]
             [dev.zeko.stube.render                                      :as render]
@@ -41,14 +42,6 @@
   (json/parse-json-fn {:async?  false
                        :bufsize 8192
                        :key-fn  keyword}))
-
-(def ^:private write-json
-  (json/write-json-fn {}))
-
-(defn- json-str ^String [m]
-  (let [w (java.io.StringWriter.)]
-    (write-json w m)
-    (str w)))
 
 (defn- read-signals
   "Pull the Datastar signals payload from a request and parse it.
@@ -275,56 +268,16 @@
            :body    (render/html (halos/panel-hiccup conv {:iid iid :tab tab}))})))))
 
 ;; ---------------------------------------------------------------------------
-;; Pushing fragments to the wire
+;; Stale-page response
 ;; ---------------------------------------------------------------------------
 
-(def ^:private patch-modes
-  "Translate kernel keyword patch modes to the Datastar string constants."
-  {:outer   d*/pm-outer
-   :inner   d*/pm-inner
-   :remove  d*/pm-remove
-   :prepend d*/pm-prepend
-   :append  d*/pm-append
-   :before  d*/pm-before
-   :after   d*/pm-after
-   :replace d*/pm-replace})
-
-(defn- elements-opts
-  "Translate the kernel's wire-agnostic options map into the Datastar
-  SDK's namespaced-keyword option keys."
-  [{:keys [selector patch-mode]}]
-  (cond-> {}
-    selector   (assoc d*/selector   selector)
-    patch-mode (assoc d*/patch-mode (or (patch-modes patch-mode)
-                                        (throw (ex-info "Unknown patch-mode"
-                                                        {:patch-mode patch-mode}))))))
-
-(defn- push-fragment!
-  "Translate one kernel fragment into one Datastar SSE event."
-  [sse-gen {:fragment/keys [kind html data script opts]}]
-  (case kind
-    :elements (d*/patch-elements! sse-gen html (elements-opts opts))
-    :signals  (d*/patch-signals!  sse-gen (json-str data) (or opts {}))
-    :script   (d*/execute-script! sse-gen script (or opts {}))
-    :close    (d*/close-sse! sse-gen)))
-
-(defn- push-fragments!
-  "Push several fragments in order, holding the SSE lock so they are not
-  interleaved with concurrent pushes."
-  [sse-gen fragments]
-  (when (seq fragments)
-    (d*/lock-sse! sse-gen
-      (doseq [f fragments]
-        (push-fragment! sse-gen f)))))
-
 (defn- stale-fragments []
-  [{:fragment/kind :elements
-    :fragment/html (render/html
-                     [:section {:class "stube-card stube-modal"}
-                      [:h2 "This page is stale"]
-                      [:p "Please reload to start a fresh conversation."]])
-    :fragment/opts {:selector "#root" :patch-mode :inner}}
-   {:fragment/kind :close}])
+  [(f/elements (render/html
+                 [:section {:class "stube-card stube-modal"}
+                  [:h2 "This page is stale"]
+                  [:p "Please reload to start a fresh conversation."]])
+               {:selector "#root" :patch-mode :inner})
+   f/close])
 
 (defn- stale-response!
   "Tell the browser its page no longer matches a live instance, then
@@ -332,7 +285,7 @@
   [cid]
   (let [frags (stale-fragments)]
     (when-let [sse-gen (server/sse cid)]
-      (push-fragments! sse-gen frags))
+      (f/push! sse-gen frags))
     (server/end-conversation! cid)
     {:status  410
      :headers {"Content-Type" "text/plain; charset=utf-8"
@@ -446,7 +399,7 @@
                       (server/with-kernel-bindings
                         cid
                         #(kernel/run-effects c (kernel/boot pending)))))]
-              (push-fragments! sse-gen frags)
+              (f/push! sse-gen frags)
               (when (:conv/ended? conv')
                 (server/end-conversation! cid)))
 
@@ -461,7 +414,7 @@
                       (server/with-kernel-bindings
                         cid
                         #(resume-render c))))]
-              (push-fragments! sse-gen frags))
+              (f/push! sse-gen frags))
 
             ;; Path 3 — unknown cid; the conversation is gone.  Leave
             ;; the SSE channel empty; the browser will simply see no

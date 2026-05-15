@@ -19,12 +19,11 @@
   All the http handlers live in [[dev.zeko.stube.http]]; this namespace only
   exposes the functions they need, so the http layer never reaches into
   raw atoms."
-  (:require [charred.api                         :as json]
-            [clojure.pprint                      :as pprint]
+  (:require [clojure.pprint                      :as pprint]
             [org.httpkit.server                  :as http-kit]
             [reitit.ring                         :as ring]
-            [starfederation.datastar.clojure.api :as d*]
             [dev.zeko.stube.conversation         :as conv]
+            [dev.zeko.stube.fragments            :as f]
             [dev.zeko.stube.kernel               :as kernel]
             [dev.zeko.stube.render               :as render]
             [dev.zeko.stube.store                :as store])
@@ -239,45 +238,9 @@
 ;; Pushing fragments and async dispatch
 ;; ---------------------------------------------------------------------------
 
-(def ^:private write-json
-  (json/write-json-fn {}))
-
-(defn- json-str ^String [m]
-  (let [w (java.io.StringWriter.)]
-    (write-json w m)
-    (str w)))
-
-(def ^:private patch-modes
-  {:outer   d*/pm-outer
-   :inner   d*/pm-inner
-   :remove  d*/pm-remove
-   :prepend d*/pm-prepend
-   :append  d*/pm-append
-   :before  d*/pm-before
-   :after   d*/pm-after
-   :replace d*/pm-replace})
-
-(defn- elements-opts [{:keys [selector patch-mode]}]
-  (cond-> {}
-    selector   (assoc d*/selector selector)
-    patch-mode (assoc d*/patch-mode (or (patch-modes patch-mode)
-                                        (throw (ex-info "Unknown patch-mode"
-                                                        {:patch-mode patch-mode}))))))
-
-(defn- push-fragment! [sse-gen {:fragment/keys [kind html data script opts]}]
-  (case kind
-    :elements (d*/patch-elements! sse-gen html (elements-opts opts))
-    :signals  (d*/patch-signals!  sse-gen (json-str data) (or opts {}))
-    :script   (d*/execute-script! sse-gen script (or opts {}))
-    :close    (d*/close-sse! sse-gen)))
-
-(defn push-fragments!
-  "Push kernel fragments to an open Datastar SSE generator."
-  [sse-gen fragments]
-  (when (seq fragments)
-    (d*/lock-sse! sse-gen
-      (doseq [f fragments]
-        (push-fragment! sse-gen f)))))
+(def ^{:doc "Push kernel fragments to an open Datastar SSE generator.
+  Re-export of [[dev.zeko.stube.fragments/push!]]."}
+  push-fragments! f/push!)
 
 (def ^:private no-payload ::no-payload)
 

@@ -64,55 +64,10 @@
   becomes live again."
   (:require [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.effects      :as e]
+            [dev.zeko.stube.fragments    :as f]
             [dev.zeko.stube.halos        :as halos]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]))
-
-;; ---------------------------------------------------------------------------
-;; Fragment helpers
-;; ---------------------------------------------------------------------------
-
-(defn fragment-shape
-  "Documentation-only.  Every fragment has a `:fragment/kind` plus
-  payload keys appropriate to that kind:
-
-      ;; HTML to morph into the DOM
-      {:fragment/kind :elements
-       :fragment/html \"<form id=ix-001>…</form>\"
-       :fragment/opts {…passed through to patch-elements!…}}
-
-      ;; JSON-mergeable signals
-      {:fragment/kind :signals
-       :fragment/data {:foo 1}
-       :fragment/opts {}}
-
-      ;; Browser-side JS
-      {:fragment/kind :script
-       :fragment/script \"alert('hi')\"
-       :fragment/opts {}}
-
-      ;; Close the SSE connection (after [:end …])
-      {:fragment/kind :close}"
-  [])
-
-(defn- elements-fragment
-  ([html]      (elements-fragment html {}))
-  ([html opts] {:fragment/kind :elements
-                :fragment/html html
-                :fragment/opts opts}))
-
-(defn- signals-fragment [m]
-  {:fragment/kind :signals
-   :fragment/data m
-   :fragment/opts {}})
-
-(defn- script-fragment [js]
-  {:fragment/kind :script
-   :fragment/script js
-   :fragment/opts {}})
-
-(def ^:private close-fragment
-  {:fragment/kind :close})
 
 ;; ---------------------------------------------------------------------------
 ;; Rendering a frame
@@ -178,7 +133,7 @@
         conv'     (cond-> marked
                     halos? (assoc-in [:conv/instances iid :instance/last-html]
                                      html))]
-    [conv' (elements-fragment html opts)]))
+    [conv' (f/elements html opts)]))
 
 (defn- render-frame
   "Produce the elements fragment for `iid` and return
@@ -537,15 +492,15 @@
 
 (defmethod step :patch
   [conv eff]
-  [conv [(elements-fragment (render/html (e/patch-hiccup eff)))]])
+  [conv [(f/elements (render/html (e/patch-hiccup eff)))]])
 
 (defmethod step :patch-signals
   [conv eff]
-  [conv [(signals-fragment (e/patch-signals-map eff))]])
+  [conv [(f/signals (e/patch-signals-map eff))]])
 
 (defmethod step :execute-script
   [conv eff]
-  [conv [(script-fragment (e/script-source eff))]])
+  [conv [(f/script (e/script-source eff))]])
 
 (defmethod step :io
   [conv eff]
@@ -625,7 +580,7 @@
   [conv _eff]
   (let [stop-iids (vec (mapcat #(conv/descendant-ids conv %) (:conv/stack conv)))
         [conv' stop-frags] (run-stop-hooks conv stop-iids)]
-    [(assoc conv' :conv/ended? true) (conj (vec stop-frags) close-fragment)]))
+    [(assoc conv' :conv/ended? true) (conj (vec stop-frags) f/close)]))
 
 (defmethod step :default
   [_conv [op & _]]

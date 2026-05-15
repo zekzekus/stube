@@ -1,6 +1,7 @@
 (ns dev.zeko.stube.http-test
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is use-fixtures]]
+            [dev.zeko.stube.fragments :as fragments]
             [dev.zeko.stube.http :as http]
             [dev.zeko.stube.registry :as registry]
             [dev.zeko.stube.server :as server]))
@@ -14,7 +15,7 @@
 
 (deftest signal-patches-serialize-to-json
   (is (= "{\"password-ix-1\":\"\"}"
-         (#'http/json-str {:password-ix-1 ""}))))
+         (#'fragments/json-str {:password-ix-1 ""}))))
 
 (deftest stale-event-returns-410
   (let [resp (http/event-handler {:path-params {:cid "cv-missing"
