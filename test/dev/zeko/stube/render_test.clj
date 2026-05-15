@@ -31,6 +31,19 @@
     (is (thrown? clojure.lang.ExceptionInfo
                  (render/on {} :submit)))))
 
+(deftest root-attrs-merges-id-with-other-attrs
+  (let [self {:instance/id "ix-42"}]
+    (is (= {:id "ix-42"} (render/root-attrs self))
+        "bare call yields just the id")
+    (is (= {:id "ix-42" :class "card"} (render/root-attrs self {:class "card"}))
+        "single attr map merges with id")
+    (is (= {:id "ix-42" :class "card" :data-on:submit "x"}
+           (render/root-attrs self {:class "card"} {:data-on:submit "x"}))
+        "variadic: every attr map merges, later wins on collision")
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (render/root-attrs {} {:class "x"}))
+        "no :instance/id throws so the wire contract isn't silently lost")))
+
 (deftest bind-builds-data-bind-attribute
   (is (= {(keyword "data-bind:answer__case.kebab") true}
          (render/bind :answer)))

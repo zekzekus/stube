@@ -213,6 +213,24 @@
          expr   (str "@post('" (event-url iid route-event) "')")]
      {attr-k expr})))
 
+(defn root-attrs
+  "Return an attribute map carrying `self`'s instance id plus any other
+  attribute maps merged in.  Replaces the recurring boilerplate
+
+      (merge {:id (:instance/id self)} (s/on self :submit) {:class \"x\"})
+
+  with
+
+      (s/root-attrs self (s/on self :submit) {:class \"x\"})
+
+  The id has to be on the root element of every component so Datastar's
+  morph-by-id can locate the frame on subsequent renders."
+  [self & attr-maps]
+  (let [iid (or (:instance/id self)
+                (throw (ex-info "dev.zeko.stube.render/root-attrs requires an instance map"
+                                {:got self})))]
+    (apply merge {:id iid} attr-maps)))
+
 (defn bind
   "Return an attribute map that two-way binds the named signal to the
   current element.

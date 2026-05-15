@@ -17,25 +17,23 @@
         :init   (fn [{:keys [text]}] {:text text :answer \"\"})
         :keep   #{:answer}
         :render (fn [self]
-                  [:form (merge {:id (:instance/id self)}
-                                (s/on self :submit))
+                  [:form (s/root-attrs self (s/on self :submit))
                    [:label (:text self)]
                    [:input (merge {:name \"answer\"} (s/bind :answer))]
                    [:button \"OK\"]])
         :handle (fn [self _]
-                  [self [[:answer (parse-long (:answer self))]]]))
+                  [(s/answer (parse-long (:answer self)))]))
 
       (s/defcomponent :demo/guess
         :init   (fn [_] {:target (rand-int 100)})
-        :handle (fn [self _]
-                  [self [[:call (s/embed :ui/prompt {:text \"Guess 1–100\"})
-                          :resume :on-guess]]])
+        :handle (fn [_ _]
+                  [(s/call :ui/prompt {:text \"Guess 1–100\"} :on-guess)])
         :on-guess (fn [self n]
                     (cond
-                      (< n (:target self)) [self [[:call (s/embed :ui/prompt
-                                                                  {:text \"Too low\"})
-                                                   :resume :on-guess]]]
-                      :else                 [self [[:end {:winner true}]]])))
+                      (< n (:target self))
+                      [(s/call :ui/prompt {:text \"Too low\"} :on-guess)]
+                      :else
+                      [(s/end {:winner true})])))
 
       (s/mount! \"/guess\" :demo/guess)
       (s/start! {:port 8080})
@@ -226,6 +224,7 @@
 
 (def ^{:doc "See [[dev.zeko.stube.render/on]]."}          on          render/on)
 (def ^{:doc "See [[dev.zeko.stube.render/bind]]."}        bind        render/bind)
+(def ^{:doc "See [[dev.zeko.stube.render/root-attrs]]."}  root-attrs  render/root-attrs)
 (def ^{:doc "See [[dev.zeko.stube.render/local-signal]]."} local-signal render/local-signal)
 (def ^{:doc "See [[dev.zeko.stube.render/local-bind]]."}   local-bind   render/local-bind)
 (def ^{:doc "See [[dev.zeko.stube.render/back-button]]."}  back-button  render/back-button)
@@ -293,10 +292,29 @@
 
   No new runtime concept: this is just `merge` lifted into the
   framework's vocabulary so the call site reads like Seaside-style
-  behavioural composition."
+  behavioural composition.
+
+  See [[decorate!]] for the register-on-the-way variant."
   [base-cdef overrides]
   (merge base-cdef
          (if (fn? overrides) (overrides base-cdef) overrides)))
+
+(defn decorate!
+  "Like [[decorate]] but also registers the resulting cdef and returns
+  the registered map.  Convenient for the common case:
+
+      (s/decorate! (s/registry-lookup :booking/wizard)
+        {:component/id     :booking/wizard-with-banner
+         :component/render
+         (fn [self]
+           [:div (s/root-attrs self)
+            [:header.banner \"Welcome\"]
+            ((:component/render (s/registry-lookup :booking/wizard)) self)])})
+
+  Use [[decorate]] when you want to inspect or further modify the cdef
+  before deciding whether to register it."
+  [base-cdef overrides]
+  (registry/register! (decorate base-cdef overrides)))
 
 (def ^{:doc "Look up a registered component definition by id (or nil)."}
   registry-lookup registry/lookup)

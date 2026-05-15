@@ -30,29 +30,26 @@ callable components, modelled as plain values, evaluated by a small effect kerne
   :init   (fn [{:keys [text]}] {:text text :answer ""})
   :keep   #{:answer}
   :render (fn [self]
-            [:form (merge {:id (:instance/id self)} (s/on self :submit))
+            [:form (s/root-attrs self (s/on self :submit))
              [:p (:text self)]
              [:input (merge {:type "number" :name "answer"} (s/bind :answer))]
              [:button "OK"]])
   :handle (fn [self _]
-            [self [[:answer (parse-long (str (:answer self)))]]]))
+            [(s/answer (parse-long (str (:answer self))))]))
 
 (s/defcomponent :demo/guess
   :init   (fn [_] {:target (inc (rand-int 100)) :attempts 0})
-  :start  (fn [self]
-            [self [[:call (s/embed :ui/prompt {:text "1–100?"})
-                    :resume :on-guess]]])
+  :start  (fn [_]
+            [(s/call :ui/prompt {:text "1–100?"} :on-guess)])
   :on-guess (fn [self n]
               (let [self' (update self :attempts inc)]
                 (cond
                   (< n (:target self'))
-                  [self' [[:call (s/embed :ui/prompt {:text "too low"})
-                           :resume :on-guess]]]
+                  [self' [(s/call :ui/prompt {:text "too low"} :on-guess)]]
                   (> n (:target self'))
-                  [self' [[:call (s/embed :ui/prompt {:text "too high"})
-                           :resume :on-guess]]]
+                  [self' [(s/call :ui/prompt {:text "too high"} :on-guess)]]
                   :else
-                  [self' [[:end {:winner true :attempts (:attempts self')}]]]))))
+                  [self' [(s/end {:winner true :attempts (:attempts self')})]]))))
 
 (s/mount! "/guess" :demo/guess)
 (s/start! {:port 8080})
