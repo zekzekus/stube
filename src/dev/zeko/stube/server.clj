@@ -1,27 +1,23 @@
 (ns dev.zeko.stube.server
-  "All the side-effecting state — conversations, SSE generators, mounted
-  flows — and the http-kit lifecycle.
+  "Live conversation atom + http-kit lifecycle.
 
-  A handful of small atoms hold the side-effecting runtime state:
+  Three atoms live here:
 
   | atom               | shape                | purpose                                    |
   |--------------------|----------------------|--------------------------------------------|
   | `!conversations`   | `{cid → conv}`       | the live conversation values               |
   | `!sse-sessions`    | `{cid → sse-gen}`    | the open browser connections               |
   | `!mounts`          | `{path → flow-id}`   | the routes registered with [[mount!]]      |
-  | `!timers`          | `{cid → #{future}}`  | scheduled Tier-3 event deliveries          |
-  | `!subscriptions`   | `{topic → {[cid iid] event}}` | live pub/sub routing              |
 
-  Plus `!pending-flows` (`{cid → flow-id}`), used as a one-shot baton
-  between the request that minted the cid and the first SSE connect that
-  actually instantiates the flow.
-
-  All the http handlers live in [[dev.zeko.stube.http]]; this namespace only
-  exposes the functions they need, so the http layer never reaches into
-  raw atoms."
+  Timers, pub/sub, and the pending-flow baton moved to
+  [[dev.zeko.stube.async]] — this namespace owns conversation storage and
+  the http-kit server.  All the http handlers live in
+  [[dev.zeko.stube.http]]; this namespace only exposes the functions
+  they need, so the http layer never reaches into raw atoms."
   (:require [clojure.pprint                      :as pprint]
             [org.httpkit.server                  :as http-kit]
             [reitit.ring                         :as ring]
+            [dev.zeko.stube.async                :as async]
             [dev.zeko.stube.conversation         :as conv]
             [dev.zeko.stube.fragments            :as f]
             [dev.zeko.stube.kernel               :as kernel]
@@ -35,14 +31,11 @@
 
 (defonce ^:private !conversations (atom {}))
 (defonce ^:private !sse-sessions  (atom {}))
-(defonce ^:private !pending-flows (atom {}))
 (defonce ^:private !mounts        (atom (sorted-map)))
 (defonce ^:private !server        (atom nil))
 (defonce ^:private !ui-css?       (atom true))
 (defonce ^:private !halos?        (atom false))
 (defonce ^:private !reaper-stop   (atom nil))
-(defonce ^:private !timers        (atom {}))
-(defonce ^:private !subscriptions (atom {}))
 
 ;; Slice 3 — the configured persistence backend.  Defaults to a no-op
 ;; in-memory store, so existing tests and demos keep their slice-0
@@ -55,44 +48,17 @@
   []
   @!store)
 
-(declare dispatch! schedule-event! subscribe! unsubscribe!)
+(declare dispatch!)
 
 (defn with-kernel-bindings
   "Run `f` with the render cid and async hooks the kernel needs while
   folding effects for `cid`."
   [cid f]
   (binding [render/*cid* cid
-            kernel/*schedule-event!* schedule-event!
-            kernel/*subscribe!* subscribe!
-            kernel/*unsubscribe!* unsubscribe!]
+            kernel/*schedule-event!* async/schedule-event!
+            kernel/*subscribe!* async/subscribe!
+            kernel/*unsubscribe!* async/unsubscribe!]
     (f)))
-
-(defn- cancel-timers! [cid]
-  (doseq [f (get @!timers cid)]
-    (future-cancel f))
-  (swap! !timers dissoc cid)
-  nil)
-
-(defn- forget-timer! [cid f]
-  (swap! !timers update cid
-         (fn [fs]
-           (let [fs' (disj (or fs #{}) f)]
-             (when (seq fs') fs'))))
-  nil)
-
-(defn- remove-subscriptions-for-cid! [cid]
-  (swap! !subscriptions
-         (fn [topics]
-           (into {}
-                 (keep (fn [[topic subscribers]]
-                         (let [subscribers' (into {}
-                                                  (remove (fn [[[sub-cid _iid] _event]]
-                                                            (= sub-cid cid)))
-                                                  subscribers)]
-                           (when (seq subscribers')
-                             [topic subscribers']))))
-                 topics)))
-  nil)
 
 ;; ---------------------------------------------------------------------------
 ;; Conversation helpers
@@ -110,15 +76,11 @@
                owner-token (assoc :conv/owner-token owner-token))
          cid (:conv/id c)]
      (swap! !conversations assoc cid c)
-     (swap! !pending-flows assoc cid flow-id)
+     (async/put-pending-flow! cid flow-id)
      cid)))
 
-(defn pending-flow
-  "Pop and return the pending flow id for `cid`, if any.  After this
-  call the cid no longer has a pending flow."
-  [cid]
-  (let [[old _] (swap-vals! !pending-flows dissoc cid)]
-    (get old cid)))
+(def ^{:doc "See [[dev.zeko.stube.async/pending-flow]]."}
+  pending-flow async/pending-flow)
 
 (defn conversation
   "Snapshot of the named conversation, or nil."
@@ -157,11 +119,11 @@
 (defn end-conversation!
   "Drop a conversation, any SSE binding, and the persisted copy."
   [cid]
-  (cancel-timers! cid)
-  (remove-subscriptions-for-cid! cid)
+  (async/cancel-timers! cid)
+  (async/remove-subscriptions-for-cid! cid)
+  (async/forget-pending-flow! cid)
   (swap! !conversations dissoc cid)
   (swap! !sse-sessions  dissoc cid)
-  (swap! !pending-flows dissoc cid)
   (try
     (store/delete! @!store cid)
     (catch Throwable t
@@ -242,30 +204,6 @@
   Re-export of [[dev.zeko.stube.fragments/push!]]."}
   push-fragments! f/push!)
 
-(def ^:private no-payload ::no-payload)
-
-(defn- route-event->event-map [iid route-event]
-  (let [{:keys [event payload]}
-        (if (vector? route-event)
-          (let [[event & payloads] route-event]
-            {:event event
-             :payload (case (count payloads)
-                        0 no-payload
-                        1 (first payloads)
-                        (vec payloads))})
-          {:event route-event
-           :payload no-payload})]
-    (cond-> {:instance-id iid
-             :event       event
-             :signals     {}}
-      (not= no-payload payload) (assoc :payload payload))))
-
-(defn- published-event-map [iid route-event payload]
-  {:instance-id iid
-   :event       (if (vector? route-event) (first route-event) route-event)
-   :payload     payload
-   :signals     {}})
-
 (defn run-effects!
   "Fold `effects` into conversation `cid`, push any fragments, and end
   the conversation if the kernel marks it ended."
@@ -299,64 +237,21 @@
           (end-conversation! cid))
         [conv' frags]))))
 
-(defn schedule-event!
-  "Schedule a future event for a cid/iid.  The future is cancelled when
-  the conversation ends; if the instance disappears first, delivery is a
-  no-op."
-  [{:keys [cid instance-id delay-ms event]}]
-  (let [!self (atom nil)
-        f     (future
-                (try
-                  (Thread/sleep (max 0 (long delay-ms)))
-                  (dispatch! cid (route-event->event-map instance-id event))
-                  (catch InterruptedException _ nil)
-                  (catch Throwable t
-                    (binding [*out* *err*]
-                      (println "dev.zeko.stube.server: scheduled event threw —" (ex-message t))))
-                  (finally
-                    (when-let [self @!self]
-                      (forget-timer! cid self)))))]
-    (reset! !self f)
-    (swap! !timers update cid (fnil conj #{}) f)
-    f))
+;; Install our dispatch! into the async layer so timer fires and
+;; pub/sub deliveries can route events back into conversations.
+(async/install-dispatch! dispatch!)
 
-(defn subscribe!
-  "Subscribe cid/iid to `topic`; published values arrive as `event`."
-  [{:keys [cid instance-id topic event]}]
-  (swap! !subscriptions assoc-in [topic [cid instance-id]] event)
-  nil)
-
-(defn unsubscribe!
-  "Remove one cid/iid subscription.  If `topic` is nil, remove all of the
-  instance's subscriptions."
-  [{:keys [cid instance-id topic]}]
-  (let [sub-key [cid instance-id]]
-    (swap! !subscriptions
-           (fn [topics]
-             (into {}
-                   (keep (fn [[t subscribers]]
-                           (let [subscribers' (if (or (nil? topic) (= topic t))
-                                                (dissoc subscribers sub-key)
-                                                subscribers)]
-                             (when (seq subscribers')
-                               [t subscribers']))))
-                   topics))))
-  nil)
-
-(defn subscriptions
-  "Snapshot of topic subscriptions, for tests/inspection."
-  []
-  @!subscriptions)
-
-(defn publish!
-  "Asynchronously deliver `msg` to every live subscriber of `topic`.
-  Returns the number of subscribers targeted."
-  [topic msg]
-  (let [targets (get @!subscriptions topic)]
-    (doseq [[[cid iid] route-event] targets]
-      (future
-        (dispatch! cid (published-event-map iid route-event msg))))
-    (count targets)))
+;; Re-exports of async functions the server's old API surface used to expose.
+(def ^{:doc "See [[dev.zeko.stube.async/schedule-event!]]."}
+  schedule-event! async/schedule-event!)
+(def ^{:doc "See [[dev.zeko.stube.async/subscribe!]]."}
+  subscribe! async/subscribe!)
+(def ^{:doc "See [[dev.zeko.stube.async/unsubscribe!]]."}
+  unsubscribe! async/unsubscribe!)
+(def ^{:doc "See [[dev.zeko.stube.async/subscriptions]]."}
+  subscriptions async/subscriptions)
+(def ^{:doc "See [[dev.zeko.stube.async/publish!]]."}
+  publish! async/publish!)
 
 ;; ---------------------------------------------------------------------------
 ;; Mounting flows
@@ -552,13 +447,10 @@
   "Wipe all in-memory state.  Intended for tests and REPL iteration."
   []
   (stop!)
-  (doseq [cid (keys @!timers)]
-    (cancel-timers! cid))
+  (async/reset-state!)
   (reset! !conversations {})
   (reset! !sse-sessions  {})
-  (reset! !pending-flows {})
   (reset! !mounts        (sorted-map))
-  (reset! !subscriptions {})
   (reset! !store         (store/in-memory-store))
   (reset! !ui-css?       true)
   (reset! !halos?        false)

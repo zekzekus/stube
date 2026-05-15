@@ -246,7 +246,7 @@
 (def ^{:doc "Publish `msg` to every live instance subscribed to `topic`.
   Delivery is asynchronous and cid/iid-scoped; stale subscribers are
   ignored.  Returns the number of subscribers targeted."}
-  publish! server/publish!)
+  publish! server/publish!) ;; re-export through server which re-exports from async
 
 ;; ---------------------------------------------------------------------------
 ;; Linear flows (slice 1)
