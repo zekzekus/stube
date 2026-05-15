@@ -17,18 +17,18 @@
             [clojure.edn                                      :as edn]
             [clojure.java.io                                  :as io]
             [clojure.string                                   :as str]
-            [dev.onionpancakes.chassis.core                    :as chassis]
             [ring.middleware.multipart-params                  :as multipart]
             [starfederation.datastar.clojure.api               :as d*]
             [starfederation.datastar.clojure.adapter.http-kit  :as hk]
-            [dev.zeko.stube.conversation                                :as conv]
-            [dev.zeko.stube.fragments                                   :as f]
-            [dev.zeko.stube.halos                                       :as halos]
-            [dev.zeko.stube.kernel                                      :as kernel]
-            [dev.zeko.stube.render                                      :as render]
-            [dev.zeko.stube.server                                      :as server])
-  (:import (java.net URLDecoder)
-           (java.util UUID)))
+            [dev.zeko.stube.conversation                       :as conv]
+            [dev.zeko.stube.fragments                          :as f]
+            [dev.zeko.stube.halos.http                         :as halos-http]
+            [dev.zeko.stube.kernel                             :as kernel]
+            [dev.zeko.stube.render                             :as render]
+            [dev.zeko.stube.server                             :as server]
+            [dev.zeko.stube.session                            :as session]
+            [dev.zeko.stube.shell                              :as shell])
+  (:import (java.net URLDecoder)))
 
 ;; ---------------------------------------------------------------------------
 ;; JSON helpers
@@ -72,47 +72,6 @@
           (edn/read-string)))
 
 ;; ---------------------------------------------------------------------------
-;; Session ownership
-;; ---------------------------------------------------------------------------
-
-(def ^:private session-cookie "stube_sid")
-
-(defn- cookie-map [{:keys [headers]}]
-  (into {}
-        (keep (fn [part]
-                (let [[k v] (str/split (str/trim part) #"=" 2)]
-                  (when (seq k) [k v]))))
-        (some-> (or (get headers "cookie") (get headers "Cookie"))
-                (str/split #";"))))
-
-(defn- request-session [req]
-  (get (cookie-map req) session-cookie))
-
-(defn- new-session []
-  (str (UUID/randomUUID)))
-
-(defn- session-cookie-header [sid]
-  (str session-cookie "=" sid "; Path=/; HttpOnly; SameSite=Lax"))
-
-(defn- ensure-session [req]
-  (if-let [sid (request-session req)]
-    [sid nil]
-    (let [sid (new-session)]
-      [sid (session-cookie-header sid)])))
-
-(defn- authorized? [req cid]
-  (let [conv  (server/conversation cid)
-        owner (:conv/owner-token conv)]
-    (or (nil? owner)
-        (= owner (request-session req)))))
-
-(defn- forbidden-response []
-  {:status  403
-   :headers {"Content-Type" "text/plain; charset=utf-8"
-             "Cache-Control" "no-store"}
-   :body    "stube conversation belongs to a different session."})
-
-;; ---------------------------------------------------------------------------
 ;; Optional slf4j MDC integration
 ;; ---------------------------------------------------------------------------
 
@@ -139,46 +98,8 @@
         (mdc-call! "remove" [String] [(name k)])))))
 
 ;; ---------------------------------------------------------------------------
-;; The shell
+;; ui.css handler (the shell links to it; serving it lives in this layer)
 ;; ---------------------------------------------------------------------------
-;;
-;; The browser receives an effectively-empty page that hands control to
-;; Datastar.  As soon as the body loads, Datastar opens the SSE stream
-;; and the kernel pushes the first frame.
-
-(def datastar-cdn d*/CDN-url)
-(def ui-css-path "/stube/ui.css")
-(def halos-js-path "/stube/halos.js")
-
-(defn- halos-requested? [req]
-  (some? (query-value req "halos")))
-
-(defn- shell-html [cid dev?]
-  ;; `data-init` runs once when Datastar processes the element after the
-  ;; page loads.  We open the long-lived SSE stream there; every patch
-  ;; the kernel pushes thereafter morphs into the DOM by id, starting
-  ;; with the `<div id="root">` placeholder below.
-  ;;
-  ;; In dev mode (server started with :halos? true), we always inject
-  ;; the halos overlay script and the data-stube-cid hook.  The overlay
-  ;; itself starts disabled — the user enables it from the floating
-  ;; pill, which POSTs the enable endpoint and triggers a redraw with
-  ;; halo data-attrs.
-  (chassis/html
-    [chassis/doctype-html5
-     [:html {:lang "en"}
-      [:head
-       [:meta {:charset "utf-8"}]
-       [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
-       [:title "stube"]
-       (when (server/ui-css?)
-         [:link {:rel "stylesheet" :href ui-css-path}])
-       [:script {:type "module" :src datastar-cdn}]
-       (when dev?
-         [:script {:type "module" :src halos-js-path}])]
-      [:body (cond-> {:data-init (str "@get('/conv/" cid "/sse')")}
-               dev? (assoc :data-stube-cid cid))
-       [:div {:id "root"}]]]]))
 
 (defn ui-css-handler
   "Serve the opt-out stock stylesheet linked by the shell."
@@ -190,82 +111,6 @@
      :body    (slurp res)}
     {:status 404
      :body   "stube ui.css not found"}))
-
-(defn halos-js-handler
-  "Serve the dev halos overlay script. 404s when the server was not
-  started with `:halos? true` so production builds never expose it."
-  [_req]
-  (cond
-    (not (server/halos?))
-    {:status 404 :body "stube halos disabled"}
-
-    :else
-    (if-let [res (io/resource "dev/zeko/stube/halos.js")]
-      {:status  200
-       :headers {"Content-Type"  "application/javascript; charset=utf-8"
-                 "Cache-Control" "no-store"}
-       :body    (slurp res)}
-      {:status 404 :body "stube halos.js not found"})))
-
-(defn- halos-tab-keyword [s]
-  (case (some-> s str/lower-case)
-    "instance" :instance
-    "html"     :html
-    "history"  :history
-    :tree))
-
-(defn halos-enable-handler
-  "POST `/stube/halos/:cid/enable` — flip the conv into halos mode and
-  push a freshly-decorated frame so the overlay sees data-stube attrs
-  without a hard reload.  Backed by [[server/enable-halos-and-redraw!]]."
-  [{:keys [path-params] :as req}]
-  (let [cid (:cid path-params)]
-    (cond
-      (not (server/halos?))
-      {:status 404 :body "stube halos disabled"}
-
-      (nil? (server/conversation cid))
-      {:status 410 :body "no such conversation"}
-
-      (not (authorized? req cid))
-      (forbidden-response)
-
-      :else
-      (do (server/enable-halos-and-redraw! cid)
-          {:status 204}))))
-
-(defn halos-panel-handler
-  "Return the rendered side-panel HTML for the dev halos overlay.
-
-  404s when the server has halos off; 410 when the conversation has
-  halos off (the overlay shouldn't be polling); plain 200 HTML otherwise.
-  The shape is consumed by `halos.js`, which morphs the response into
-  the side-panel container."
-  [{:keys [path-params] :as req}]
-  (cond
-    (not (server/halos?))
-    {:status 404 :body "stube halos disabled"}
-
-    :else
-    (let [cid  (:cid path-params)
-          conv (server/conversation cid)]
-      (cond
-        (or (nil? conv) (not (:conv/halos? conv)))
-        {:status  410
-         :headers {"Content-Type" "text/html; charset=utf-8"
-                   "Cache-Control" "no-store"}
-         :body    "<div class=\"stube-halo-body\">halos not active for this conversation</div>"}
-
-        (not (authorized? req cid))
-        (forbidden-response)
-
-        :else
-        (let [iid (query-value req "iid")
-              tab (halos-tab-keyword (query-value req "tab"))]
-          {:status  200
-           :headers {"Content-Type"  "text/html; charset=utf-8"
-                     "Cache-Control" "no-store"}
-           :body    (render/html (halos/panel-hiccup conv {:iid iid :tab tab}))})))))
 
 ;; ---------------------------------------------------------------------------
 ;; Stale-page response
@@ -334,17 +179,17 @@
   `?halos=1` on the URL is a shortcut that pre-enables the conv."
   [flow-id]
   (fn [req]
-    (let [[sid set-cookie] (ensure-session req)
+    (let [[sid set-cookie] (session/ensure-session req)
           cid       (server/create-conversation! flow-id sid)
           dev?      (server/halos?)
-          pre-on?   (and dev? (halos-requested? req))]
+          pre-on?   (and dev? (halos-http/requested? req))]
       (when pre-on?
         (server/enable-halos! cid))
       {:status  200
        :headers (cond-> {"Content-Type" "text/html; charset=utf-8"
                          "Cache-Control" "no-store"}
                   set-cookie (assoc "Set-Cookie" set-cookie))
-       :body    (shell-html cid dev?)})))
+       :body    (shell/html cid dev?)})))
 
 (defn- resume-render
   "Render the current top frame of a conversation that already has
@@ -376,8 +221,8 @@
   fragments."
   [{:keys [path-params] :as req}]
   (let [cid (:cid path-params)]
-    (if-not (authorized? req cid)
-      (forbidden-response)
+    (if-not (session/authorized? req cid)
+      (session/forbidden-response)
       (hk/->sse-response req
         {hk/on-open
         (fn [sse-gen]
@@ -436,8 +281,8 @@
       (nil? live)
       (stale-response! cid)
 
-      (not (authorized? req cid))
-      (forbidden-response)
+      (not (session/authorized? req cid))
+      (session/forbidden-response)
 
       :else
       (with-mdc {:cid cid}
@@ -458,8 +303,8 @@
       (nil? live)
       (stale-response! cid)
 
-      (not (authorized? req cid))
-      (forbidden-response)
+      (not (session/authorized? req cid))
+      (session/forbidden-response)
 
       (or (:conv/ended? live)
           (nil? (conv/instance live iid)))
@@ -489,8 +334,8 @@
       (nil? live)
       (stale-response! cid)
 
-      (not (authorized? req cid))
-      (forbidden-response)
+      (not (session/authorized? req cid))
+      (session/forbidden-response)
 
       (or (:conv/ended? live)
           (nil? (conv/instance live iid)))

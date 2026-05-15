@@ -16,7 +16,6 @@
   they need, so the http layer never reaches into raw atoms."
   (:require [clojure.pprint                      :as pprint]
             [org.httpkit.server                  :as http-kit]
-            [reitit.ring                         :as ring]
             [dev.zeko.stube.async                :as async]
             [dev.zeko.stube.conversation         :as conv]
             [dev.zeko.stube.fragments            :as f]
@@ -345,49 +344,14 @@
 ;; Lifecycle
 ;; ---------------------------------------------------------------------------
 
-(defn- build-router
-  "Build the reitit router from the current mounts.  The conversation-
-  scoped routes are always present; user mounts are appended.  Looked
-  up lazily so adding mounts after start works."
-  []
-  (let [;; Resolved late to avoid a circular require with dev.zeko.stube.http.
-        h       (requiring-resolve 'dev.zeko.stube.http/shell-handler)
-        sse-h   (requiring-resolve 'dev.zeko.stube.http/sse-handler)
-        ev-h    (requiring-resolve 'dev.zeko.stube.http/event-handler)
-        up-h    (requiring-resolve 'dev.zeko.stube.http/upload-handler)
-        bk-h    (requiring-resolve 'dev.zeko.stube.http/back-handler)
-        css-h   (requiring-resolve 'dev.zeko.stube.http/ui-css-handler)
-        halo-js (requiring-resolve 'dev.zeko.stube.http/halos-js-handler)
-        halo-p  (requiring-resolve 'dev.zeko.stube.http/halos-panel-handler)
-        halo-en (requiring-resolve 'dev.zeko.stube.http/halos-enable-handler)]
-    (ring/router
-      (into [["/stube/ui.css"             {:get  {:handler @css-h}}]
-             ["/stube/halos.js"           {:get  {:handler @halo-js}}]
-             ["/stube/halos/:cid/panel"   {:get  {:handler @halo-p}}]
-             ["/stube/halos/:cid/enable"  {:post {:handler @halo-en}}]
-             ["/conv/:cid/sse"            {:get  {:handler @sse-h}}]
-             ["/conv/:cid/back"           {:post {:handler @bk-h}}]
-             ["/stube/upload/:cid/:iid"   {:post {:handler @up-h}}]
-             ;; The back route is listed *before* the generic
-             ;; `:iid/:event` route so reitit picks the more specific
-             ;; one first. Uploads live under `/stube/upload` instead of
-             ;; `/conv/:cid/:iid/upload`; otherwise Reitit sees a static
-             ;; `upload` segment conflicting with the generic `:event`.
-             ["/conv/:cid/:iid/:event"    {:post {:handler @ev-h}}]]
-            (for [[path flow-id] @!mounts]
-              [path {:get {:handler (@h flow-id)}}])))))
+(declare stop!)
 
 (defn- ring-handler
-  "A ring handler that resolves the router on each request so newly
-  added mounts are picked up without restarting the server.  Slice 0 is
-  not perf-critical."
+  "Resolve [[dev.zeko.stube.routes/ring-handler]] lazily.  The handler
+  itself rebuilds the router on every request so mounts added after
+  start! are picked up without a restart."
   []
-  (fn [req]
-    (let [handler (ring/ring-handler (build-router)
-                                     (ring/create-default-handler))]
-      (handler req))))
-
-(declare stop!)
+  ((requiring-resolve 'dev.zeko.stube.routes/ring-handler)))
 
 (defn start!
   "Start http-kit on `port` (default 8080).  Idempotent: a second call

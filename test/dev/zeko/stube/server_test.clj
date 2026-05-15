@@ -3,6 +3,7 @@
             [clojure.test :refer [deftest is use-fixtures]]
             [dev.zeko.stube.core :as s]
             [dev.zeko.stube.registry :as registry]
+            [dev.zeko.stube.routes :as routes]
             [dev.zeko.stube.server :as server])
   (:import (java.time Duration Instant)))
 
@@ -46,7 +47,7 @@
     (is (some? (server/conversation fresh-cid)))))
 
 (deftest built-in-routes-do-not-conflict
-  (is (some? (#'server/build-router))))
+  (is (some? (#'routes/build-router))))
 
 (deftest inspect-pretty-prints-live-conversation-summary
   (let [cid  (server/create-conversation! :test/root)
