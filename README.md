@@ -1,109 +1,170 @@
 # stube
 
-A Clojure component framework over [Datastar](https://data-star.dev/) — Seaside-style
-callable components, modelled as plain values, evaluated by a small effect kernel.
-
-> **Status:** early, but the core slices are in place: `defflow`, embedded
-> children, history/back, persistence, stock UI helpers, basic operations,
-> timers, topic delivery, and multipart uploads.
-> See [`docs/v2_1.md`](./docs/v2_1.md) for the current design notes.
-
-## Highlights
-
-- **Components are data** — a component is a map of pure functions. The kernel
-  is one multimethod and a fold.
-- **Effects as data** — handlers return `[self' [[:call …] [:patch …] …]]`.
-  Every interaction is inspectable in the REPL with no server running.
-- **Datastar over the wire** — morph-by-id SSE patches; no client code beyond
-  the Datastar runtime.
-- **Persistent history** — every dispatch snapshots the previous conversation
-  to `:conv/history`. The back button is one line (slice 3).
-- **Small async surface** — scheduled events, live topic delivery, and
-  zero-JS multipart uploads route back into normal component handlers.
-
-## Quick look
+> Seaside‑style callable components for Clojure, on top of
+> [Datastar](https://data-star.dev/). Components are plain data. The
+> conversation is a value. The server does the rendering; the browser
+> just morphs the patches.
 
 ```clojure
-(require '[stube.core :as s])
+(require '[dev.zeko.stube.core :as s])
 
-(s/defcomponent :ui/prompt
-  :init   (fn [{:keys [text]}] {:text text :answer ""})
-  :keep   #{:answer}
+(s/defcomponent :demo/counter
+  :init   (fn [_] {:n 0})
   :render (fn [self]
-            [:form (s/root-attrs self (s/on self :submit))
-             [:p (:text self)]
-             [:input (merge {:type "number" :name "answer"} (s/bind :answer))]
-             [:button "OK"]])
-  :handle (fn [self _]
-            [(s/answer (parse-long (str (:answer self))))]))
+            [:div (s/root-attrs self)
+             [:button (s/on self :click :as :dec) "−"]
+             [:span " " (:n self) " "]
+             [:button (s/on self :click :as :inc) "+"]])
+  :handle (fn [self {:keys [event]}]
+            (case event
+              :inc (update self :n inc)
+              :dec (update self :n dec))))
 
-(s/defcomponent :demo/guess
-  :init   (fn [_] {:target (inc (rand-int 100)) :attempts 0})
-  :start  (fn [_]
-            [(s/call :ui/prompt {:text "1–100?"} :on-guess)])
-  :on-guess (fn [self n]
-              (let [self' (update self :attempts inc)]
-                (cond
-                  (< n (:target self'))
-                  [self' [(s/call :ui/prompt {:text "too low"} :on-guess)]]
-                  (> n (:target self'))
-                  [self' [(s/call :ui/prompt {:text "too high"} :on-guess)]]
-                  :else
-                  [self' [(s/end {:winner true :attempts (:attempts self')})]]))))
-
-(s/mount! "/guess" :demo/guess)
+(s/mount! "/" :demo/counter)
 (s/start! {:port 8080})
 ```
 
-Then visit <http://localhost:8080/guess>.
+Open <http://localhost:8080/>. That's a counter — one component, no
+JavaScript, no client/server contract to manage by hand.
 
-## Running
+The real payoff shows up when one component *calls* another:
 
-This project assumes the development environment provided by `flake.nix`.
-
-```nu
-# enter dev shell
-nix develop
-
-# run the bundled example browser, including Tier 3 demos, then visit http://localhost:8080/
-clojure -M:examples
-
-# run tests
-clojure -X:test
+```clojure
+(s/defcomponent :demo/save-or-cancel
+  :render (fn [self]
+            [:div (s/root-attrs self)
+             [:button (s/on self :click :as :save)   "Save"]
+             [:button (s/on self :click :as :cancel) "Cancel"]])
+  :handle (fn [self {:keys [event]}]
+            (case event
+              :save   [(s/call (s/confirm "Save changes?") :on-confirmed)]
+              :cancel [(s/answer :cancelled)]))
+  :on-confirmed
+  (fn [self yes?]
+    [(s/answer (if yes? :saved :cancelled))]))
 ```
 
-The shell links the tiny stock stylesheet at `/stube/ui.css` by default;
-start with `{:ui-css? false}` if you want a completely unstyled shell.
-Production starts can also set `:conversation-ttl` (a `java.time.Duration`
-or millisecond integer) to enable the background conversation reaper.
+`(s/confirm "Save changes?")` is a component. Calling it stacks it on
+top of the current frame. When the user clicks Yes or No it answers
+back — and your `:on-confirmed` resume fires with the value. The
+component doing the asking never thinks about callbacks, promises, or
+modal state machines: it just calls a question and reads the answer.
+That is the Seaside model, rebuilt for 2026.
 
-Debugging tip: install the browser's Datastar Inspector extension and
-watch the `/conv/<cid>/sse` stream while clicking through an example.
-On the REPL side, `(s/inspect cid)` prints the live conversation summary
-and `(s/replay :some/root [{:event :submit}])` replays pure events
-without starting a server.
+---
 
-## Layout
+## Documentation
 
-| path                  | purpose                                                 |
-|-----------------------|---------------------------------------------------------|
-| `src/stube/core.clj`  | public API surface                                      |
-| `src/stube/kernel.clj`| pure `step` / `run-effects` / `dispatch`                |
-| `src/stube/conversation.clj` | conversation/instance data model and helpers     |
-| `src/stube/registry.clj`     | component registry                               |
-| `src/stube/render.clj`       | hiccup → HTML, Datastar attribute helpers        |
-| `src/stube/ui.clj`           | stock dialogs and default UI classes             |
-| `src/stube/http.clj`         | ring handlers (`/`, SSE, event, back, upload)   |
-| `src/stube/server.clj`       | http-kit lifecycle, in-memory stores             |
-| `examples/`                   | runnable demos                                  |
-| `docs/v2.md`, `docs/v2_1.md`  | design notes and current revision               |
+|   |   |
+|---|---|
+| [**Tutorial**](docs/tutorial.md) | Build a real app, step by step. Start here. |
+| [**API reference**](docs/api.md) | Every public function in `dev.zeko.stube.core`. |
+| [**Internals**](docs/internals.md) | How the kernel, conversation and effects fit together. |
+| [**Rationale**](docs/rationale.md) | Why stube exists. Seaside, the uncommon web, and where the model came from. |
 
-## Design
+The design notes that drove the implementation live in
+[`docs/v2.md`](docs/v2.md) and [`docs/v2_1.md`](docs/v2_1.md).
 
-See [`docs/v2.md`](./docs/v2.md) and the current revision in
-[`docs/v2_1.md`](./docs/v2_1.md). The implementation keeps the same
-shape: component definitions are maps, conversations are EDN-oriented
-values, and the HTTP layer is the only Datastar-specific boundary.
+---
+
+## Why you might care
+
+- **Components are values.** A component is a map of pure functions.
+  The kernel is one multimethod and a fold. There is no class hierarchy,
+  no lifecycle interface, no special object identity.
+
+- **Effects are values.** Handlers return `[self' effects]`. Every
+  interaction is inspectable at the REPL with no server running —
+  `(s/replay :my/root [{:event :submit}])` walks the same code path the
+  browser does.
+
+- **Call and answer.** Components can call other components like
+  functions and read their answer like return values. Wizards,
+  confirmations, in‑place editors, login flows: all the same primitive.
+
+- **Linear flows.** `(s/defflow ...)` lets you write what would have
+  been a state machine as straight‑line Clojure with
+  `(s/await child-embed)` for suspend points. The macro compiles down
+  to a regular component using
+  [cloroutine](https://github.com/leonoel/cloroutine).
+
+- **Datastar over the wire.** SSE patches, morph by id. The only
+  client‑side code is the Datastar runtime itself. Two‑way input
+  bindings go through `s/bind`; events through `s/on`.
+
+- **Persistent history.** Every dispatch snapshots the previous
+  conversation to `:conv/history`. The conversation‑level Back button
+  is one line.
+
+- **Small async surface.** Scheduled events (`s/after`),
+  publish/subscribe (`s/publish!` / `s/subscribe`), and zero‑JS
+  multipart uploads route back into normal component handlers.
+
+---
+
+## Installation
+
+stube is currently consumed as a git dep. Add to `deps.edn`:
+
+```clojure
+{:deps
+ {dev.zeko/stube
+  {:git/url "https://github.com/zekus/stube"   ;; placeholder
+   :git/sha "<sha>"}}}
+```
+
+Then in code:
+
+```clojure
+(require '[dev.zeko.stube.core :as s])
+```
+
+A Maven coordinate will arrive once the API freezes at 1.0.
+
+---
+
+## Running the bundled examples
+
+This project assumes the development environment provided by
+`flake.nix`.
+
+```bash
+nix develop          # enter dev shell
+clojure -M:examples  # open http://localhost:8080/ in your browser
+clojure -X:test      # run the test suite
+```
+
+The example browser at `/` indexes every shipped demo. Individual
+URLs:
+
+| path | what it shows |
+|------|---------------|
+| `/guess`         | `defflow` — guess‑the‑number as straight‑line code |
+| `/multicounter`  | three embedded counters; one click re‑renders one widget |
+| `/todo`          | edit‑in‑place todo list using `call-in-slot` |
+| `/wizard`        | multi‑step form with a real Back button |
+| `/chat`          | pub/sub across browser tabs |
+| `/calendar`      | structured event payloads |
+| `/file-upload`   | zero‑JS multipart uploads |
+| `/clock`         | scheduled `after` events |
+| `/seaside-todo`  | a fuller port of the HPI *Introduction to Seaside* tutorial |
+
+Install the [Datastar Inspector](https://data-star.dev/) browser
+extension to watch the SSE stream live; on the REPL side,
+`(s/inspect cid)` prints the live conversation summary and
+`(s/replay :some/root [{:event :submit}])` walks the same path without
+a browser.
+
+---
+
+## Status
+
+stube is pre‑1.0. The public surface — everything in
+`dev.zeko.stube.core` — is intended to stay stable; anything outside
+that namespace is internal until 1.0.
+
+Bug reports, design discussions and Seaside‑veteran war stories are
+all welcome.
 
 ## License
 
