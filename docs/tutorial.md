@@ -5,9 +5,10 @@ it's actually exploring is to build something small with it. This
 walkthrough builds **standup**, a tiny shared todo board: every
 visitor sees the same list, can post items, edit them in place,
 delete them with a confirmation, and watch everyone else's edits
-appear in real time. No JavaScript, no client/server contract to
-maintain by hand; at the end of it the whole thing is a single
-Clojure file.
+appear in real time. No JavaScript you have to write (the Datastar
+runtime is loaded from a CDN and does the morphing), no
+client/server contract to maintain by hand; at the end of it the
+whole thing is a single Clojure file.
 
 If you want to know *why* the framework looks the way it does before
 you start typing, read the [rationale](rationale.md) first.
@@ -174,7 +175,7 @@ Then handle it:
                 (-> self
                     (update :items conj {:id (random-uuid) :text t})
                     (assoc :draft ""))))
-    :delete [(s/call (s/confirm "Delete this item?")
+    :delete [(s/call :ui/confirm {:question "Delete this item?"}
                      :on-confirm-delete)]
     self))
 
@@ -195,7 +196,7 @@ question and the answer:
 
 ```clojure
 :delete [(assoc self :pending-delete payload)
-         [(s/call (s/confirm "Delete this item?")
+         [(s/call :ui/confirm {:question "Delete this item?"}
                   :on-confirm-delete)]]
 ```
 
@@ -626,7 +627,7 @@ The complete `src/standup.clj` is below for copy‑paste convenience.
 
       :delete
       [(assoc self :pending-delete payload)
-       [(s/call (s/confirm "Delete this item?") :on-confirm-delete)]]
+       [(s/call :ui/confirm {:question "Delete this item?"} :on-confirm-delete)]]
 
       :edit
       (when-let [item (some #(when (= (:id %) payload) %) (:items self))]

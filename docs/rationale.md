@@ -17,7 +17,7 @@ Marco Baringer's Common Lisp continuation framework. Two ideas stuck:
   the rest of the system, and the framework arranged for the right
   HTML to be sent and the right callback to fire when the user
   clicked.
-- **HTML was data in the host language.** UCW had **YACML**, a small
+- **HTML was data in the host language.** UCW had **YACLML**, a small
   s-expression DSL for building HTML — the same instinct that would
   later become hiccup and the Seaside canvas API.
 
@@ -30,8 +30,9 @@ in *Lisp?*" knows the look. The model felt right to me anyway.
 ## Seaside, and Evrim's core-server
 
 [Seaside](https://en.wikipedia.org/wiki/Seaside_(software)) — Avi
-Bryant's Smalltalk framework — took the same ideas further than UCW
-had. Components could `call:` other components like methods and
+Bryant and Julian Fitzell's Smalltalk framework, later maintained by
+Lukas Renggli and the Pharo community — took the same ideas further
+than UCW had. Components could `call:` other components like methods and
 `answer:` results back like return values. A wizard was a *sequence*.
 A confirmation was a *function call*. The "canvas" API turned HTML
 generation into Smalltalk message sends.
@@ -52,7 +53,7 @@ frameworks I had ever met. None of them ever became mainstream.
 
 Then React happened. JSX happened. Suddenly writing HTML inside the
 host language was the **default** — not an abomination anymore, just
-what you did. The thing colleagues had recoiled from in YACML and the
+what you did. The thing colleagues had recoiled from in YACLML and the
 Seaside canvas was now table stakes in a hiring quiz.
 
 It was a strange kind of vindication. The peripheral idea — HTML as
@@ -65,9 +66,8 @@ center of gravity drifted out of fashion right as its sidekick became
 universal.
 
 Seaside itself, to be clear, has not stood still — the Smalltalk
-community has kept working on it, and the Hotwire-flavoured
-integrations in particular give it a perfectly modern
-fragment-over-the-wire story that I genuinely like. But for me the
+community has kept working on it, including modern work I won't
+pretend to be familiar with the details of. But for me the
 square-peg problem was specific: I wanted this model **in Clojure**,
 on a wire shape I happened to enjoy, with the data shapes Clojure
 makes obvious. None of that was Seaside's problem to solve.
@@ -87,8 +87,8 @@ complexity; the SSE + morph-by-id protocol clicked with how I wanted
 handlers to compose; and the signal model played nicely with how the
 conversation already wanted to carry per-input state. It is a
 personal preference, not a claim that the others wouldn't work — if
-you reach for htmx or Hotwire instead, you are in good company,
-including Seaside's.
+you reach for htmx, Hotwire or LiveView instead, you are in good
+company.
 
 ## stube
 

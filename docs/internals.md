@@ -67,9 +67,13 @@ Three observations:
 2. **`render.clj` is at the wire boundary but knows nothing about
    Datastar.** It produces HTML strings and Datastar *attribute*
    names; the SSE event types are all in `fragments.clj`.
-3. **`fragments.clj` is the single Datastar SDK boundary.** If
-   stube ever wanted to ship over WebSockets instead of SSE, this
-   is the only file that would change.
+3. **`fragments.clj` is the single boundary for *outgoing* SSE
+   patches.** `http.clj` also touches the SDK (signal extraction and
+   the http-kit SSE adapter) and `shell.clj` reads the Datastar CDN
+   URL, but the kernel's fragment-emission path goes through
+   `fragments.clj` alone. If stube ever wanted to ship over
+   WebSockets instead of SSE, this file and `http.clj` are the ones
+   that would change.
 
 ---
 

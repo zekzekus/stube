@@ -46,7 +46,7 @@ The real payoff shows up when one component *calls* another:
              [:button (s/on self :click :as :cancel) "Cancel"]])
   :handle (fn [self {:keys [event]}]
             (case event
-              :save   [(s/call (s/confirm "Save changes?") :on-confirmed)]
+              :save   [(s/call :ui/confirm {:question "Save changes?"} :on-confirmed)]
               :cancel [(s/answer :cancelled)]))
   :on-confirmed
   (fn [self yes?]
