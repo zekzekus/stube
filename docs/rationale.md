@@ -64,24 +64,31 @@ router libraries, the server treated as a dumb data API. Seaside's
 center of gravity drifted out of fashion right as its sidekick became
 universal.
 
-For years, the framework I would actually have wanted to use was a
-square peg. Either you accepted the cost of running a JS framework
-and writing two languages, or you reached back to Seaside and accepted
-a 2005-vintage interaction model.
+Seaside itself, to be clear, has not stood still — the Smalltalk
+community has kept working on it, and the Hotwire-flavoured
+integrations in particular give it a perfectly modern
+fragment-over-the-wire story that I genuinely like. But for me the
+square-peg problem was specific: I wanted this model **in Clojure**,
+on a wire shape I happened to enjoy, with the data shapes Clojure
+makes obvious. None of that was Seaside's problem to solve.
 
 ## Datastar
 
-The piece I'd been missing was a **wire**. Seaside had to ship full
-pages, because there was no good way for the server to drive the DOM
-in finer-grained pieces. By the time htmx, Hotwire and LiveView
-arrived, server-rendered fragments over a long-lived channel were a
-real option again — and [Datastar](https://data-star.dev/) in
-particular is small enough that a server framework can drive it
-without taking on a JS framework's worth of complexity. One SSE
-stream. Morph by id. That's the protocol.
+The piece I'd been missing in Clojure was a wire I liked. htmx,
+Hotwire / Turbo, LiveView, and now [Datastar](https://data-star.dev/)
+are all in the same conceptual neighbourhood: server-rendered
+fragments over a long-lived channel, the browser as a renderer rather
+than a thick client. Any of them would, in principle, support the
+call/answer kernel I had in mind.
 
-That is the wire shape Seaside always wanted, ten or twenty years
-late, finally available.
+I happened to land on Datastar. It is small enough that a server
+framework can drive it without taking on a JS framework's worth of
+complexity; the SSE + morph-by-id protocol clicked with how I wanted
+handlers to compose; and the signal model played nicely with how the
+conversation already wanted to carry per-input state. It is a
+personal preference, not a claim that the others wouldn't work — if
+you reach for htmx or Hotwire instead, you are in good company,
+including Seaside's.
 
 ## stube
 
