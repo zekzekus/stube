@@ -1,9 +1,18 @@
 # stube
 
-> Seaside‑style callable components for Clojure, on top of
-> [Datastar](https://data-star.dev/). Components are plain data. The
-> conversation is a value. The server does the rendering; the browser
-> just morphs the patches.
+> stube is a personal research project — a Clojure exploration of an
+> idea about web frameworks that has been pulling at me for nearly
+> twenty years: that page boundaries should be invisible, that HTML
+> should be data in the host language, and that one component should
+> be able to *call* another like a function and read its *answer*
+> like a return value. The lineage is Seaside and the UCW family; the
+> wire is [Datastar](https://data-star.dev/); the implementation is a
+> small effect kernel over plain Clojure maps, written hand-in-hand
+> with LLM assistants. [The rationale page](docs/rationale.md) has
+> the full story.
+>
+> Components are plain data. The conversation is a value. The server
+> does the rendering; the browser just morphs the patches.
 
 ```clojure
 (require '[dev.zeko.stube.core :as s])
@@ -67,44 +76,47 @@ The design notes that drove the implementation live in
 
 ---
 
-## Why you might care
+## What stube explores
+
+A handful of long-standing ideas, combined now that the missing
+pieces finally exist:
 
 - **Components are values.** A component is a map of pure functions.
-  The kernel is one multimethod and a fold. There is no class hierarchy,
-  no lifecycle interface, no special object identity.
+  The kernel is one multimethod and a fold. No class hierarchy, no
+  lifecycle interface, no special object identity.
 
 - **Effects are values.** Handlers return `[self' effects]`. Every
   interaction is inspectable at the REPL with no server running —
-  `(s/replay :my/root [{:event :submit}])` walks the same code path the
-  browser does.
+  `(s/replay :my/root [{:event :submit}])` walks the same code path
+  the browser does.
 
-- **Call and answer.** Components can call other components like
-  functions and read their answer like return values. Wizards,
-  confirmations, in‑place editors, login flows: all the same primitive.
+- **Call and answer.** Components call other components like functions
+  and read the answer like return values. Wizards, confirmations,
+  in-place editors, login flows: one primitive. This is the Seaside
+  idea, rebuilt.
 
-- **Linear flows.** `(s/defflow ...)` lets you write what would have
-  been a state machine as straight‑line Clojure with
-  `(s/await child-embed)` for suspend points. The macro compiles down
-  to a regular component using
-  [cloroutine](https://github.com/leonoel/cloroutine).
+- **Linear flows.** `(s/defflow ...)` writes what would have been a
+  state machine as straight-line Clojure with `(s/await child-embed)`
+  for suspend points. The macro compiles down to a regular component
+  using [cloroutine](https://github.com/leonoel/cloroutine).
 
 - **Datastar over the wire.** SSE patches, morph by id. The only
-  client‑side code is the Datastar runtime itself. Two‑way input
-  bindings go through `s/bind`; events through `s/on`.
+  client-side code is the Datastar runtime itself. Two-way bindings
+  through `s/bind`; events through `s/on`.
 
 - **Persistent history.** Every dispatch snapshots the previous
-  conversation to `:conv/history`. The conversation‑level Back button
-  is one line.
+  conversation onto `:conv/history`. The conversation-level Back
+  button is one line.
 
 - **Small async surface.** Scheduled events (`s/after`),
-  publish/subscribe (`s/publish!` / `s/subscribe`), and zero‑JS
+  publish/subscribe (`s/publish!` / `s/subscribe`), and zero-JS
   multipart uploads route back into normal component handlers.
 
 ---
 
-## Installation
+## Trying it
 
-stube is currently consumed as a git dep. Add to `deps.edn`:
+stube is a git dep. Add to `deps.edn`:
 
 ```clojure
 {:deps
@@ -119,7 +131,8 @@ Then in code:
 (require '[dev.zeko.stube.core :as s])
 ```
 
-A Maven coordinate will arrive once the API freezes at 1.0.
+A Maven coordinate may appear later if the API ever feels settled
+enough to call it 1.0.
 
 ---
 
@@ -159,12 +172,13 @@ a browser.
 
 ## Status
 
-stube is pre‑1.0. The public surface — everything in
-`dev.zeko.stube.core` — is intended to stay stable; anything outside
-that namespace is internal until 1.0.
+This is a personal research project, not a product. The implementation
+is real and the bundled examples work, but the API will move as the
+underlying experiment evolves. Anything in `dev.zeko.stube.core` is
+treated as the stable surface; anything else is internal.
 
-Bug reports, design discussions and Seaside‑veteran war stories are
-all welcome.
+Bug reports, design discussions and Seaside-veteran war stories are
+all welcome — the more company on this thread, the better.
 
 ## License
 

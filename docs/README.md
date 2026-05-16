@@ -1,15 +1,20 @@
 # stube documentation
 
-User‑facing guides:
+stube is a personal research project that combines a Seaside-style
+call/answer component model with Datastar over the wire. These guides
+cover what it is, why it exists, and how to use it.
 
+User-facing guides:
+
+- **[Rationale](rationale.md)** — the personal story: UCW, Seaside,
+  core-server, React's rehabilitation of host-language HTML, Datastar
+  as the missing wire, and how this framework finally came together.
 - **[Tutorial](tutorial.md)** — build a live collaborative todo list
   step by step. Start here if you've never used stube before.
 - **[API reference](api.md)** — every public function in
   `dev.zeko.stube.core`, organised by what you're trying to do.
 - **[Internals](internals.md)** — how the kernel, the conversation
   and the effect language fit together.
-- **[Rationale](rationale.md)** — why stube exists; Seaside, the
-  uncommon web, and where the mental model came from.
 
 Design notes (historical, but still accurate):
 

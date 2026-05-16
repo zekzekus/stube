@@ -1,12 +1,14 @@
 # Internals
 
 How stube is put together, from the moment a click leaves the browser
-to the moment a new DOM patch lands. If you've read the
-[tutorial](tutorial.md) and the [API reference](api.md), this is the
-"so how does it actually work" page.
+to the moment a new DOM patch lands. The [rationale](rationale.md)
+covers *why* the framework looks the way it does; this page covers
+*how* the ideas there compose into running code.
 
-> The implementation is roughly 4,000 lines of Clojure. Everything in
-> here can be read in source form; this document is a map.
+> The implementation is roughly 4,000 lines of Clojure, written
+> hand-in-hand with LLM assistants. Everything below can be read in
+> source form; this document is the map I would have wanted while
+> writing it.
 
 ---
 

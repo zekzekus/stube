@@ -1,15 +1,17 @@
 # API reference
 
 Everything documented here lives in the `dev.zeko.stube.core`
-namespace. Aliased as `s` by convention:
+namespace — the surface I try to keep stable while the rest of the
+project evolves. Aliased as `s` by convention:
 
 ```clojure
 (require '[dev.zeko.stube.core :as s])
 ```
 
-Anything outside `dev.zeko.stube.core` is **internal** until 1.0 and
-may move without notice. If you find yourself reaching into another
-namespace, file an issue — the API is meant to grow.
+Anything outside `dev.zeko.stube.core` is **internal** and may move
+without notice. If you find yourself reaching into another namespace
+to do something normal, file an issue — the API is meant to grow to
+cover that, not for callers to grow workarounds.
 
 The reference is organised by *what you're trying to do*:
 

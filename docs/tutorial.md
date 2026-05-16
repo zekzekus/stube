@@ -1,11 +1,16 @@
 # Tutorial — a live collaborative todo list
 
-This tutorial walks you through building **standup**, a tiny shared
-todo board: every visitor sees the same list, can post items, edit
-them in place, delete them with a confirmation, and watch everyone
-else's edits appear in real time. There is no JavaScript involved,
-no client/server contract to maintain by hand, and at the end of it
-the whole thing is a single Clojure file.
+stube is a personal research project, and the fastest way to see what
+it's actually exploring is to build something small with it. This
+walkthrough builds **standup**, a tiny shared todo board: every
+visitor sees the same list, can post items, edit them in place,
+delete them with a confirmation, and watch everyone else's edits
+appear in real time. No JavaScript, no client/server contract to
+maintain by hand; at the end of it the whole thing is a single
+Clojure file.
+
+If you want to know *why* the framework looks the way it does before
+you start typing, read the [rationale](rationale.md) first.
 
 You will meet, in roughly the order you'd reach for them in a real
 app:
