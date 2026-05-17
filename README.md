@@ -116,13 +116,11 @@ pieces finally exist:
 
 ## Trying it
 
-stube is a git dep. Add to `deps.edn`:
+stube is on Clojars. Add to `deps.edn`:
 
 ```clojure
 {:deps
- {dev.zeko/stube
-  {:git/url "https://github.com/zekzekus/stube"
-   :git/sha "<sha>"}}}
+ {dev.zeko/stube {:mvn/version "0.0.1"}}}
 ```
 
 Then in code:
@@ -131,8 +129,9 @@ Then in code:
 (require '[dev.zeko.stube.core :as s])
 ```
 
-A Maven coordinate may appear later if the API ever feels settled
-enough to call it 1.0.
+The version will move freely while the API settles; nothing in
+`dev.zeko.stube.core` is expected to change shape, but anything
+outside it is internal.
 
 ---
 
