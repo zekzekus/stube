@@ -26,9 +26,12 @@ if [[ -z "${CLOJARS_USERNAME:-}" || -z "${CLOJARS_PASSWORD:-}" ]]; then
 fi
 
 echo "→ ensuring working copy is clean"
-if ! jj st | grep -q '^The working copy has no changes\.$'; then
+# Read the full output first so `grep -q` can't SIGPIPE jj and trip
+# `set -o pipefail`.
+jj_status=$(jj st)
+if [[ "$jj_status" != *"The working copy has no changes."* ]]; then
   echo "working copy has uncommitted changes; commit or shelve first" >&2
-  jj st >&2
+  echo "$jj_status" >&2
   exit 1
 fi
 
@@ -36,8 +39,11 @@ echo "→ running tests"
 clojure -X:test
 
 echo "→ bumping version to $VERSION"
-sed -i -E 's/\(def version "[^"]+"\)/(def version "'"$VERSION"'")/' build.clj
-sed -i -E 's/\{:mvn\/version "[^"]+"\}/{:mvn\/version "'"$VERSION"'"}/' \
+# Capture-group form so the existing whitespace between `version` and
+# the string literal is preserved verbatim (build.clj uses several
+# spaces for alignment).
+sed -i -E 's/(\(def version[[:space:]]+")[^"]+"/\1'"$VERSION"'"/' build.clj
+sed -i -E 's/(\{:mvn\/version[[:space:]]+")[^"]+"/\1'"$VERSION"'"/' \
   README.md docs/tutorial.md
 
 echo "→ committing version bump"
