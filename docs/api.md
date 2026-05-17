@@ -203,10 +203,10 @@ the number of subscribers targeted. Stale subscribers are ignored.
 ### `(s/embed type)`  /  `(s/embed type args)`
 
 Returns an embed spec map: `{:embed/type type :embed/args args}`.
-The kernel uses these to instantiate children. `s/call`, `s/become`
-and `s/call-in-slot` accept either an id+args pair *or* an
-embed spec directly — using the constructors above means you rarely
-write `embed` by hand, but flows and `:children` declarations do.
+The kernel uses these to instantiate children. You rarely write
+`embed` by hand — `s/call`, `s/become` and `s/call-in-slot` take
+the id and args for you. `:children` declarations and `s/await`
+inside a `defflow` are where embed specs show up most often.
 
 ---
 

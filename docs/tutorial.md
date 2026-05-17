@@ -52,7 +52,7 @@ mkdir standup && cd standup
 {:paths ["src"]
  :deps
  {dev.zeko/stube
-  {:git/url "https://github.com/zekus/stube"
+  {:git/url "https://github.com/zekzekus/stube"
    :git/sha "<latest sha>"}}}
 ```
 
@@ -421,7 +421,7 @@ Replace each local mutation with an `update-world!`:
     (when (and yes? id)
       (update-world!
         #(update % :items
-                 (fn [xs] (into [] (remove (fn [x] (= (:id x) id))) %)))))
+                 (fn [xs] (into [] (remove (fn [x] (= (:id x) id))) xs)))))
     self'))
 ```
 
@@ -466,13 +466,14 @@ resume keys, but stube has a sweeter shape for linear flows:
 
 ```clojure
 (s/defflow :standup/onboard []
-  (let [name (s/await (s/prompt "Who's standing up?"))]
-    (if (= name s/cancel)
-      (recur)                       ; refuse to proceed without a name
-      (let [ok? (s/await (s/confirm (str "Welcome, " name "!  Begin?")))]
-        (if ok?
-          (s/await (s/embed :standup/board {:user name}))
-          (recur))))))
+  (loop []
+    (let [name (s/await (s/prompt "Who's standing up?"))]
+      (if (= name s/cancel)
+        (recur)                     ; refuse to proceed without a name
+        (let [ok? (s/await (s/confirm (str "Welcome, " name "!  Begin?")))]
+          (if ok?
+            (s/await (s/embed :standup/board {:user name}))
+            (recur)))))))
 
 (s/mount! "/" :standup/onboard)
 ```
@@ -645,7 +646,7 @@ The complete `src/standup.clj` is below for copy‑paste convenience.
       (when (and yes? id)
         (update-world!
           #(update % :items
-                   (fn [xs] (into [] (remove (fn [x] (= (:id x) id))) %)))))
+                   (fn [xs] (into [] (remove (fn [x] (= (:id x) id))) xs)))))
       self'))
 
   :on-edit
@@ -668,13 +669,14 @@ The complete `src/standup.clj` is below for copy‑paste convenience.
     (merge self world)))
 
 (s/defflow :standup/onboard []
-  (let [name (s/await (s/prompt "Who's standing up?"))]
-    (if (= name s/cancel)
-      (recur)
-      (let [ok? (s/await (s/confirm (str "Welcome, " name "!  Begin?")))]
-        (if ok?
-          (s/await (s/embed :standup/board {:user name}))
-          (recur))))))
+  (loop []
+    (let [name (s/await (s/prompt "Who's standing up?"))]
+      (if (= name s/cancel)
+        (recur)
+        (let [ok? (s/await (s/confirm (str "Welcome, " name "!  Begin?")))]
+          (if ok?
+            (s/await (s/embed :standup/board {:user name}))
+            (recur)))))))
 
 (s/mount! "/" :standup/onboard)
 

@@ -121,7 +121,7 @@ stube is a git dep. Add to `deps.edn`:
 ```clojure
 {:deps
  {dev.zeko/stube
-  {:git/url "https://github.com/zekus/stube"   ;; placeholder
+  {:git/url "https://github.com/zekzekus/stube"
    :git/sha "<sha>"}}}
 ```
 
