@@ -65,8 +65,8 @@
       (concat
         [["/healthz" {:get {:handler (fn [_] {:status 200 :body "ok"})}}]
          ["/api/foo" {:get {:handler (fn [_] {:status 200
-                                               :headers {"Content-Type" "application/edn"}
-                                               :body (pr-str {:foo true})})}}]
+                                               :headers {"Content-Type" "application/json; charset=utf-8"}
+                                               :body "{\"foo\":true}\n"})}}]
          ["/widget"  {:get {:handler widget-page}}]]
         (stube-ring/ring-routes embedded-kernel)))
     (ring/create-default-handler)))
