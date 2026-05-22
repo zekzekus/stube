@@ -232,6 +232,15 @@
 (def ^{:doc "See [[dev.zeko.stube.render/upload-frame]]."} upload-frame render/upload-frame)
 (def ^{:doc "See [[dev.zeko.stube.render/render-slot]]."} render-slot render/render-slot)
 
+(defn context
+  "Return adapter/application context injected into this conversation.
+
+  Embedders pass `:context-fn` to `dev.zeko.stube.kernel/make-kernel`;
+  handlers and lifecycle hooks can then call `(s/context self)` to reach
+  request-scoped dependencies such as a database handle."
+  [self]
+  (:stube/context self))
+
 (def ^{:doc "Sentinel returned by cancellable stock UI components."}
   cancel ui/cancel)
 

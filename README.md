@@ -135,6 +135,40 @@ outside it is internal.
 
 ---
 
+## Embedding in an existing Ring app
+
+For host apps that already own their HTTP stack, use the stable
+embedder surface in `dev.zeko.stube.kernel` plus the Ring adapter:
+
+```clojure
+(require '[dev.zeko.stube.adapter.ring :as stube-ring]
+         '[dev.zeko.stube.kernel :as stube])
+
+(def stube-kernel
+  (stube/make-kernel
+    {:base-path "/widget"
+     :session-id-fn (fn [request] (get-in request [:session :id]))
+     :context-fn    (fn [request] {:db (:db request)})}))
+
+;; Add these routes to your Reitit/Ring route table:
+(stube-ring/ring-routes stube-kernel)
+```
+
+Stable embedder API:
+
+- `stube/make-kernel` creates an isolated runtime instance.
+- `stube/mint-conversation!` registers a root component for a request.
+- `stube/shell-for` returns a Hiccup fragment for the host layout.
+- `stube/dispatch!` dispatches into a live conversation and returns fragments.
+- `stube/replay` runs the same interaction path without mutating runtime state.
+- `stube/halt!` closes open streams and clears runtime registries.
+
+`examples/dev/zeko/stube/examples/embedded_ring.clj` shows a plain Ring
+host serving `/healthz` and `/api/foo` beside a stube widget under
+`/widget`.
+
+---
+
 ## Running the bundled examples
 
 This project assumes the development environment provided by

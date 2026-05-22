@@ -6,8 +6,7 @@
   cid is created.  Subsequent requests for that cid are accepted only
   when the cookie matches the stored token.  This is the single
   primitive [[authorized?]] both http and halos handlers use."
-  (:require [clojure.string  :as str]
-            [dev.zeko.stube.server :as server])
+  (:require [clojure.string  :as str])
   (:import (java.util UUID)))
 
 (def ^:private session-cookie "stube_sid")
@@ -43,11 +42,11 @@
       [sid (session-cookie-header sid)])))
 
 (defn authorized?
-  "True when the request's session cookie matches the cid's recorded
-  owner-token, or when the conversation has no owner-token (legacy)."
-  [req cid]
-  (let [conv  (server/conversation cid)
-        owner (:conv/owner-token conv)]
+  "True when the request's session cookie matches the conversation's
+  recorded owner-token, or when the conversation has no owner-token
+  (legacy / host-managed auth)."
+  [req conv]
+  (let [owner (:conv/owner-token conv)]
     (or (nil? owner)
         (= owner (request-session req)))))
 

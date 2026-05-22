@@ -104,10 +104,14 @@
   `:instance/slot` and `:instance/previous` are used by the
   `[:call-in-slot …]` overlay primitive: the temporary child remembers
   which parent slot it occupies and which child iid should be restored
-  when it answers."
+  when it answers.
+
+  `:stube/context` is adapter-supplied request/application context.  It
+  is protected like instance metadata so handlers can read it via
+  `s/context` without accidentally persisting edits to the context map."
   #{:instance/id :instance/type :instance/parent
     :instance/resume :instance/rendered? :instance/children
-    :instance/slot :instance/previous})
+    :instance/slot :instance/previous :stube/context})
 
 (defn instantiate
   "Build a fresh instance map from a component definition and an embed
@@ -339,4 +343,6 @@
   [conv iid signals]
   (let [inst (instance conv iid)
         cdef (registry/lookup! (:instance/type inst))]
-    (merge-kept-signals inst signals (:component/keep cdef))))
+    (cond-> (merge-kept-signals inst signals (:component/keep cdef))
+      (contains? conv :conv/context)
+      (assoc :stube/context (:conv/context conv)))))

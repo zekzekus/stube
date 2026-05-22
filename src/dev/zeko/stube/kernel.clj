@@ -86,6 +86,18 @@
 (defn- effect-origin [conv]
   (or e/*effect-iid* (conv/top-id conv)))
 
+(defn- attach-context
+  "Carry conversation context onto freshly-instantiated instances so
+  handlers and lifecycle hooks can read it through `s/context`."
+  [conv inst]
+  (cond-> inst
+    (contains? conv :conv/context)
+    (assoc :stube/context (:conv/context conv))))
+
+(defn- attach-tree-context [conv inst descendants]
+  [(attach-context conv inst)
+   (mapv #(attach-context conv %) descendants)])
+
 (def ^:dynamic *schedule-event!*
   "Optional side-effect hook bound by the server while folding effects.
   The kernel stays ignorant of threads and SSE; it only describes the
@@ -162,7 +174,8 @@
         ;; stack — they are addressed through `:instance/children`,
         ;; not through call/answer.
         [inst descendants]
-        (conv/instantiate-tree cdef embed-spec parent-id resume registry/lookup!)
+        (apply attach-tree-context conv
+               (conv/instantiate-tree cdef embed-spec parent-id resume registry/lookup!))
         conv'     (-> conv
                       (conv/push-instance inst)
                       (conv/put-many descendants))
@@ -207,7 +220,8 @@
         old-iid   (get-in parent [:instance/children slot])
         cdef      (registry/lookup! (:embed/type embed-spec))
         [inst descendants]
-        (conv/instantiate-tree cdef embed-spec parent-id resume registry/lookup!)
+        (apply attach-tree-context conv
+               (conv/instantiate-tree cdef embed-spec parent-id resume registry/lookup!))
         inst      (assoc inst
                          :instance/slot slot
                          :instance/previous old-iid)
@@ -255,7 +269,8 @@
                         (throw (ex-info (str "Parent has no resume fn for " resume-key)
                                         {:parent     parent-id
                                          :resume-key resume-key})))
-          [parent' fx]   (resume-fn parent value)
+          [parent' fx]   (lc/coerce-return parent
+                                           (resume-fn parent value))
           parent'        (conv/preserve-meta parent parent')
           conv'          (conv/put-instance conv parent')
           [conv'' more]  (e/with-origin parent-id
@@ -329,10 +344,11 @@
         ;; back to the original parent.
         cdef                  (registry/lookup! (:embed/type embed-spec))
         [new-inst descendants]
-        (conv/instantiate-tree cdef embed-spec
-                               (some-> parent :instance/id)
-                               (:instance/resume old-inst)
-                               registry/lookup!)
+        (apply attach-tree-context conv
+               (conv/instantiate-tree cdef embed-spec
+                                      (some-> parent :instance/id)
+                                      (:instance/resume old-inst)
+                                      registry/lookup!))
         conv'    (-> conv-popped
                      (conv/push-instance new-inst)
                      (conv/put-many descendants))
@@ -477,9 +493,14 @@
 (defn boot
   "Mint the initial set of effects for a freshly minted conversation
   whose root flow is `flow-id`.  Pulled out so the http layer can ask
-  for them on first SSE connect."
-  [flow-id]
-  [(e/call (conv/embed flow-id))])
+  for them on first SSE connect.  `flow-id` may also be an embed spec,
+  which lets an adapter preserve root init args until the SSE attaches."
+  ([flow-id]
+   (boot flow-id {}))
+  ([flow-id init-args]
+   [(e/call (if (conv/embed? flow-id)
+              flow-id
+              (conv/embed flow-id init-args)))]))
 
 (defn dispatch
   "Apply one client event to a conversation.  `event` is the map
@@ -541,3 +562,140 @@
           (let [[c' f] (render-frame conv''' instance-id)]
             [c' [f]]))]
     [conv-final (into (vec extra) more-frags)])))
+
+;; ---------------------------------------------------------------------------
+;; Embeddable runtime API
+;; ---------------------------------------------------------------------------
+;;
+;; These functions intentionally delegate through `requiring-resolve` so
+;; the pure kernel above does not require the runtime namespace at load
+;; time.  The mutable atoms live in `dev.zeko.stube.runtime`; this
+;; namespace remains the stable place embedders discover the API.
+
+(defn- ^:no-doc runtime-var [sym]
+  (or (requiring-resolve sym)
+      (throw (ex-info "Unable to resolve stube runtime var" {:var sym}))))
+
+(defn make-kernel
+  "Create an embeddable stube runtime instance.  See
+  `dev.zeko.stube.runtime/make-kernel` for supported options."
+  ([]
+   ((runtime-var 'dev.zeko.stube.runtime/make-kernel)))
+  ([opts]
+   ((runtime-var 'dev.zeko.stube.runtime/make-kernel) opts)))
+
+(defn mint-conversation!
+  "Register a conversation in `k` and return its cid."
+  ([k root-id request]
+   ((runtime-var 'dev.zeko.stube.runtime/mint-conversation!) k root-id request))
+  ([k root-id init-args request]
+   ((runtime-var 'dev.zeko.stube.runtime/mint-conversation!) k root-id init-args request)))
+
+(defn shell-for
+  "Return an embeddable Hiccup shell fragment for conversation `cid`."
+  [k cid]
+  ((runtime-var 'dev.zeko.stube.runtime/shell-for) k cid))
+
+(defn dispatch!
+  "Dispatch an event into live conversation `cid` in runtime `k` and
+  return the produced fragments."
+  [k cid event]
+  ((runtime-var 'dev.zeko.stube.runtime/dispatch!) k cid event))
+
+(defn replay
+  "Purely replay `events` against `root-id` using runtime `k`'s render
+  configuration.  Runtime state is not mutated."
+  [k root-id events]
+  ((runtime-var 'dev.zeko.stube.runtime/replay) k root-id events))
+
+(defn halt!
+  "Close open SSE streams and clear runtime registries for `k`."
+  [k]
+  ((runtime-var 'dev.zeko.stube.runtime/halt!) k))
+
+(defn ^:no-doc create-conversation! [k root-id owner-token]
+  ((runtime-var 'dev.zeko.stube.runtime/create-conversation!) k root-id owner-token))
+
+(defn ^:no-doc ensure-session [k request]
+  ((runtime-var 'dev.zeko.stube.runtime/ensure-session) k request))
+
+(defn ^:no-doc pending-root [k cid]
+  ((runtime-var 'dev.zeko.stube.runtime/pending-root) k cid))
+
+(defn ^:no-doc conversation [k cid]
+  ((runtime-var 'dev.zeko.stube.runtime/conversation) k cid))
+
+(defn ^:no-doc active-conversations [k]
+  ((runtime-var 'dev.zeko.stube.runtime/active-conversations) k))
+
+(defn ^:no-doc swap-conv! [k cid f]
+  ((runtime-var 'dev.zeko.stube.runtime/swap-conv!) k cid f))
+
+(defn ^:no-doc end-conversation! [k cid]
+  ((runtime-var 'dev.zeko.stube.runtime/end-conversation!) k cid))
+
+(defn ^:no-doc end! [k cid]
+  ((runtime-var 'dev.zeko.stube.runtime/end!) k cid))
+
+(defn ^:no-doc reap! [k ttl]
+  ((runtime-var 'dev.zeko.stube.runtime/reap!) k ttl))
+
+(defn ^:no-doc register-sse! [k cid sse-gen]
+  ((runtime-var 'dev.zeko.stube.runtime/register-sse!) k cid sse-gen))
+
+(defn ^:no-doc unregister-sse! [k cid]
+  ((runtime-var 'dev.zeko.stube.runtime/unregister-sse!) k cid))
+
+(defn ^:no-doc sse [k cid]
+  ((runtime-var 'dev.zeko.stube.runtime/sse) k cid))
+
+(defn ^:no-doc run-effects! [k cid effects]
+  ((runtime-var 'dev.zeko.stube.runtime/run-effects!) k cid effects))
+
+(defn ^:no-doc apply-conv! [k cid f]
+  ((runtime-var 'dev.zeko.stube.runtime/apply-conv!) k cid f))
+
+(defn ^:no-doc schedule-event! [k event]
+  ((runtime-var 'dev.zeko.stube.runtime/schedule-event!) k event))
+
+(defn ^:no-doc subscribe! [k sub]
+  ((runtime-var 'dev.zeko.stube.runtime/subscribe!) k sub))
+
+(defn ^:no-doc unsubscribe! [k sub]
+  ((runtime-var 'dev.zeko.stube.runtime/unsubscribe!) k sub))
+
+(defn ^:no-doc subscriptions [k]
+  ((runtime-var 'dev.zeko.stube.runtime/subscriptions) k))
+
+(defn ^:no-doc publish! [k topic msg]
+  ((runtime-var 'dev.zeko.stube.runtime/publish!) k topic msg))
+
+(defn ^:no-doc authorized? [k request cid]
+  ((runtime-var 'dev.zeko.stube.runtime/authorized?) k request cid))
+
+(defn ^:no-doc current-store [k]
+  ((runtime-var 'dev.zeko.stube.runtime/current-store) k))
+
+(defn ^:no-doc with-kernel-bindings [k cid f]
+  ((runtime-var 'dev.zeko.stube.runtime/with-kernel-bindings) k cid f))
+
+(defn ^:no-doc enable-halos! [k cid]
+  ((runtime-var 'dev.zeko.stube.runtime/enable-halos!) k cid))
+
+(defn ^:no-doc enable-halos-and-redraw! [k cid]
+  ((runtime-var 'dev.zeko.stube.runtime/enable-halos-and-redraw!) k cid))
+
+(defn ^:no-doc ui-css? [k]
+  ((runtime-var 'dev.zeko.stube.runtime/ui-css?) k))
+
+(defn ^:no-doc halos? [k]
+  ((runtime-var 'dev.zeko.stube.runtime/halos?) k))
+
+(defn ^:no-doc base-path [k]
+  ((runtime-var 'dev.zeko.stube.runtime/base-path) k))
+
+(defn ^:no-doc route-style [k]
+  ((runtime-var 'dev.zeko.stube.runtime/route-style) k))
+
+(defn ^:no-doc root-selector [k]
+  ((runtime-var 'dev.zeko.stube.runtime/root-selector) k))

@@ -9,9 +9,11 @@ project evolves. Aliased as `s` by convention:
 ```
 
 Anything outside `dev.zeko.stube.core` is **internal** and may move
-without notice. If you find yourself reaching into another namespace
-to do something normal, file an issue — the API is meant to grow to
-cover that, not for callers to grow workarounds.
+without notice, except the embedder surface documented in
+[`dev.zeko.stube.kernel`](#embedding-in-a-host-ring-app). If you find
+yourself reaching into another namespace to do something normal, file
+an issue — the API is meant to grow to cover that, not for callers to
+grow workarounds.
 
 The reference is organised by *what you're trying to do*:
 
@@ -25,6 +27,8 @@ The reference is organised by *what you're trying to do*:
   `choose`, `info`
 - [Lifecycle and mounting](#lifecycle-and-mounting) — `mount!`,
   `start!`, …
+- [Embedding in a host Ring app](#embedding-in-a-host-ring-app) —
+  `make-kernel`, `ring-routes`, `shell-for`
 - [REPL / testing surface](#repl--testing-surface) — `dispatch`,
   `replay`, `inspect`
 - [Persistence](#persistence) — `in-memory-store`, `file-store`
@@ -278,6 +282,13 @@ Inline an embedded child inside the parent's render:
 
 The slot must be declared in `:children` (or by `call-in-slot`).
 
+### `(s/context self)`
+
+Return the application context injected by an embeddable kernel's
+`:context-fn`. Standalone apps get nil unless they build their own
+kernel. Host apps use this to pass dependencies such as DB handles to
+component handlers without globals.
+
 ### `(s/back-button label)` / `(s/back-button label attrs)`
 
 A small button wired to the conversation-level `[:back]`. Pops one
@@ -358,6 +369,45 @@ Stop the running server.
 ### `(s/active-conversations)`  /  `(s/end! cid)`
 
 Inspect or forcibly end a live conversation.
+
+---
+
+## Embedding in a host Ring app
+
+This surface lives in `dev.zeko.stube.kernel` and
+`dev.zeko.stube.adapter.ring` rather than `dev.zeko.stube.core`, because
+it is for host-framework integration rather than component authorship.
+
+```clojure
+(require '[dev.zeko.stube.adapter.ring :as stube-ring]
+         '[dev.zeko.stube.kernel :as stube])
+
+(def k
+  (stube/make-kernel
+    {:base-path "/widget"
+     :session-id-fn (fn [request] (get-in request [:session :id]))
+     :context-fn    (fn [request] {:db (:db request)})}))
+
+(stube-ring/ring-routes k)
+```
+
+Stable functions:
+
+| function | purpose |
+|---|---|
+| `(stube/make-kernel opts)` | Create an isolated runtime instance. |
+| `(stube/mint-conversation! k root-id init-args request)` | Register a new conversation and return its cid. |
+| `(stube/shell-for k cid)` | Return a Hiccup fragment for the host layout. |
+| `(stube/dispatch! k cid event)` | Dispatch into live state and return produced fragments. |
+| `(stube/replay k root-id events)` | Pure replay against the kernel configuration; no live state mutation. |
+| `(stube/halt! k)` | Close streams and clear runtime registries. |
+| `(stube-ring/ring-routes k)` | Reitit route data for SSE/event/back/upload/assets. |
+| `(stube-ring/ring-handler k)` | Plain Ring handler wrapping those routes. |
+
+`opts` supports `:context-fn`, `:store`, `:base-path`,
+`:session-id-fn`, `:on-conv-mint`, and `:on-error`. Values returned by
+`:context-fn` are available to handlers and lifecycle hooks with
+`(s/context self)`.
 
 ---
 
