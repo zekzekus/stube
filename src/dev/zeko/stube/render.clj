@@ -29,6 +29,23 @@
   pointing at the right SSE endpoint."
   nil)
 
+(def ^:dynamic *base-path*
+  "URL prefix for the current adapter mount.  Standalone stube keeps this
+  empty, while embedders can bind it to e.g. `/widget` so generated
+  Datastar URLs stay inside the host route tree."
+  "")
+
+(def ^:dynamic *route-style*
+  "Route shape used by URL helpers.  `:legacy` preserves the original
+  standalone paths (`/conv/...`, `/stube/upload/...`); `:adapter` uses
+  the embeddable Ring adapter paths (`/sse/...`, `/event/...`)."
+  :legacy)
+
+(def ^:dynamic *root-selector*
+  "Selector targeted by the first frame render.  The shell and embedded
+  fragment render a matching element."
+  "#root")
+
 (def ^:dynamic *conv*
   "The conversation being rendered, bound by the kernel for the duration
   of one `render-frame` call.  [[render-slot]] consults it to look up
@@ -80,6 +97,33 @@
 (defn- url-encode [s]
   (URLEncoder/encode (str s) "UTF-8"))
 
+(defn- clean-base []
+  (let [base (or *base-path* "")]
+    (cond
+      (= base "/") ""
+      (.endsWith base "/") (subs base 0 (dec (count base)))
+      :else base)))
+
+(defn- path [& parts]
+  (str (clean-base) (apply str parts)))
+
+(defn sse-url
+  "URL the shell uses to open the Datastar SSE stream for `cid`."
+  [cid]
+  (case *route-style*
+    :adapter (path "/sse/" cid)
+    :legacy  (path "/conv/" cid "/sse")))
+
+(defn ui-css-url
+  "URL for the stock stylesheet in the current mount."
+  []
+  (path "/stube/ui.css"))
+
+(defn halos-js-url
+  "URL for the optional halos script in the current mount."
+  []
+  (path "/stube/halos.js"))
+
 (defn event-url
   "URL the browser POSTs to for an event.  Public so user code can build
   custom Datastar expressions that target the same endpoint.
@@ -91,7 +135,10 @@
   teaching Datastar about stube metadata."
   [iid route-event]
   (let [{:keys [event payload]} (parse-route-event route-event)
-        base (str "/conv/" (require-cid!) "/" iid "/" (name event))]
+        cid  (require-cid!)
+        base (case *route-style*
+               :adapter (path "/event/" cid "/" iid "/" (name event))
+               :legacy  (path "/conv/" cid "/" iid "/" (name event)))]
     (if (= no-payload payload)
       base
       (str base "?" payload-query-param "=" (url-encode (pr-str payload))))))
@@ -99,7 +146,10 @@
 (defn back-url
   "URL the browser POSTs to for the conversation-level Back action."
   []
-  (str "/conv/" (require-cid!) "/back"))
+  (let [cid (require-cid!)]
+    (case *route-style*
+      :adapter (path "/back/" cid)
+      :legacy  (path "/conv/" cid "/back"))))
 
 (defn upload-url
   "URL a multipart upload form POSTs to for `self`.
@@ -113,7 +163,9 @@
   (let [iid (or (:instance/id self)
                 (throw (ex-info "dev.zeko.stube.render/upload-url requires an instance map"
                                 {:got self})))]
-    (str "/stube/upload/" (require-cid!) "/" iid)))
+    (case *route-style*
+      :adapter (path "/upload/" (require-cid!) "/" iid)
+      :legacy  (path "/stube/upload/" (require-cid!) "/" iid))))
 
 (defn upload-target
   "Stable hidden iframe target name for upload forms owned by `self`."

@@ -198,6 +198,42 @@
       (is (str/includes? html2 "received=saved"))
       (is (str/includes? html2 "label")))))
 
+(deftest slot-resume-accepts-map-return-shape
+  (registry/register!
+    {:component/id     :t/label
+     :component/render (fn [s] [:span {:id (:instance/id s)} "label"])})
+  (registry/register!
+    {:component/id     :t/editor
+     :component/render (fn [s] [:form {:id (:instance/id s)} "editor"])
+     :component/handle (fn [s _] [s [[:answer "saved"]]])})
+  (registry/register!
+    {:component/id     :t/parent-map-resume
+     :component/init   (constantly {:received nil})
+     :children         {:slot/body (conv/embed :t/label)}
+     :component/render (fn [self]
+                         [:div {:id (:instance/id self)}
+                          (str "received=" (:received self))
+                          (s/render-slot self :slot/body)])
+     :component/handle (fn [s _]
+                         [s [[:call-in-slot :slot/body (conv/embed :t/editor)
+                              :resume :on-edit]]])
+     ;; Resume callbacks accept the same terse map return shape as
+     ;; handlers; this is what the todo in-place editor uses.
+     :on-edit          (fn [s value] (assoc s :received value))})
+  (let [[c0]      (run-boot :t/parent-map-resume)
+        parent    (conv/top-id c0)
+        [c1 _]    (kernel/dispatch c0 {:instance-id parent
+                                       :event       :edit
+                                       :signals     {}})
+        editor    (get-in (conv/instance c1 parent)
+                          [:instance/children :slot/body])
+        [c2 fr]   (kernel/dispatch c1 {:instance-id editor
+                                       :event       :save
+                                       :signals     {}})
+        html      (:fragment/html (first (elements-fragments fr)))]
+    (is (= "saved" (:received (conv/instance c2 parent))))
+    (is (str/includes? html "received=saved"))))
+
 ;; ---------------------------------------------------------------------------
 ;; render-slot validates inputs
 ;; ---------------------------------------------------------------------------

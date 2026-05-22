@@ -64,7 +64,7 @@
   (let [inst        (conv/instance conv iid)
         first-time? (not (:instance/rendered? inst))
         opts        (if first-time?
-                      {:selector "#root" :patch-mode :inner}
+                      {:selector render/*root-selector* :patch-mode :inner}
                       ;; No selector → Datastar morphs by element id.
                       {})]
     (render-instance conv iid opts)))
