@@ -46,6 +46,7 @@
     dev.zeko.stube.examples.chat
     dev.zeko.stube.examples.clock
     dev.zeko.stube.examples.dialogs
+    dev.zeko.stube.examples.embedded-ring
     dev.zeko.stube.examples.example-browser
     dev.zeko.stube.examples.file-upload
     dev.zeko.stube.examples.guess

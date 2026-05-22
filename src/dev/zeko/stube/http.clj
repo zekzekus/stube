@@ -25,10 +25,12 @@
             [dev.zeko.stube.halos.http                         :as halos-http]
             [dev.zeko.stube.kernel                             :as kernel]
             [dev.zeko.stube.render                             :as render]
-            [dev.zeko.stube.server                             :as server]
             [dev.zeko.stube.session                            :as session]
             [dev.zeko.stube.shell                              :as shell])
   (:import (java.net URLDecoder)))
+
+(defn- default-kernel []
+  ((requiring-resolve 'dev.zeko.stube.server/default-kernel)))
 
 ;; ---------------------------------------------------------------------------
 ;; JSON helpers
@@ -127,11 +129,11 @@
 (defn- stale-response!
   "Tell the browser its page no longer matches a live instance, then
   forget the conversation."
-  [cid]
+  [k cid]
   (let [frags (stale-fragments)]
-    (when-let [sse-gen (server/sse cid)]
+    (when-let [sse-gen (kernel/sse k cid)]
       (f/push! sse-gen frags))
-    (server/end-conversation! cid)
+    (kernel/end-conversation! k cid)
     {:status  410
      :headers {"Content-Type" "text/plain; charset=utf-8"
                "Cache-Control" "no-store"}
@@ -177,19 +179,25 @@
   the halos overlay (initially inactive) and a `data-stube-cid` hook so
   the user can enable the overlay from a floating pill.  Adding
   `?halos=1` on the URL is a shortcut that pre-enables the conv."
-  [flow-id]
-  (fn [req]
-    (let [[sid set-cookie] (session/ensure-session req)
-          cid       (server/create-conversation! flow-id sid)
-          dev?      (server/halos?)
-          pre-on?   (and dev? (halos-http/requested? req))]
-      (when pre-on?
-        (server/enable-halos! cid))
-      {:status  200
-       :headers (cond-> {"Content-Type" "text/html; charset=utf-8"
-                         "Cache-Control" "no-store"}
-                  set-cookie (assoc "Set-Cookie" set-cookie))
-       :body    (shell/html cid dev?)})))
+  ([flow-id]
+   (shell-handler (default-kernel) flow-id))
+  ([k flow-id]
+   (fn [req]
+     (let [[sid set-cookie] (kernel/ensure-session k req)
+           cid       (kernel/create-conversation! k flow-id sid)
+           dev?      (kernel/halos? k)
+           pre-on?   (and dev? (halos-http/requested? req))]
+       (when pre-on?
+         (kernel/enable-halos! k cid))
+       {:status  200
+        :headers (cond-> {"Content-Type" "text/html; charset=utf-8"
+                          "Cache-Control" "no-store"}
+                   set-cookie (assoc "Set-Cookie" set-cookie))
+        :body    (shell/html cid {:dev? dev?
+                                  :ui-css? (kernel/ui-css? k)
+                                  :base-path (kernel/base-path k)
+                                  :route-style (kernel/route-style k)
+                                  :root-selector (kernel/root-selector k)})}))))
 
 (defn- resume-render
   "Render the current top frame of a conversation that already has
@@ -219,61 +227,63 @@
 
   Thereafter the kernel pushes whenever an event handler produces
   fragments."
-  [{:keys [path-params] :as req}]
-  (let [cid (:cid path-params)]
-    (if-not (session/authorized? req cid)
-      (session/forbidden-response)
-      (hk/->sse-response req
-        {hk/on-open
-        (fn [sse-gen]
-          (with-mdc {:cid cid}
-            (fn []
-              (server/register-sse! cid sse-gen)
-        ;; `server/pending-flow` is a one-shot: it pops the baton.
-        ;; Read it exactly once into a local before branching, or path
-        ;; 2 will fire after path 1 already consumed the value.
-        (let [pending (server/pending-flow cid)
-              live    (server/conversation cid)]
-          (cond
-            ;; Path 1 — fresh shell visit; instantiate the root flow.
-            (some? pending)
-            (server/apply-conv! cid
-              (fn [c] (kernel/run-effects c (kernel/boot pending))))
+  ([req]
+   (sse-handler (default-kernel) req))
+  ([k {:keys [path-params] :as req}]
+   (let [cid (:cid path-params)]
+     (if-not (kernel/authorized? k req cid)
+       (session/forbidden-response)
+       (hk/->sse-response req
+         {hk/on-open
+          (fn [sse-gen]
+            (with-mdc {:cid cid}
+              (fn []
+                (kernel/register-sse! k cid sse-gen)
+                ;; `pending-root` is a one-shot: it pops the baton.
+                ;; Read it exactly once into a local before branching,
+                ;; or path 2 will fire after path 1 consumed the value.
+                (let [pending (kernel/pending-root k cid)
+                      live    (kernel/conversation k cid)]
+                  (cond
+                    ;; Path 1 — fresh shell visit; instantiate the root flow.
+                    (some? pending)
+                    (kernel/apply-conv! k cid
+                      (fn [c] (kernel/run-effects c (kernel/boot pending))))
 
-            ;; Path 2 — re-attach to a conversation that survives in
-            ;; memory (loaded from the persistence store at startup,
-            ;; or carried across a hot reload of the http layer).
-            (some? live)
-            (server/apply-conv! cid resume-render)
+                    ;; Path 2 — re-attach to a conversation that survives in
+                    ;; memory (loaded from the persistence store at startup,
+                    ;; or carried across a hot reload of the http layer).
+                    (some? live)
+                    (kernel/apply-conv! k cid resume-render)
 
-            ;; Path 3 — unknown cid; the conversation is gone.  Leave
-            ;; the SSE channel empty; the browser will simply see no
-            ;; patches.
-            :else
-            nil)))))
+                    ;; Path 3 — unknown cid; the conversation is gone.
+                    :else
+                    nil)))))
 
-       hk/on-close
-       (fn [_sse-gen _status]
-           (server/unregister-sse! cid))}))))
+          hk/on-close
+          (fn [_sse-gen _status]
+            (kernel/unregister-sse! k cid))})))))
 
 (defn back-handler
   "POST `/conv/:cid/back` — emit the [[:back]] effect.  Mirrors
   [[event-handler]] but without an instance id or signals payload."
-  [{:keys [path-params] :as req}]
-  (let [cid (:cid path-params)
-        live (server/conversation cid)]
-    (cond
-      (nil? live)
-      (stale-response! cid)
+  ([req]
+   (back-handler (default-kernel) req))
+  ([k {:keys [path-params] :as req}]
+   (let [cid (:cid path-params)
+         live (kernel/conversation k cid)]
+     (cond
+       (nil? live)
+       (stale-response! k cid)
 
-      (not (session/authorized? req cid))
-      (session/forbidden-response)
+       (not (kernel/authorized? k req cid))
+       (session/forbidden-response)
 
-      :else
-      (with-mdc {:cid cid}
-        (fn []
-          (server/run-effects! cid [[:back]])
-          {:status 204})))))
+       :else
+       (with-mdc {:cid cid}
+         (fn []
+           (kernel/run-effects! k cid [[:back]])
+           {:status 204}))))))
 
 (defn upload-handler
   "POST `/stube/upload/:cid/:iid` — parse a multipart request and route it
@@ -281,58 +291,62 @@
 
   Upload responses are written into a hidden iframe by `s/upload-attrs`;
   the visible page updates over the normal SSE stream."
-  [{:keys [path-params] :as req}]
-  (let [{:keys [cid iid]} path-params
-        live (server/conversation cid)]
-    (cond
-      (nil? live)
-      (stale-response! cid)
+  ([req]
+   (upload-handler (default-kernel) req))
+  ([k {:keys [path-params] :as req}]
+   (let [{:keys [cid iid]} path-params
+         live (kernel/conversation k cid)]
+     (cond
+       (nil? live)
+       (stale-response! k cid)
 
-      (not (session/authorized? req cid))
-      (session/forbidden-response)
+       (not (kernel/authorized? k req cid))
+       (session/forbidden-response)
 
-      (or (:conv/ended? live)
-          (nil? (conv/instance live iid)))
-      (stale-response! cid)
+       (or (:conv/ended? live)
+           (nil? (conv/instance live iid)))
+       (stale-response! k cid)
 
-      :else
-      (with-mdc {:cid cid :iid iid}
-        (fn []
-          (let [req'    (if (:multipart-params req)
-                          req
-                          (multipart/multipart-params-request req))
-                payload (upload-payload req')]
-            (server/dispatch! cid {:instance-id iid
-                                   :event       :upload-received
-                                   :payload     payload
-                                   :signals     {}})
-            (upload-ok-response)))))))
+       :else
+       (with-mdc {:cid cid :iid iid}
+         (fn []
+           (let [req'    (if (:multipart-params req)
+                           req
+                           (multipart/multipart-params-request req))
+                 payload (upload-payload req')]
+             (kernel/dispatch! k cid {:instance-id iid
+                                      :event       :upload-received
+                                      :payload     payload
+                                      :signals     {}})
+             (upload-ok-response))))))))
 
 (defn event-handler
   "Dispatch one client event into the conversation.  The instance id
   and event name are taken from the URL path; everything left in the
   request body / query is treated as the current Datastar signals."
-  [{:keys [path-params] :as req}]
-  (let [{:keys [cid iid event]} path-params
-        live (server/conversation cid)]
-    (cond
-      (nil? live)
-      (stale-response! cid)
+  ([req]
+   (event-handler (default-kernel) req))
+  ([k {:keys [path-params] :as req}]
+   (let [{:keys [cid iid event]} path-params
+         live (kernel/conversation k cid)]
+     (cond
+       (nil? live)
+       (stale-response! k cid)
 
-      (not (session/authorized? req cid))
-      (session/forbidden-response)
+       (not (kernel/authorized? k req cid))
+       (session/forbidden-response)
 
-      (or (:conv/ended? live)
-          (nil? (conv/instance live iid)))
-      (stale-response! cid)
+       (or (:conv/ended? live)
+           (nil? (conv/instance live iid)))
+       (stale-response! k cid)
 
-      :else
-      (with-mdc {:cid cid :iid iid}
-        (fn []
-          (let [signals (read-signals req)
-                ev      {:instance-id iid
-                         :event       (keyword event)
-                         :payload     (read-event-payload req)
-                         :signals     signals}]
-            (server/dispatch! cid ev)
-            {:status 204}))))))
+       :else
+       (with-mdc {:cid cid :iid iid}
+         (fn []
+           (let [signals (read-signals req)
+                 ev      {:instance-id iid
+                          :event       (keyword event)
+                          :payload     (read-event-payload req)
+                          :signals     signals}]
+             (kernel/dispatch! k cid ev)
+             {:status 204})))))))

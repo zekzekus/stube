@@ -17,7 +17,10 @@
   const PANEL_ID = "stube-halos-panel";
   const PILL_ID  = "stube-halos-pill";
   const CID = (document.body && document.body.dataset.stubeCid) || null;
+  const BASE = (document.body && document.body.dataset.stubeBasePath) || "";
   if (!CID) return;
+
+  const haloPath = (suffix) => `${BASE}/stube/halos/${CID}${suffix}`;
 
   const STYLE = `
     /* ─── component outlines ────────────────────────────────────── */
@@ -238,7 +241,7 @@
     if (currentIid) params.set("iid", currentIid);
     if (currentTab) params.set("tab", currentTab);
     try {
-      const res = await fetch(`/stube/halos/${CID}/panel?` + params.toString(),
+      const res = await fetch(haloPath(`/panel?${params.toString()}`),
                               { credentials: "same-origin" });
       if (res.status === 410) {
         // Conv has halos? off — flip our local state.
@@ -254,7 +257,7 @@
 
   async function enableHalos() {
     try {
-      const res = await fetch(`/stube/halos/${CID}/enable`,
+      const res = await fetch(haloPath("/enable"),
                               { method: "POST", credentials: "same-origin" });
       if (!res.ok) {
         console.warn("stube halos: enable failed", res.status);
@@ -334,7 +337,7 @@
   // ─── boot ───────────────────────────────────────────────────────
   // Probe the panel endpoint to discover the conv's initial state.
   (async () => {
-    const res = await fetch(`/stube/halos/${CID}/panel`, { credentials: "same-origin" });
+    const res = await fetch(haloPath("/panel"), { credentials: "same-origin" });
     if (res.ok) setState("on");
     else        { renderPill(); /* state stays "off" */ }
     decorateLabels();
