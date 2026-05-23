@@ -232,6 +232,34 @@ Stable embedder API:
 host serving `/healthz` and `/api/foo` beside a stube widget under
 `/widget`.
 
+### kit-clj / Integrant
+
+Already on [kit-clj](https://kit-clj.github.io/)?  Three lines in
+`system.edn` and your project mounts a stube widget alongside the rest
+of your routes:
+
+```clojure
+;; system.edn
+{:stube/kernel
+ {:base-path     "/stube"
+  :context-fn    #ig/ref :app/context-fn
+  :session-id-fn #ig/ref :app/session-id-fn}
+
+ :reitit.routes/stube
+ {:kernel #ig/ref :stube/kernel}}
+```
+
+Then `:require` the adapter once during system load so the Integrant
+multimethods are installed:
+
+```clojure
+(require 'dev.zeko.stube.kit)
+```
+
+stube core has no Integrant dependency; the adapter ns is the only
+place `integrant.core` is referenced.  Add `integrant/integrant` to
+your own `deps.edn` to use it.
+
 ---
 
 ## Running the bundled examples
