@@ -71,7 +71,7 @@
 (def ^:private colocated-keys
   "Top-level `defcomponent` keys lifted to their `:component/<name>`
   homes so the kernel finds them."
-  [:init :render :handle :keep :doc])
+  [:init :render :handle :keep :doc :state])
 
 (defn- lift-colocated [opts]
   (reduce (fn [m k]

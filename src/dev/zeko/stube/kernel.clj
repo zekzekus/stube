@@ -73,6 +73,7 @@
   is removed; `:wakeup` runs when a persisted or history-restored frame
   becomes live again."
   (:require [dev.zeko.stube.conversation :as conv]
+            [dev.zeko.stube.dev          :as dev]
             [dev.zeko.stube.effects      :as e]
             [dev.zeko.stube.errors       :as errors]
             [dev.zeko.stube.fragments    :as f]
@@ -287,6 +288,7 @@
                                          :resume-key resume-key})))
           [parent' fx]   (lc/coerce-return parent
                                            (resume-fn parent value))
+          _              (dev/validate! cdef parent' resume-key)
           parent'        (conv/preserve-meta parent parent')
           conv'          (conv/put-instance conv parent')
           [conv'' more]  (e/with-origin parent-id
@@ -564,6 +566,7 @@
                                      (handle self {:event   event
                                                    :payload payload
                                                    :signals signals}))
+        _          (dev/validate! cdef self' :handle)
         ;; A handler that walks history backwards (`[:back]`) must NOT
         ;; have its own pre-state pushed onto that history first — if
         ;; it did, `:back` would just pop the snapshot we'd just taken
@@ -593,7 +596,12 @@
             [c' [f]]))]
         [conv-final (into (vec extra) more-frags)])
       (catch Throwable t
-        [conv [(errors/build-fragment conv instance-id t :handle)]]))))
+        ;; Dev-mode `:component/state` schema failures are programmer
+        ;; errors meant to surface loudly with a stack trace, not be
+        ;; pacified into a banner — let them rip through.
+        (if (:stube.dev/component (ex-data t))
+          (throw t)
+          [conv [(errors/build-fragment conv instance-id t :handle)]])))))
 
 ;; ---------------------------------------------------------------------------
 ;; Embeddable runtime API
