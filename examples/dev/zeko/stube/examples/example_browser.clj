@@ -24,6 +24,7 @@
             [dev.zeko.stube.examples.kasten.desk]
             [dev.zeko.stube.examples.multicounter]
             [dev.zeko.stube.examples.paginated-list]
+            [dev.zeko.stube.examples.preserved-widget]
             [dev.zeko.stube.examples.protected-counter]
             [dev.zeko.stube.examples.seaside-todo]
             [dev.zeko.stube.examples.shared-counter]
@@ -77,6 +78,8 @@
     :blurb "WASessionProtectedCounter: app login composed with cid owner cookies."}
    {:path "/url-counter"    :title "URL-state counter"         :group "Tier 2"
     :blurb "S-2: `s/history` syncs the counter value into the address bar without a reload."}
+   {:path "/preserved-widget" :title "Preserved widget"        :group "Tier 3"
+    :blurb "S-3: `s/preserve` keeps third-party DOM children alive across parent re-renders."}
    {:path "/seaside-todo"   :title "Seaside book ToDo"         :group "Book app"
     :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}
    {:path "/kasten"         :title "Kasten notes desk"         :group "Book app"

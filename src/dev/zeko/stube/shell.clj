@@ -59,6 +59,7 @@
              [:title "stube"]
              (when ui-css?
                [:link {:rel "stylesheet" :href (render/ui-css-url)}])
+             [:script {:type "module" :src (render/preserve-js-url)}]
              [:script {:type "module" :src datastar-cdn}]
              (when dev?
                [:script {:type "module" :src (render/halos-js-url)}])]
