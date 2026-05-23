@@ -7,6 +7,7 @@
   subscriptions, and the pending-root baton between shell render and
   first SSE attach."
   (:require [dev.zeko.stube.conversation :as conv]
+            [dev.zeko.stube.errors       :as errors]
             [dev.zeko.stube.fragments    :as f]
             [dev.zeko.stube.kernel       :as pure]
             [dev.zeko.stube.render       :as render]
@@ -104,7 +105,8 @@
             render/*root-selector* (:root-selector k)
             pure/*schedule-event!* #(schedule-event! k %)
             pure/*subscribe!* #(subscribe! k %)
-            pure/*unsubscribe!* #(unsubscribe! k %)]
+            pure/*unsubscribe!* #(unsubscribe! k %)
+            errors/*on-error* (:on-error k)]
     (f)))
 
 (defn- with-render-bindings [k cid f]

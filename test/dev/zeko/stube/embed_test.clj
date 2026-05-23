@@ -238,7 +238,10 @@
 ;; render-slot validates inputs
 ;; ---------------------------------------------------------------------------
 
-(deftest render-slot-throws-on-unknown-slot
+(deftest render-slot-on-unknown-slot-becomes-error-frame
+  ;; Pre-S-5 this threw out of the render path and dropped the SSE
+  ;; stream.  The S-5 catch turns the same programming bug into a
+  ;; localized error banner.
   (registry/register!
     {:component/id :t/leaf
      :component/render (fn [s] [:span {:id (:instance/id s)} "x"])})
@@ -248,8 +251,8 @@
      :component/render (fn [self]
                          [:div {:id (:instance/id self)}
                           (s/render-slot self :slot/missing)])})
-  (is (thrown? clojure.lang.ExceptionInfo
-               (run-boot :t/parent))))
+  (let [[_ frags] (run-boot :t/parent)]
+    (is (some #(= :error (:fragment/kind %)) frags))))
 
 (deftest render-slot-needs-conv-bound
   (let [self {:instance/id "ix-x" :instance/children {:slot/x "ix-y"}}]

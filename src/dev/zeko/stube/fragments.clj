@@ -16,6 +16,10 @@
        :fragment/script \"alert('hi')\"
        :fragment/opts {}}
 
+      {:fragment/kind :error
+       :fragment/html \"<div id=ix-7e2 class=stube-error …>…</div>\"
+       :fragment/opts {:selector \"#ix-7e2\" :patch-mode :outer}}
+
       {:fragment/kind :close}
 
   The kernel never touches Datastar; it just produces these maps.  This
@@ -52,6 +56,15 @@
   {:fragment/kind :script
    :fragment/script js
    :fragment/opts {}})
+
+(defn error
+  "Build an `:error` fragment.  Wire-equivalent to `:elements`, but
+  tagged so observability layers and tests can distinguish a component
+  failure from a normal render."
+  ([html]      (error html {}))
+  ([html opts] {:fragment/kind :error
+                :fragment/html html
+                :fragment/opts opts}))
 
 (defn history-script
   "Build a `:script` fragment that pushes or replaces the browser URL.
@@ -108,6 +121,7 @@
   [sse-gen {:fragment/keys [kind html data script opts]}]
   (case kind
     :elements (d*/patch-elements! sse-gen html (elements-opts opts))
+    :error    (d*/patch-elements! sse-gen html (elements-opts opts))
     :signals  (d*/patch-signals!  sse-gen (json-str data) (or opts {}))
     :script   (d*/execute-script! sse-gen script (or opts {}))
     :close    (d*/close-sse! sse-gen)))
