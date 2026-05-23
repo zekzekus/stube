@@ -14,44 +14,28 @@
   behaviour against a server-side continuation; the stube version uses
   the conversation-as-value model and the slice-2 morph-by-id strategy.
 
-  Component tree:
-
-      :demo/multicounter           ← the embedding parent (no UI of its own)
-        ├── :slot/c1 → :demo/counter
-        ├── :slot/c2 → :demo/counter
-        └── :slot/c3 → :demo/counter
-
-  The parent declares its children once at `:component/init` time; the
-  kernel eagerly instantiates the three counters and links them under
-  `:instance/children`.  The parent's render inlines each via
-  `s/render-slot`."
+  Composition primitive: S-7 `s/keyed-children`.  The parent declares
+  three columns at `:start` via `s/set-keyed-children`; the kernel
+  mints three independent counter instances and inlines them under one
+  container.  Switching to `keyed-children` lets the columns-demo
+  (`columns.clj`) share the same code path and pay only per-child
+  patch cost when columns are added or removed."
   (:require [dev.zeko.stube.core :as s]))
 
 ;; ---------------------------------------------------------------------------
 ;; The reusable counter widget
 ;; ---------------------------------------------------------------------------
-;;
-;; Self-contained: holds its own count, renders itself, knows how to
-;; increment and decrement.  Three of these will be embedded into the
-;; multicounter; each is fully independent because each gets its own
-;; instance id and its own state map in the conversation.
 
 (s/defcomponent :demo/counter
   :init   (fn [{:keys [start]}]
             {:n (or start 0)})
 
   :render (fn [self]
-            ;; The element id MUST be the instance id — that is what
-            ;; Datastar morphs against on subsequent renders.
             [:div (s/root-attrs self
                     {:class "stube-counter"
                      :style "display:inline-flex; gap:0.5rem; align-items:center;
                              padding:0.25rem 0.5rem; border:1px solid #ccc;
                              border-radius:0.25rem; margin:0.25rem;"})
-             ;; Buttons fire a real `click` DOM event; we route it on
-             ;; the server to a meaningful name (`:inc` / `:dec`) so the
-             ;; `:handle` `case` can branch on intent rather than on
-             ;; "which DOM event happened".
              [:button (merge {:type "button"} (s/on self :click :as :dec)) "−"]
              [:span {:style "min-width:2ch; text-align:center;"}
               (str (:n self))]
@@ -66,16 +50,21 @@
 ;; ---------------------------------------------------------------------------
 ;; The embedding parent
 ;; ---------------------------------------------------------------------------
-;;
-;; This component owns three counters by declaring them in `:children`.
-;; It has no behaviour of its own — its only job is to lay out the
-;; children.  Notice there is no `:handle`: nothing is dispatched to
-;; the parent itself, and that is fine.
+
+(def ^:private initial-columns
+  [[:c1 (s/embed :demo/counter {:start 0})]
+   [:c2 (s/embed :demo/counter {:start 5})]
+   [:c3 (s/embed :demo/counter {:start 10})]])
 
 (s/defcomponent :demo/multicounter
-  :children {:slot/c1 (s/embed :demo/counter {:start 0})
-             :slot/c2 (s/embed :demo/counter {:start 5})
-             :slot/c3 (s/embed :demo/counter {:start 10})}
+  :init  (constantly {})
+
+  ;; `:start` reconciles the keyed slot before the parent renders the
+  ;; first time, so the container goes out in one shot with all three
+  ;; counters inlined.  After that, the parent never re-renders — each
+  ;; `+`/`-` click morphs its own counter by id.
+  :start (fn [self]
+           [self [(s/set-keyed-children :slot/cols initial-columns)]])
 
   :render (fn [self]
             [:section
@@ -84,12 +73,9 @@
                 :style "font-family:system-ui, sans-serif; padding:1rem;"})
              [:h1 "Multicounter"]
              [:p {:style "color:#555;"}
-              "Three independent counters, embedded as children. "
+              "Three independent counters, embedded as keyed children. "
               "Each click only re-renders its own counter."]
-             [:div {:style "display:flex; flex-wrap:wrap;"}
-              (s/render-slot self :slot/c1)
-              (s/render-slot self :slot/c2)
-              (s/render-slot self :slot/c3)]
+             (s/keyed-children self :slot/cols)
              [:p {:style "margin-top:1rem; color:#777; font-size:0.9rem;"}
               "Open the network panel and watch the SSE stream: only the "
               "clicked counter's HTML is sent on each event."]]))

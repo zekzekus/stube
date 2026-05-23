@@ -105,6 +105,16 @@
 
 (defn replace-embed [eff] (nth eff 1))
 
+(defn set-keyed-children
+  "Reconcile the keyed-child set of `slot` to the ordered `pairs`
+  `[[stable-key embed-spec] ...]`.  See `dev.zeko.stube.keyed/reconcile!`
+  for the diff semantics."
+  [slot pairs]
+  [:set-keyed-children slot (vec pairs)])
+
+(defn keyed-children-slot  [eff] (nth eff 1))
+(defn keyed-children-pairs [eff] (nth eff 2))
+
 ;; ---------------------------------------------------------------------------
 ;; Output effects
 ;; ---------------------------------------------------------------------------
