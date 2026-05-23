@@ -41,8 +41,8 @@
       [:patch <hiccup>]             extra DOM patch (no stack change)
       [:patch-signals <map>]        push a Datastar signal patch
       [:execute-script <js>]        run literal JS in the browser
-       [:history :replace|:push url] sync browser URL (replaceState/pushState)
-       [:io <fn>]                    call `(fn)` off-thread (fire-and-forget)
+      [:history :replace|:push url]  sync browser URL (replaceState/pushState)
+      [:io <fn>]                    call `(fn)` off-thread (fire-and-forget)
       [:after ms event]             schedule a future event for this instance
       [:subscribe topic event]      subscribe this instance to published messages
       [:unsubscribe topic?]         remove this instance's topic subscription(s)

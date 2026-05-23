@@ -260,7 +260,7 @@
      (reset! !server (fn [] (http-kit/server-stop! stop-fn)))
      (println (str "stube listening on http://localhost:" port))
      (doseq [[p {:keys [flow-id]}] (mounts)]
-        (println "  mount" p "→" flow-id))
+       (println "  mount" p "→" flow-id))
      (start-reaper! conversation-ttl reaper-interval)
      stop-fn)))
 

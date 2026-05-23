@@ -30,9 +30,9 @@
             [dev.zeko.stube.examples.table-report]
             [dev.zeko.stube.examples.tabs]
             [dev.zeko.stube.examples.todo]
-             [dev.zeko.stube.examples.tree]
-             [dev.zeko.stube.examples.url-state-counter]
-             [dev.zeko.stube.examples.wizard]))
+            [dev.zeko.stube.examples.tree]
+            [dev.zeko.stube.examples.url-state-counter]
+            [dev.zeko.stube.examples.wizard]))
 
 ;; ---------------------------------------------------------------------------
 ;; Catalogue
@@ -112,9 +112,9 @@
 
   :render
   (fn [self]
-    (let [{:keys [path title group blurb]} (:entry self)
+     (let [{:keys [path title group blurb]} (:entry self)
            flow-id (:flow-id (get (s/mounts) path))
-          doc     (some-> flow-id s/help first-paragraph)]
+           doc     (some-> flow-id s/help first-paragraph)]
       [:article (s/root-attrs self {:class "stube-card"
                                     :style "min-height:20rem;"})
        [:div {:style "display:flex; align-items:baseline; gap:0.75rem;

@@ -55,13 +55,13 @@
             ;; vars by identity, not by value).
             [dev.zeko.stube.flow         :as flow :refer [await]]
             [dev.zeko.stube.halos        :as halos]
+            [dev.zeko.stube.http         :as http]
             [dev.zeko.stube.kernel       :as kernel]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]
-             [dev.zeko.stube.http         :as http]
-             [dev.zeko.stube.server       :as server]
-             [dev.zeko.stube.store        :as store]
-             [dev.zeko.stube.ui           :as ui]))
+            [dev.zeko.stube.server       :as server]
+            [dev.zeko.stube.store        :as store]
+            [dev.zeko.stube.ui           :as ui]))
 
 ;; ---------------------------------------------------------------------------
 ;; Component definition
