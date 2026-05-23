@@ -246,6 +246,21 @@ Datastar registers listeners under the colon form (`data-on:<event>`).
 `data-on:submit` automatically calls `preventDefault`, so forms
 never trigger a full‑page reload.
 
+### `(s/preserve self label)` / `(s/on-mount self label expr)`
+
+Use these together for third-party widgets that own their child DOM.
+`preserve` marks the host element with `data-stube-preserve`; stube's
+stock shell bridge lets future morphs merge host attributes while
+skipping the child subtree. `on-mount` emits a Datastar
+`data-init` expression only before this instance has rendered, so the
+widget constructor runs once.
+
+```clojure
+[:div (merge {:class "editor-host"}
+             (s/preserve self :editor)
+             (s/on-mount self :editor "mountEditor(el)"))]
+```
+
 ### `(s/bind signal)`
 
 Two-way binding for an input. Datastar updates the signal

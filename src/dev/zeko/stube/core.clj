@@ -239,6 +239,8 @@
 (def ^{:doc "See [[dev.zeko.stube.render/on]]."}          on          render/on)
 (def ^{:doc "See [[dev.zeko.stube.render/bind]]."}        bind        render/bind)
 (def ^{:doc "See [[dev.zeko.stube.render/root-attrs]]."}  root-attrs  render/root-attrs)
+(def ^{:doc "See [[dev.zeko.stube.render/preserve]]."}   preserve   render/preserve)
+(def ^{:doc "See [[dev.zeko.stube.render/on-mount]]."}   on-mount   render/on-mount)
 (def ^{:doc "See [[dev.zeko.stube.render/local-signal]]."} local-signal render/local-signal)
 (def ^{:doc "See [[dev.zeko.stube.render/local-bind]]."}   local-bind   render/local-bind)
 (def ^{:doc "See [[dev.zeko.stube.render/back-button]]."}  back-button  render/back-button)

@@ -173,6 +173,38 @@
       (is (re-find #"new n=1"
                    (:fragment/html (first (elements-fragments frags))))))))
 
+(deftest preserve-attribute-survives-subsequent-morph-render
+  (registry/register!
+    {:component/id     :t/preserved-widget
+     :component/init   (constantly {:n 0})
+     :component/render (fn [self]
+                         [:div (s/root-attrs self)
+                          [:p "render " (:n self)]
+                          [:div (merge {:class (str "editor-render-" (:n self))}
+                                       (s/preserve self :editor)
+                                       (s/on-mount self :editor "mountEditor(el)"))
+                           [:span "widget-owned DOM"]]])
+     :component/handle (fn [self _]
+                         [(update self :n inc) []])})
+  (let [[c0 frags0] (run-boot :t/preserved-widget)
+        iid         (conv/top-id c0)
+        html0       (:fragment/html (first (elements-fragments frags0)))
+        [_ frags1]  (kernel/dispatch c0 {:instance-id iid
+                                         :event       :rerender
+                                         :signals     {}})
+        frag1       (first (elements-fragments frags1))
+        html1       (:fragment/html frag1)]
+    (is (re-find #"data-stube-preserve=\"editor\"" html0)
+        "first render marks the widget host")
+    (is (re-find #"data-init=\"mountEditor\(el\)\"" html0)
+        "first render includes the mount expression")
+    (is (= {} (:fragment/opts frag1))
+        "subsequent render uses Datastar morph-by-id")
+    (is (re-find #"data-stube-preserve=\"editor\"" html1)
+        "subsequent morph HTML keeps the preserve marker")
+    (is (not (re-find #"data-init=" html1))
+        "subsequent morph HTML does not re-run on-mount")))
+
 ;; ---------------------------------------------------------------------------
 ;; State updates without effects → auto re-render
 ;; ---------------------------------------------------------------------------

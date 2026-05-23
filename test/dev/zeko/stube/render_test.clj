@@ -1,5 +1,6 @@
 (ns dev.zeko.stube.render-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is]]
             [dev.zeko.stube.render :as render]))
 
 (deftest html-renders-hiccup
@@ -43,6 +44,22 @@
     (is (thrown? clojure.lang.ExceptionInfo
                  (render/root-attrs {} {:class "x"}))
         "no :instance/id throws so the wire contract isn't silently lost")))
+
+(deftest preserve-marks-widget-host-and-on-mount-is-first-render-only
+  (let [fresh   {:instance/id "ix-42"}
+        rendered {:instance/id "ix-42" :instance/rendered? true}]
+    (is (= {:data-stube-preserve "editor"}
+           (render/preserve fresh :editor)))
+    (is (= {:data-init "mountEditor(el)"}
+           (render/on-mount fresh :editor "mountEditor(el)")))
+    (is (= {}
+           (render/on-mount rendered :editor "mountEditor(el)")))
+    (let [html (render/html
+                 [:div (merge (render/root-attrs fresh)
+                              (render/preserve fresh :editor)
+                              (render/on-mount fresh :editor "mountEditor(el)"))])]
+      (is (str/includes? html "data-stube-preserve=\"editor\""))
+      (is (str/includes? html "data-init=\"mountEditor(el)\"")))))
 
 (deftest bind-builds-data-bind-attribute
   (is (= {(keyword "data-bind:answer__case.kebab") true}

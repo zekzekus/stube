@@ -19,6 +19,7 @@
   []
   (ring/router
     (into [["/stube/ui.css"             {:get  {:handler http/ui-css-handler}}]
+           ["/stube/preserve.js"        {:get  {:handler http/preserve-js-handler}}]
            ["/stube/halos.js"           {:get  {:handler halos-http/js-handler}}]
            ["/stube/halos/:cid/panel"   {:get  {:handler halos-http/panel-handler}}]
            ["/stube/halos/:cid/enable"  {:post {:handler halos-http/enable-handler}}]

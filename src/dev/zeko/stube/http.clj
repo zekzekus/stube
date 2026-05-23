@@ -121,6 +121,17 @@
     {:status 404
      :body   "stube ui.css not found"}))
 
+(defn preserve-js-handler
+  "Serve the preserved-subtree bridge loaded by the stock shell."
+  [_req]
+  (if-let [res (io/resource "dev/zeko/stube/preserve.js")]
+    {:status  200
+     :headers {"Content-Type"  "application/javascript; charset=utf-8"
+               "Cache-Control" "public, max-age=3600"}
+     :body    (slurp res)}
+    {:status 404
+     :body   "stube preserve.js not found"}))
+
 ;; ---------------------------------------------------------------------------
 ;; Stale-page response
 ;; ---------------------------------------------------------------------------

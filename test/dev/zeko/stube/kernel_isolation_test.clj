@@ -36,8 +36,8 @@
         cid2 (kernel/mint-conversation! k2 :isolation/counter {} {})]
     (boot-live! k1 cid1)
     (boot-live! k2 cid2)
-    (let [iid1 (conv/top-id (kernel/conversation k1 cid1))
-          iid2 (conv/top-id (kernel/conversation k2 cid2))]
+    (let [iid1  (conv/top-id (kernel/conversation k1 cid1))
+          _iid2 (conv/top-id (kernel/conversation k2 cid2))]
       (kernel/dispatch! k1 cid1 {:instance-id iid1 :event :inc :signals {}})
       (is (= 1 (:n (conv/top-instance (kernel/conversation k1 cid1)))))
       (is (= 0 (:n (conv/top-instance (kernel/conversation k2 cid2)))))
@@ -65,4 +65,5 @@
     (is (contains? paths "/widget/sse/:cid"))
     (is (contains? paths "/widget/event/:cid/:iid/:event"))
     (is (contains? paths "/widget/upload/:cid/:iid"))
-    (is (contains? paths "/widget/stube/ui.css"))))
+    (is (contains? paths "/widget/stube/ui.css"))
+    (is (contains? paths "/widget/stube/preserve.js"))))
