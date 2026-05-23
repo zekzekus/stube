@@ -30,8 +30,9 @@
             [dev.zeko.stube.examples.table-report]
             [dev.zeko.stube.examples.tabs]
             [dev.zeko.stube.examples.todo]
-            [dev.zeko.stube.examples.tree]
-            [dev.zeko.stube.examples.wizard]))
+             [dev.zeko.stube.examples.tree]
+             [dev.zeko.stube.examples.url-state-counter]
+             [dev.zeko.stube.examples.wizard]))
 
 ;; ---------------------------------------------------------------------------
 ;; Catalogue
@@ -74,6 +75,8 @@
     :blurb "CTChat: multi-user publish/subscribe over live conversations."}
    {:path "/protected-counter" :title "Protected counter"      :group "Tier 3"
     :blurb "WASessionProtectedCounter: app login composed with cid owner cookies."}
+   {:path "/url-counter"    :title "URL-state counter"         :group "Tier 2"
+    :blurb "S-2: `s/history` syncs the counter value into the address bar without a reload."}
    {:path "/seaside-todo"   :title "Seaside book ToDo"         :group "Book app"
     :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}
    {:path "/kasten"         :title "Kasten notes desk"         :group "Book app"
@@ -110,7 +113,7 @@
   :render
   (fn [self]
     (let [{:keys [path title group blurb]} (:entry self)
-          flow-id (get (s/mounts) path)
+           flow-id (:flow-id (get (s/mounts) path))
           doc     (some-> flow-id s/help first-paragraph)]
       [:article (s/root-attrs self {:class "stube-card"
                                     :style "min-height:20rem;"})

@@ -148,15 +148,27 @@
 (defn mount!
   "Register a flow at a URL path.  After [[start!]], `GET <path>` will
   serve the shell page and pre-bind the resulting conversation to the
-  named flow."
-  [path flow-id]
-  (when-not (string? path)
-    (throw (ex-info "mount! path must be a string" {:got path})))
-  (when-not (qualified-keyword? flow-id)
-    (throw (ex-info "mount! flow-id must be a namespaced keyword"
-                    {:got flow-id})))
-  (swap! !mounts assoc path flow-id)
-  nil)
+  named flow.
+
+  Optional `opts` map is forwarded to the shell handler:
+
+  * `:init-args-fn` — `(fn [request] init-args-map)`.  Extracts init-args
+    from the GET request (e.g. query params) to seed the component's initial
+    state.  Example:
+
+        (s/mount! \"/counter\" :demo/counter
+          {:init-args-fn (fn [req]
+                           {:n (parse-long (or (s/query-value req \"n\") \"0\"))})})"
+  ([path flow-id]
+   (mount! path flow-id {}))
+  ([path flow-id opts]
+   (when-not (string? path)
+     (throw (ex-info "mount! path must be a string" {:got path})))
+   (when-not (qualified-keyword? flow-id)
+     (throw (ex-info "mount! flow-id must be a namespaced keyword"
+                     {:got flow-id})))
+   (swap! !mounts assoc path {:flow-id flow-id :opts (or opts {})})
+   nil))
 
 (defn unmount! [path]
   (swap! !mounts dissoc path)
@@ -247,8 +259,8 @@
                                        :legacy-return-value? false})]
      (reset! !server (fn [] (http-kit/server-stop! stop-fn)))
      (println (str "stube listening on http://localhost:" port))
-     (doseq [[p f] (mounts)]
-       (println "  mount" p "→" f))
+     (doseq [[p {:keys [flow-id]}] (mounts)]
+        (println "  mount" p "→" flow-id))
      (start-reaper! conversation-ttl reaper-interval)
      stop-fn)))
 

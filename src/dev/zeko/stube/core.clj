@@ -58,9 +58,10 @@
             [dev.zeko.stube.kernel       :as kernel]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]
-            [dev.zeko.stube.server       :as server]
-            [dev.zeko.stube.store        :as store]
-            [dev.zeko.stube.ui           :as ui]))
+             [dev.zeko.stube.http         :as http]
+             [dev.zeko.stube.server       :as server]
+             [dev.zeko.stube.store        :as store]
+             [dev.zeko.stube.ui           :as ui]))
 
 ;; ---------------------------------------------------------------------------
 ;; Component definition
@@ -205,6 +206,19 @@
   prefer Datastar attributes for most needs.  See
   [[dev.zeko.stube.effects/execute-script]]."}
   execute-script effects/execute-script)
+
+(def ^{:doc "Sync the browser URL without a page reload.
+
+      (s/history :replace \"/notes?id=42\")
+      (s/history :push    \"/notes/42\")
+
+  `:replace` calls `history.replaceState`; `:push` calls
+  `history.pushState`.  Use `:replace` for in-place state mutations
+  (e.g. filter changes) and `:push` for navigations the user should
+  be able to Back-button out of.
+
+  See [[dev.zeko.stube.effects/history]]."}
+  history effects/history)
 
 (def ^{:doc "Fire-and-forget `(thunk)` off the request thread.
   See [[dev.zeko.stube.effects/io]]."}
@@ -397,10 +411,22 @@
 ;; Lifecycle / mounting
 ;; ---------------------------------------------------------------------------
 
-(def ^{:doc "See [[dev.zeko.stube.server/mount!]]."}    mount!     server/mount!)
+(def ^{:doc "See [[dev.zeko.stube.server/mount!]].  Accepts an optional opts map
+  with `:init-args-fn` to seed component state from GET request params."}
+  mount! server/mount!)
 (def ^{:doc "See [[dev.zeko.stube.server/unmount!]]."}  unmount!   server/unmount!)
 (def ^{:doc "See [[dev.zeko.stube.server/start!]]."}    start!     server/start!)
 (def ^{:doc "See [[dev.zeko.stube.server/stop!]]."}     stop!      server/stop!)
+
+(def ^{:doc "Return the decoded value of query-param `param-name` from a Ring request,
+  or nil if absent.  Useful in `:init-args-fn` callbacks:
+
+      (s/mount! \"/counter\" :demo/counter
+        {:init-args-fn (fn [req]
+                         {:n (parse-long (or (s/query-value req \"n\") \"0\"))})})
+
+  See [[dev.zeko.stube.http/query-value]]."}
+  query-value http/query-value)
 (def ^{:doc "See [[dev.zeko.stube.server/active-conversations]]."}
   active-conversations server/active-conversations)
 (def ^{:doc "See [[dev.zeko.stube.server/end!]]."}      end!       server/end!)
@@ -427,7 +453,7 @@
   [cid iid]
   (some-> (server/conversation cid) (halos/instance iid)))
 
-(defn history
+(defn conv-history
   "Summarise `:conv/history` for live conversation `cid`."
   [cid]
   (some-> (server/conversation cid) halos/history))

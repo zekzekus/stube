@@ -31,8 +31,8 @@
            ;; `/conv/:cid/:iid/upload`; otherwise Reitit sees a static
            ;; `upload` segment conflicting with the generic `:event`.
            ["/conv/:cid/:iid/:event"    {:post {:handler http/event-handler}}]]
-          (for [[path flow-id] (server/mounts)]
-            [path {:get {:handler (http/shell-handler flow-id)}}]))))
+          (for [[path {:keys [flow-id opts]}] (server/mounts)]
+            [path {:get {:handler (http/shell-handler flow-id opts)}}]))))
 
 (defn ring-handler
   "A ring handler that resolves the router on each request so newly
