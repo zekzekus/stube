@@ -58,14 +58,21 @@
 (defn- url-decode [s]
   (URLDecoder/decode (str s) "UTF-8"))
 
-(defn- query-value
-  "Return decoded query-param `k` from Ring's raw `:query-string`.
-  The app intentionally has no params middleware; parsing the one
-  stube-owned key here keeps the handler stack tiny."
-  [{:keys [query-string]} k]
+(defn query-value
+  "Return the decoded value of query-param `param-name` from `request`,
+  or nil if absent.
+
+  Works directly from Ring's `:query-string` without requiring params
+  middleware.  Useful in `:init-args-fn` callbacks passed to
+  [[shell-handler]] to seed component state from the URL.
+
+      (shell-handler k :my/flow
+        {:init-args-fn (fn [req]
+                         {:page (parse-long (or (query-value req \"page\") \"1\"))})})"
+  [{:keys [query-string]} param-name]
   (some (fn [part]
           (let [[raw-k raw-v] (str/split part #"=" 2)]
-            (when (= k (url-decode raw-k))
+            (when (= param-name (url-decode raw-k))
               (url-decode (or raw-v "")))))
         (some-> query-string (str/split #"&"))))
 
@@ -178,13 +185,28 @@
   When the server is started with `:halos? true`, every shell injects
   the halos overlay (initially inactive) and a `data-stube-cid` hook so
   the user can enable the overlay from a floating pill.  Adding
-  `?halos=1` on the URL is a shortcut that pre-enables the conv."
+  `?halos=1` on the URL is a shortcut that pre-enables the conv.
+
+  Optional `opts` map:
+
+  * `:init-args-fn` — `(fn [request] init-args-map)`.  Called on every
+    GET to extract init-args from the request (e.g. query params) and
+    pass them to `mint-conversation!`.  Use this when the component's
+    initial state should be seeded from the URL:
+
+        (shell-handler k :my/component
+          {:init-args-fn (fn [req] {:n (parse-long (query-value req \"n\"))})})
+
+    Defaults to `(constantly {})`."
   ([flow-id]
-   (shell-handler (default-kernel) flow-id))
+   (shell-handler (default-kernel) flow-id {}))
   ([k flow-id]
+   (shell-handler k flow-id {}))
+  ([k flow-id {:keys [init-args-fn] :or {init-args-fn (constantly {})}}]
    (fn [req]
-     (let [[sid set-cookie] (kernel/ensure-session k req)
-           cid       (kernel/create-conversation! k flow-id sid)
+     (let [[_sid set-cookie] (kernel/ensure-session k req)
+           init-args (init-args-fn req)
+           cid       (kernel/mint-conversation! k flow-id init-args req)
            dev?      (kernel/halos? k)
            pre-on?   (and dev? (halos-http/requested? req))]
        (when pre-on?

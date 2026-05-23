@@ -124,7 +124,7 @@
   "Summarise `:conv/history` for `cid` (defaults to the first live
   conversation)."
   ([]    (history (first-cid)))
-  ([cid] (s/history cid)))
+  ([cid] (s/conv-history cid)))
 
 (defn where
   "Return the file:line where component `type-kw` was defined."
