@@ -35,6 +35,15 @@ Project-wide preferences and conventions for agents working in this repository.
 - When running commands via the Bash tool, plain POSIX `sh`/`bash` is fine (the tool uses bash). But any commands you tell **me** to run must be Nushell-compatible.
 - If a tool only ships bash completions/hooks, note it and suggest the Nushell equivalent or a wrapper.
 
+## Clojure Indentation
+
+The editor uses **Parinfer**, which infers parenthesis structure from indentation. Wrong indentation is therefore a structural bug, not just a style issue.
+
+- All entries in a `(:require […])` block must be aligned to the same column.
+- All bindings in a `let` vector must be aligned to the same column.
+- When inserting a new require or let binding, count the spaces of the surrounding lines and match exactly — do not eyeball it.
+- After editing any Clojure file, scan the changed lines with `jj diff` and verify that every modified form's indentation is consistent with its neighbours before committing.
+
 ## General Working Style
 
 - Keep changes small and focused; don't refactor adjacent code unprompted.
