@@ -484,6 +484,41 @@ arrives via the SSE stream.
 
 ---
 
+## Shutdown sequence
+
+`(s/stop!)` (standalone) and `(stube/halt! kernel)` (embedded) run the
+same drain through `dev.zeko.stube.runtime/halt!`:
+
+1. **Freeze new requests.** A `:!shutting-down?` flag flips on; the
+   stock `shell-handler` returns `503 + Retry-After: 5` for any new
+   mint.  Embedders that bypass `shell-handler` can poll
+   `(stube/shutting-down? kernel)` themselves.
+2. **Cancel scheduled events.** Every `s/after` future for every cid
+   is `future-cancel`ed.  In-flight timer firings finish.
+3. **Run `:stop` on every live instance**, children before their
+   frame, top stack frame first.  The fold goes through
+   `apply-conv!`, so any DOM patches a stop hook emits ship over SSE
+   before the channel closes.  A throwing hook is logged; the drain
+   keeps going.
+4. **Drain SSE streams.** Every registered generator receives a
+   `:close` fragment.
+5. **Flush the store.** Each conversation gets one last `save!`
+   *before* `:!conversations` is cleared, so file-backed stores end
+   the process with an up-to-date snapshot.
+6. **Reset per-kernel registries** (`:!sse-sessions`,
+   `:!pending-roots`, `:!subscriptions`, `:!conversations`).
+
+`halt!` is idempotent (`compare-and-set!` on `:!shutting-down?`), so
+calling it twice — say, both from a JVM shutdown hook and from a host
+container — is safe.
+
+`:start` and `:wakeup` still use `registry/lookup!` and surface
+missing components loudly; `:stop` uses the no-throw `lookup` so a
+component de-registered between mount and shutdown (hot reload, test
+teardown after `registry/clear!`) simply has no `:stop` to run.
+
+---
+
 ## Halos — the dev overlay
 
 `dev.zeko.stube.halos` and `…/halos/http.clj` implement an optional

@@ -10,6 +10,7 @@
             [dev.zeko.stube.errors       :as errors]
             [dev.zeko.stube.fragments    :as f]
             [dev.zeko.stube.kernel       :as pure]
+            [dev.zeko.stube.lifecycle    :as lc]
             [dev.zeko.stube.render       :as render]
             [dev.zeko.stube.session      :as session]
             [dev.zeko.stube.shell        :as shell]
@@ -66,11 +67,12 @@
      (assoc opts
             :id (str (UUID/randomUUID))
             :base-path (normalize-base-path base-path)
-            :!conversations (atom restored)
-            :!sse-sessions  (atom {})
-            :!pending-roots (atom {})
-            :!timers        (atom {})
-            :!subscriptions (atom {})))))
+            :!conversations  (atom restored)
+            :!sse-sessions   (atom {})
+            :!pending-roots  (atom {})
+            :!timers         (atom {})
+            :!subscriptions  (atom {})
+            :!shutting-down? (atom false)))))
 
 (defn current-store [k] (:store k))
 (defn base-path [k] (:base-path k))
@@ -78,6 +80,13 @@
 (defn root-selector [k] (:root-selector k))
 (defn ui-css? [k] (boolean (:ui-css? k)))
 (defn halos? [k] (boolean (:halos? k)))
+
+(defn shutting-down?
+  "True once [[halt!]] has begun the shutdown sequence for `k`.  HTTP
+  adapters should refuse new conversation mints (typically 503) while
+  this is true."
+  [k]
+  (boolean (some-> (:!shutting-down? k) deref)))
 
 (defn ensure-session
   "Return `[sid set-cookie-header-or-nil]` for `request` under kernel
@@ -447,16 +456,69 @@
                 [booted (vec boot-frags)]
                 events)))))
 
-(defn halt!
-  "Close open SSE streams and clear per-kernel runtime registries."
-  [k]
-  (doseq [[_cid sse-gen] @(:!sse-sessions k)]
+(defn- shutdown-stop-iids
+  "Order in which `:stop` should fire across a conversation's live
+  instances during shutdown: top-of-stack first, children before their
+  own frame.  Pre-existing `:end` handling uses parent-first
+  pop-style; here the issue spec asks for children-before-parents, so
+  the per-frame descendant list is reversed before concatenating."
+  [conv]
+  (vec
+    (mapcat (fn [frame-iid]
+              (rseq (conv/descendant-ids conv frame-iid)))
+            (rseq (or (:conv/stack conv) [])))))
+
+(defn- run-shutdown-stop-hooks! [k]
+  ;; Run :stop through apply-conv! so any patches it emits go out over
+  ;; SSE before the :close fragment.  Do NOT set :conv/ended? here:
+  ;; apply-conv!'s end-conversation! path would `delete!` from the
+  ;; store, defeating the final flush-store! step.
+  (doseq [[cid _conv] @(:!conversations k)]
     (try
-      (push-fragments! sse-gen [f/close])
-      (catch Throwable _ nil)))
-  (doseq [cid (keys @(:!timers k))]
-    (cancel-timers! k cid))
-  (reset! (:!sse-sessions k) {})
-  (reset! (:!pending-roots k) {})
-  (reset! (:!subscriptions k) {})
+      (apply-conv! k cid
+        (fn [c]
+          (let [iids (shutdown-stop-iids c)]
+            (if (seq iids)
+              (lc/run-stop-hooks pure/run-effects c iids)
+              [c []]))))
+      (catch Throwable t
+        (binding [*out* *err*]
+          (println "stube halt!: :stop hook for" cid "threw —" (ex-message t)))))))
+
+(defn- flush-store! [k]
+  (doseq [[_cid conv] @(:!conversations k)]
+    (try
+      (store/save! (:store k) conv)
+      (catch Throwable t
+        (binding [*out* *err*]
+          (println "stube halt!: final save! threw —" (ex-message t)))))))
+
+(defn halt!
+  "Drain a kernel.  Sequence:
+
+    1. Mark the kernel as shutting down so HTTP adapters can refuse
+       new conversation mints.
+    2. Cancel pending scheduled events.
+    3. Run `:stop` hooks for every live instance (children before
+       their frame, top stack frame first).
+    4. Drain open SSE streams with a final `:close` fragment.
+    5. Flush the store with one last `save!` per conversation.
+    6. Clear per-kernel runtime registries.
+
+  Returns nil.  Idempotent: subsequent calls on the same kernel are
+  cheap no-ops."
+  [k]
+  (when (compare-and-set! (:!shutting-down? k) false true)
+    (doseq [cid (keys @(:!timers k))]
+      (cancel-timers! k cid))
+    (run-shutdown-stop-hooks! k)
+    (doseq [[_cid sse-gen] @(:!sse-sessions k)]
+      (try
+        (push-fragments! sse-gen [f/close])
+        (catch Throwable _ nil)))
+    (flush-store! k)
+    (reset! (:!sse-sessions k) {})
+    (reset! (:!pending-roots k) {})
+    (reset! (:!subscriptions k) {})
+    (reset! (:!conversations k) {}))
   nil)

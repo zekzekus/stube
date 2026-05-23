@@ -176,11 +176,12 @@ exercised by anything but our local dev server.
       surprise.
       [shape]
 
-- [ ] **Graceful shutdown.** `stop!` currently closes the http listener
-      but does not drain in-flight SSE streams or fire `:stop` hooks for
-      live conversations. For 1.0 it should: stop accepting, send a
-      shell-replace patch with a reload banner, run `:stop` for every
-      live instance, flush the store.
+- [x] **Graceful shutdown.** Done in S-6: `runtime/halt!` (called from
+      `s/stop!`) freezes new mints with 503, cancels scheduled events,
+      runs `:stop` for every live instance children-first, drains open
+      SSE streams with a final `:close` fragment, and flushes the
+      store before clearing registries.  See the "Shutdown sequence"
+      section of `docs/internals.md` for the full ordering.
       [shape]
 
 - [ ] **Datastar version pinning.** The shell links a CDN bundle by
