@@ -115,33 +115,33 @@
      (let [{:keys [path title group blurb]} (:entry self)
            flow-id (:flow-id (get (s/mounts) path))
            doc     (some-> flow-id s/help first-paragraph)]
-      [:article (s/root-attrs self {:class "stube-card"
-                                    :style "min-height:20rem;"})
-       [:div {:style "display:flex; align-items:baseline; gap:0.75rem;
+       [:article (s/root-attrs self {:class "stube-card"
+                                     :style "min-height:20rem;"})
+        [:div {:style "display:flex; align-items:baseline; gap:0.75rem;
                       flex-wrap:wrap;"}
-        [:h2 {:style "margin-top:0;"} title]
-        [:span {:style "color:#777; font-size:0.85rem;"} group]]
-       [:p blurb]
-       [:dl {:style "display:grid; grid-template-columns:7rem 1fr; gap:0.4rem 0.75rem;"}
-        [:dt {:style "font-weight:600;"} "Path"]
-        [:dd {:style "margin:0;"} [:code path]]
-        [:dt {:style "font-weight:600;"} "Mounted flow"]
-        [:dd {:style "margin:0;"}
-         (if flow-id [:code (str flow-id)] [:em "not mounted"])]
-        [:dt {:style "font-weight:600;"} "Registry"]
-        [:dd {:style "margin:0;"}
-         (if (and flow-id (s/registry-lookup flow-id))
-           "component registered"
-           "component not currently registered")]]
-       (when doc
-         [:details {:style "margin-top:1rem;"}
-          [:summary "Component docstring"]
-          [:p {:style "color:#555; line-height:1.45;"} doc]])
-       [:p {:style "margin-top:1.25rem;"}
-        [:a {:href  path
-             :class "stube-button stube-button--primary"
-             :style "display:inline-block; text-decoration:none;"}
-         "Open standalone"]]])))
+         [:h2 {:style "margin-top:0;"} title]
+         [:span {:style "color:#777; font-size:0.85rem;"} group]]
+        [:p blurb]
+        [:dl {:style "display:grid; grid-template-columns:7rem 1fr; gap:0.4rem 0.75rem;"}
+         [:dt {:style "font-weight:600;"} "Path"]
+         [:dd {:style "margin:0;"} [:code path]]
+         [:dt {:style "font-weight:600;"} "Mounted flow"]
+         [:dd {:style "margin:0;"}
+          (if flow-id [:code (str flow-id)] [:em "not mounted"])]
+         [:dt {:style "font-weight:600;"} "Registry"]
+         [:dd {:style "margin:0;"}
+          (if (and flow-id (s/registry-lookup flow-id))
+            "component registered"
+            "component not currently registered")]]
+        (when doc
+          [:details {:style "margin-top:1rem;"}
+           [:summary "Component docstring"]
+           [:p {:style "color:#555; line-height:1.45;"} doc]])
+        [:p {:style "margin-top:1.25rem;"}
+         [:a {:href  path
+              :class "stube-button stube-button--primary"
+              :style "display:inline-block; text-decoration:none;"}
+          "Open standalone"]]])))
 
 ;; ---------------------------------------------------------------------------
 ;; Browser parent
