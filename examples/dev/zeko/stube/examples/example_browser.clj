@@ -18,6 +18,7 @@
             [dev.zeko.stube.examples.calendar]
             [dev.zeko.stube.examples.chat]
             [dev.zeko.stube.examples.clock]
+            [dev.zeko.stube.examples.columns]
             [dev.zeko.stube.examples.dialogs]
             [dev.zeko.stube.examples.error-frame]
             [dev.zeko.stube.examples.file-upload]
@@ -83,6 +84,8 @@
     :blurb "S-3: `s/preserve` keeps third-party DOM children alive across parent re-renders."}
    {:path "/error-frame"    :title "In-page error frame"       :group "Tier 3"
     :blurb "S-5: a throwing handler turns into a localized banner instead of dropping the SSE stream."}
+   {:path "/columns"        :title "Keyed columns"             :group "Tier 3"
+    :blurb "S-7: `s/keyed-children` adds/removes/replaces a column with one fragment per change."}
    {:path "/seaside-todo"   :title "Seaside book ToDo"         :group "Book app"
     :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}
    {:path "/kasten"         :title "Kasten notes desk"         :group "Book app"

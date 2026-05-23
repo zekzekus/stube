@@ -34,6 +34,11 @@
                                     temporarily swap one embedded slot;
                                     the child answers back to the parent
                                     without taking over the page
+      [:set-keyed-children <slot> <[[key embed]…]>]
+                                    reconcile an ordered, key-addressed
+                                    set of children; emits per-child
+                                    append/remove/outer fragments
+                                    instead of re-rendering the parent
       [:answer <value>]             pop this frame; deliver `value` to
                                     the parent under its resume key
       [:replace <embed>]            pop this frame and push another in
@@ -72,6 +77,7 @@
             [dev.zeko.stube.errors       :as errors]
             [dev.zeko.stube.fragments    :as f]
             [dev.zeko.stube.frame        :as frame]
+            [dev.zeko.stube.keyed        :as keyed]
             [dev.zeko.stube.lifecycle    :as lc]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]))
@@ -375,6 +381,15 @@
       :else
       (let [[conv''' frag] (render-frame conv'' iid)]
         [conv''' (conj (into (vec stop-frags) start-frags) frag)]))))
+
+(defmethod step :set-keyed-children
+  [conv eff]
+  (let [slot     (e/keyed-children-slot eff)
+        pairs    (e/keyed-children-pairs eff)
+        parent-id (or (effect-origin conv)
+                      (throw (ex-info ":set-keyed-children needs an emitting parent"
+                                      {:slot slot})))]
+    (keyed/reconcile! conv parent-id slot pairs run-effects)))
 
 (defmethod step :patch
   [conv eff]
