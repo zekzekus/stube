@@ -114,6 +114,71 @@ pieces finally exist:
 
 ---
 
+## Host widget integration
+
+Third-party widgets such as CodeMirror, Monaco, Chart.js and Leaflet
+often own the DOM under one host element. Mark that host with
+`s/preserve`: stube still lets Datastar merge attributes on the host,
+but leaves the live child nodes alone across future morphs. Pair it
+with `s/on-mount` to run the widget constructor once, when the element
+first appears.
+
+```clojure
+[:div (merge {:class "editor-host"
+              :data-doc-id (:doc-id self)}
+             (s/preserve self :editor)
+             (s/on-mount self :editor
+               "(() => {
+                  if (el.cmView) return
+                  el.cmView = new EditorView({
+                    doc: el.dataset.initialDoc || '',
+                    extensions: [basicSetup],
+                    parent: el
+                  })
+                })()"))]
+```
+
+The stock stube shell loads `/stube/preserve.js` before Datastar, so
+standalone apps get the bridge automatically. If you embed stube with
+`shell-for`, include that script in your host page before the Datastar
+runtime:
+
+```html
+<script type="module" src="/widget/stube/preserve.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@main/bundles/datastar.js"></script>
+```
+
+If you run your own Idiomorph bridge outside Datastar, use the same
+`data-stube-preserve` marker and merge attributes before telling
+Idiomorph to skip the subtree:
+
+```js
+function mergeAttributes(oldEl, newEl) {
+  for (const attr of Array.from(oldEl.attributes)) {
+    if (!newEl.hasAttribute(attr.name)) oldEl.removeAttribute(attr.name)
+  }
+  for (const attr of Array.from(newEl.attributes)) {
+    if (oldEl.getAttribute(attr.name) !== attr.value) {
+      oldEl.setAttribute(attr.name, attr.value)
+    }
+  }
+}
+
+Idiomorph.morph(oldRoot, newRoot, {
+  callbacks: {
+    beforeNodeMorphed(oldNode, newNode) {
+      if (!(oldNode instanceof Element) || !(newNode instanceof Element)) return true
+      const key = oldNode.getAttribute('data-stube-preserve')
+      if (!key || newNode.getAttribute('data-stube-preserve') !== key) return true
+      mergeAttributes(oldNode, newNode)
+      return false
+    }
+  }
+})
+```
+
+---
+
 ## Trying it
 
 stube is on Clojars. Add to `deps.edn`:

@@ -124,6 +124,11 @@
   []
   (path "/stube/halos.js"))
 
+(defn preserve-js-url
+  "URL for stube's preserved-subtree bridge script in the current mount."
+  []
+  (path "/stube/preserve.js"))
+
 (defn event-url
   "URL the browser POSTs to for an event.  Public so user code can build
   custom Datastar expressions that target the same endpoint.
@@ -198,6 +203,50 @@
             :title  "stube upload target"
             :hidden true
             :style  "display:none; width:0; height:0; border:0;"}])
+
+(defn- require-instance-id! [helper self]
+  (or (:instance/id self)
+      (throw (ex-info (str helper " requires an instance map")
+                      {:got self}))))
+
+(defn- preserve-label [label]
+  (let [s (cond
+            (keyword? label) (name label)
+            (string? label)  label
+            :else
+            (throw (ex-info "stube preserve labels must be keywords or strings"
+                            {:got label})))]
+    (if (seq s)
+      s
+      (throw (ex-info "stube preserve labels must not be empty"
+                      {:got label})))))
+
+(defn preserve
+  "Return attributes marking an element's children as externally owned.
+
+      [:div (merge (s/preserve self :editor)
+                   (s/on-mount self :editor \"...\"))]
+
+  stube's shell loads a small bridge that lets Datastar merge the marked
+  element's attributes on each morph while skipping its child subtree.
+  The label only needs to be unique within the
+  rendered patch; use a stable keyword such as `:editor` or `:chart`."
+  [self label]
+  (require-instance-id! "dev.zeko.stube.render/preserve" self)
+  {:data-stube-preserve (preserve-label label)})
+
+(defn on-mount
+  "Return a Datastar `data-init` expression only before `self` is rendered.
+
+  Use this with [[preserve]] to construct a third-party widget once, then
+  let later stube renders update the host element's attributes without
+  re-running the widget constructor."
+  [self label expr]
+  (require-instance-id! "dev.zeko.stube.render/on-mount" self)
+  (preserve-label label)
+  (if (:instance/rendered? self)
+    {}
+    {:data-init expr}))
 
 (defn back-button
   "Return a small Hiccup button wired to the conversation-level `[:back]`
