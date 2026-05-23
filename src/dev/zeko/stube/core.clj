@@ -57,6 +57,7 @@
             [dev.zeko.stube.halos        :as halos]
             [dev.zeko.stube.http         :as http]
             [dev.zeko.stube.kernel       :as kernel]
+            [dev.zeko.stube.keyed        :as keyed]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]
             [dev.zeko.stube.server       :as server]
@@ -247,6 +248,29 @@
 (def ^{:doc "See [[dev.zeko.stube.render/upload-attrs]]."} upload-attrs render/upload-attrs)
 (def ^{:doc "See [[dev.zeko.stube.render/upload-frame]]."} upload-frame render/upload-frame)
 (def ^{:doc "See [[dev.zeko.stube.render/render-slot]]."} render-slot render/render-slot)
+
+(def ^{:doc "Effect: reconcile keyed children for a slot.  See
+  [[dev.zeko.stube.effects/set-keyed-children]] and the diff semantics
+  documented in [[dev.zeko.stube.keyed]]."}
+  set-keyed-children effects/set-keyed-children)
+
+(defn keyed-children
+  "Render the keyed-children container for `slot` on `self`.  Returns
+  hiccup `[:div {:id …} child-hiccup…]` where each child instance's
+  `:render` is inlined in the declared order.
+
+      :handle (fn [self _]
+                [self [(s/set-keyed-children
+                         :slot/cols
+                         (map (fn [id] [id (s/embed :demo/counter)])
+                              (:col-ids self)))]])
+
+      :render (fn [self]
+                [:section (s/root-attrs self)
+                 (s/keyed-children self :slot/cols)])"
+  [self slot]
+  (into [:div {:id (keyed/container-id (:instance/id self) slot)}]
+        (keyed/render-children-hiccup self slot)))
 
 (defn context
   "Return adapter/application context injected into this conversation.

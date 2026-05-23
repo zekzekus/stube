@@ -45,6 +45,7 @@
     dev.zeko.stube.examples.calendar
     dev.zeko.stube.examples.chat
     dev.zeko.stube.examples.clock
+    dev.zeko.stube.examples.columns
     dev.zeko.stube.examples.dialogs
     dev.zeko.stube.examples.embedded-ring
     dev.zeko.stube.examples.error-frame
