@@ -41,15 +41,14 @@ explicitly set. None of them is currently met.
       350 lines — and drop the rationale opt-out.
       [bar §15.4]
 
-- [ ] **Errors are local, surfaced in the browser.** §15.3 promises a
-      bad component breaks its own frame, not the page, and that
-      Datastar exceptions surface in the console "with enough context to
-      identify the failing instance." Today an exception thrown in
-      `:render` or `:handle` bubbles into the SSE handler and closes the
-      stream. Define and ship the failure mode: catch at the frame
-      boundary, patch a labelled error placeholder into the instance's
-      DOM slot, log the cid/iid in the server logs and in a comment in
-      the patched fragment.
+- [x] **Errors are local, surfaced in the browser.** Done in S-5:
+      `dev.zeko.stube.errors` catches in `kernel/dispatch` and
+      `frame/render-instance`, patches a `:stube-error` banner over the
+      failing instance (with a `<!-- cid=… iid=… phase=… -->` comment),
+      logs the same to stderr, and keeps the SSE stream open.  Optional
+      `:on-error` override on `make-kernel` lets apps return a custom
+      fragment.  Lifecycle hook throws are still in scope for a future
+      pass.
       [bar §15.3]
 
 - [ ] **Public surface freeze for 1.0.** `dev.zeko.stube.core` is the

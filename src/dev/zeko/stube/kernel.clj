@@ -69,6 +69,7 @@
   becomes live again."
   (:require [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.effects      :as e]
+            [dev.zeko.stube.errors       :as errors]
             [dev.zeko.stube.fragments    :as f]
             [dev.zeko.stube.frame        :as frame]
             [dev.zeko.stube.lifecycle    :as lc]
@@ -83,6 +84,14 @@
   "Default handler: ignore the event, no effects."
   [self _event]
   [self []])
+
+(defn- rendered-output?
+  "True when `frags` contains a fragment that has already drawn the
+  current instance — a normal `:elements` patch or an `:error` banner
+  from the [[dev.zeko.stube.errors]] catch.  Either way the kernel
+  must not re-render on top of it."
+  [frags]
+  (boolean (some #(#{:elements :error} (:fragment/kind %)) frags)))
 
 (defn- effect-origin [conv]
   (or e/*effect-iid* (conv/top-id conv)))
@@ -196,7 +205,7 @@
       ;;  3. the frame is still here with no HTML yet; render the
       ;;     placeholder so the page sees *something*.
       (cond
-        (some #(= :elements (:fragment/kind %)) fr)
+        (rendered-output? fr)
         [conv'' fr]
 
         (nil? (conv/instance conv'' iid))
@@ -234,7 +243,7 @@
     (let [[conv'' fr] (run-start-hooks conv'
                                        (into [iid] (map :instance/id descendants)))]
       (cond
-        (some #(= :elements (:fragment/kind %)) fr)
+        (rendered-output? fr)
         [conv'' fr]
 
         (nil? (conv/instance conv'' iid))
@@ -279,7 +288,7 @@
           ;; If the resume produced no further element fragments,
           ;; re-render the parent so its state changes are visible.
           [conv-final extra]
-          (if (or (some #(= :elements (:fragment/kind %)) more)
+          (if (or (rendered-output? more)
                   (nil? (conv/instance conv'' parent-id)))
             [conv'' []]
             (let [[c' f] (render-frame conv'' parent-id)]
@@ -357,7 +366,7 @@
         [conv'' start-frags] (run-start-hooks conv'
                                               (into [iid] (map :instance/id descendants)))]
     (cond
-      (some #(= :elements (:fragment/kind %)) start-frags)
+      (rendered-output? start-frags)
       [conv'' (into (vec stop-frags) start-frags)]
 
       (nil? (conv/instance conv'' iid))
@@ -527,7 +536,8 @@
   [conv {:keys [instance-id event payload signals] :as ev}]
   (if (nil? (conv/instance conv instance-id))
     [conv []]
-    (let [;; Compute the merged self from the unmodified `conv` first;
+    (try
+      (let [;; Compute the merged self from the unmodified `conv` first;
         ;; `merged-self` only consults `:conv/instances`, so it is
         ;; insensitive to whether we have snapshotted yet.  This lets
         ;; us decide whether to snapshot only AFTER seeing what the
@@ -561,12 +571,14 @@
         ;; re-render if the instance no longer exists (the handler must
         ;; have answered or ended the conversation).
         [conv-final extra]
-        (if (or (some #(= :elements (:fragment/kind %)) more-frags)
+        (if (or (rendered-output? more-frags)
                 (nil? (conv/instance conv''' instance-id)))
           [conv''' []]
           (let [[c' f] (render-frame conv''' instance-id)]
             [c' [f]]))]
-    [conv-final (into (vec extra) more-frags)])))
+        [conv-final (into (vec extra) more-frags)])
+      (catch Throwable t
+        [conv [(errors/build-fragment conv instance-id t :handle)]]))))
 
 ;; ---------------------------------------------------------------------------
 ;; Embeddable runtime API

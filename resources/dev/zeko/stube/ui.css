@@ -78,3 +78,23 @@
   text-align: left;
   width: 100%;
 }
+
+.stube-error {
+  background: #fdecea;
+  border: 1px solid #f1aeb5;
+  border-radius: 0.375rem;
+  color: #842029;
+  font-family: system-ui, sans-serif;
+  margin: 0.5rem 0;
+  padding: 0.75rem 1rem;
+}
+
+.stube-error-title {
+  font-weight: 600;
+  margin-right: 0.4rem;
+}
+
+.stube-error-message {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95em;
+}

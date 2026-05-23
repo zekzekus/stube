@@ -19,6 +19,7 @@
             [dev.zeko.stube.examples.chat]
             [dev.zeko.stube.examples.clock]
             [dev.zeko.stube.examples.dialogs]
+            [dev.zeko.stube.examples.error-frame]
             [dev.zeko.stube.examples.file-upload]
             [dev.zeko.stube.examples.guess]
             [dev.zeko.stube.examples.kasten.desk]
@@ -80,6 +81,8 @@
     :blurb "S-2: `s/history` syncs the counter value into the address bar without a reload."}
    {:path "/preserved-widget" :title "Preserved widget"        :group "Tier 3"
     :blurb "S-3: `s/preserve` keeps third-party DOM children alive across parent re-renders."}
+   {:path "/error-frame"    :title "In-page error frame"       :group "Tier 3"
+    :blurb "S-5: a throwing handler turns into a localized banner instead of dropping the SSE stream."}
    {:path "/seaside-todo"   :title "Seaside book ToDo"         :group "Book app"
     :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}
    {:path "/kasten"         :title "Kasten notes desk"         :group "Book app"
