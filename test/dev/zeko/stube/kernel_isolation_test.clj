@@ -9,6 +9,15 @@
 
 (use-fixtures :each (fn [t] (registry/clear!) (t) (registry/clear!)))
 
+(defn- eventually [pred]
+  (let [deadline (+ (System/currentTimeMillis) 1000)]
+    (loop []
+      (cond
+        (pred) true
+        (< (System/currentTimeMillis) deadline)
+        (do (Thread/sleep 10) (recur))
+        :else false))))
+
 (defn- install-test-component! []
   (registry/register!
     {:component/id :isolation/counter
@@ -48,7 +57,40 @@
       (is (str/includes? (pr-str (kernel/shell-for k1 cid1))
                          (str "/one/sse/" cid1)))
       (is (str/includes? (pr-str (kernel/shell-for k2 cid2))
-                         (str "/two/sse/" cid2))))))
+                         (str "/two/sse/" cid2)))
+      (is (str/includes? (pr-str (kernel/head-tags k1))
+                         "/one/stube/preserve.js"))
+      (is (str/includes? (pr-str (kernel/head-tags k2))
+                         "/two/stube/preserve.js")))))
+
+(deftest core-publish-routes-to-active-embedded-kernel
+  (registry/register!
+    {:component/id :isolation/pubsub
+     :component/init (constantly {:seen nil})
+     :component/render (fn [self]
+                         [:div (s/root-attrs self) (pr-str (:seen self))])
+     :start (fn [self]
+              [self [(s/subscribe :isolation/topic :published)]])
+     :component/handle (fn [self {:keys [event payload]}]
+                         (case event
+                           :publish (do (s/publish! :isolation/topic
+                                                     (:name (s/context self)))
+                                        self)
+                           :published (assoc self :seen payload)
+                           self))})
+  (let [k1   (kernel/make-kernel {:context-fn (constantly {:name "one"})})
+        k2   (kernel/make-kernel {:context-fn (constantly {:name "two"})})
+        cid1 (kernel/mint-conversation! k1 :isolation/pubsub {} {})
+        cid2 (kernel/mint-conversation! k2 :isolation/pubsub {} {})]
+    (boot-live! k1 cid1)
+    (boot-live! k2 cid2)
+    (let [iid1 (conv/top-id (kernel/conversation k1 cid1))]
+      (kernel/dispatch! k1 cid1 {:instance-id iid1
+                                 :event       :publish
+                                 :signals     {}})
+      (is (eventually #(= "one" (:seen (conv/top-instance
+                                          (kernel/conversation k1 cid1))))))
+      (is (nil? (:seen (conv/top-instance (kernel/conversation k2 cid2))))))))
 
 (deftest replay-works-against-kernel-without-starting-server
   (install-test-component!)

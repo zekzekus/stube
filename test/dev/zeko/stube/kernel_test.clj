@@ -76,6 +76,18 @@
     (is (seq (elements-fragments frags))
         "parent re-renders after receiving the answer")))
 
+(deftest io-effect-runs-only-through-runtime-hook
+  (let [calls (atom 0)
+        thunk #(swap! calls inc)
+        conv  (conv/new-conversation)]
+    (let [[c frags] (kernel/run-effects conv [(s/io thunk)])]
+      (is (= conv c))
+      (is (empty? frags))
+      (is (zero? @calls) "pure run-effects leaves :io thunks as data"))
+    (binding [kernel/*run-io!* (fn [f] (f))]
+      (kernel/run-effects conv [(s/io thunk)]))
+    (is (= 1 @calls) "runtime binding interprets :io")))
+
 ;; ---------------------------------------------------------------------------
 ;; :start
 ;; ---------------------------------------------------------------------------

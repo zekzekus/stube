@@ -61,6 +61,7 @@
      :component/handle (fn [self {:keys [event payload]}]
                          (case event
                            :set [self [(s/set-keyed-children :slot/cols payload)]]
+                           :replace-self {:replaced? true}
                            [self []]))}))
 
 ;; ---------------------------------------------------------------------------
@@ -169,3 +170,82 @@
            [:c2 (s/embed :t/counter {:start 2})]])]
     (is (= [:append] (patch-modes add-frags)))
     (is (= [:remove] (patch-modes rm-frags)))))
+
+(deftest keyed-slot-state-is-framework-metadata
+  (register-counter!)
+  (register-stateful-parent!)
+  (let [[c0 _] (boot :t/parent)
+        parent (top-iid c0)
+        [c1 _] (kernel/dispatch c0 {:instance-id parent
+                                    :event       :replace-self
+                                    :signals     {}})]
+    (is (some? (:instance/keyed-slots (conv/instance c1 parent)))
+        "handlers returning fresh maps must not accidentally drop keyed children")))
+
+(deftest keyed-children-receive-conversation-context
+  (registry/register!
+    {:component/id     :t/context-child
+     :component/render (fn [self]
+                         [:div {:id (:instance/id self)}
+                          (:label (s/context self))])})
+  (registry/register!
+    {:component/id     :t/context-parent
+     :start            (fn [self]
+                         [self [(s/set-keyed-children
+                                  :slot/ctx
+                                  [[:a (s/embed :t/context-child)]])]])
+     :component/render (fn [self]
+                         [:section {:id (:instance/id self)}
+                          (s/keyed-children self :slot/ctx)])})
+  (let [[c frags] (kernel/run-effects
+                    (assoc (conv/new-conversation)
+                           :conv/context {:label "from-context"})
+                    (kernel/boot :t/context-parent))
+        child-iid (get-in (slot-state c :slot/ctx) [:children :a :iid])]
+    (is (= {:label "from-context"}
+           (s/context (conv/instance c child-iid))))
+    (is (str/includes? (:fragment/html (first frags)) "from-context"))))
+
+(deftest changed-keyed-embed-rebuilds-subtree-and-preserves-root-iid
+  (registry/register!
+    {:component/id     :t/leaf-a
+     :component/render (fn [self] [:em {:id (:instance/id self)} "a"])})
+  (registry/register!
+    {:component/id     :t/leaf-b
+     :component/render (fn [self] [:strong {:id (:instance/id self)} "b"])})
+  (registry/register!
+    {:component/id     :t/wrapper
+     :component/init   (fn [{:keys [kind]}] {:kind kind})
+     :children         (fn [self]
+                         {:slot/leaf (s/embed (case (:kind self)
+                                                :a :t/leaf-a
+                                                :b :t/leaf-b))})
+     :component/render (fn [self]
+                         [:div {:id (:instance/id self)}
+                          (s/render-slot self :slot/leaf)])})
+  (registry/register!
+    {:component/id     :t/rebuild-parent
+     :start            (fn [self]
+                         [self [(s/set-keyed-children
+                                  :slot/items
+                                  [[:same (s/embed :t/wrapper {:kind :a})]])]])
+     :component/render (fn [self]
+                         [:section {:id (:instance/id self)}
+                          (s/keyed-children self :slot/items)])
+     :component/handle (fn [self _]
+                         [self [(s/set-keyed-children
+                                  :slot/items
+                                  [[:same (s/embed :t/wrapper {:kind :b})]])]])})
+  (let [[c0 _]     (boot :t/rebuild-parent)
+        old-iid    (get-in (slot-state c0 :slot/items) [:children :same :iid])
+        old-leaf   (get-in (conv/instance c0 old-iid) [:instance/children :slot/leaf])
+        [c1 frags] (kernel/dispatch c0 {:instance-id (top-iid c0)
+                                        :event       :change
+                                        :signals     {}})
+        new-iid    (get-in (slot-state c1 :slot/items) [:children :same :iid])
+        new-leaf   (get-in (conv/instance c1 new-iid) [:instance/children :slot/leaf])]
+    (is (= old-iid new-iid) "stable key preserves the child root iid")
+    (is (not= old-leaf new-leaf) "descendants are rebuilt from the new embed")
+    (is (nil? (conv/instance c1 old-leaf)) "old descendants are removed")
+    (is (= :t/leaf-b (:instance/type (conv/instance c1 new-leaf))))
+    (is (= [:outer] (patch-modes frags)))))

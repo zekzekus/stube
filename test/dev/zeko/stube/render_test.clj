@@ -22,6 +22,13 @@
       (is (= (keyword "data-on:click") k))
       (is (re-find #"/conv/cv-001/ix-9/pick-day\?_stube_payload=12" v)))))
 
+(deftest on-target-routes-to-explicit-instance
+  (binding [render/*cid* "cv-001"]
+    (let [attrs (render/on-target "ix-parent" :click :as [:open 42])
+          [k v] (first attrs)]
+      (is (= (keyword "data-on:click") k))
+      (is (re-find #"/conv/cv-001/ix-parent/open\?_stube_payload=42" v)))))
+
 (deftest on-without-cid-throws
   (binding [render/*cid* nil]
     (is (thrown? clojure.lang.ExceptionInfo
@@ -41,6 +48,9 @@
     (is (= {:id "ix-42" :class "card" :data-on:submit "x"}
            (render/root-attrs self {:class "card"} {:data-on:submit "x"}))
         "variadic: every attr map merges, later wins on collision")
+    (is (= {:id "ix-42" :class "card"}
+           (render/root-attrs self {:id "wrong" :class "card"}))
+        "framework id wins because morph-by-id depends on it")
     (is (thrown? clojure.lang.ExceptionInfo
                  (render/root-attrs {} {:class "x"}))
         "no :instance/id throws so the wire contract isn't silently lost")))

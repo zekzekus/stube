@@ -61,7 +61,7 @@
                              (s/on self :click :as :ack))
               "Continue"]])
 
-  :handle (fn [self _evt]
+  :handle (fn [_self _evt]
             [(s/answer :ack)]))
 
 ;; ---------------------------------------------------------------------------

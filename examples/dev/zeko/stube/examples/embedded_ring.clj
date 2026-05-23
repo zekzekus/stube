@@ -9,8 +9,7 @@
             [reitit.ring                    :as ring]
             [dev.zeko.stube.adapter.ring    :as stube-ring]
             [dev.zeko.stube.core            :as s]
-            [dev.zeko.stube.kernel          :as stube]
-            [dev.zeko.stube.shell           :as shell]))
+            [dev.zeko.stube.kernel          :as stube]))
 
 (s/defcomponent :embedded/counter
   :init   (fn [_] {:n 0})
@@ -47,12 +46,11 @@
      :body    (chassis/html
                 [chassis/doctype-html5
                  [:html {:lang "en"}
-                  [:head
-                   [:meta {:charset "utf-8"}]
-                   [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
-                   [:title "stube embedded in Ring"]
-                   [:link {:rel "stylesheet" :href "/widget/stube/ui.css"}]
-                   (vector :script {:type "module" :src shell/datastar-cdn})]
+                  (into [:head
+                         [:meta {:charset "utf-8"}]
+                         [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
+                         [:title "stube embedded in Ring"]]
+                        (stube/head-tags embedded-kernel))
                   [:body
                    [:main {:style "max-width: 42rem; margin: 3rem auto;"}
                     [:h1 "Host Ring app"]

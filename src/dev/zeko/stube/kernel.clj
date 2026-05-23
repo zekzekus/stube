@@ -21,9 +21,9 @@
   the schema.
 
   No I/O, no atoms, no SSE — that all lives one layer up in
-  [[dev.zeko.stube.http]] / [[dev.zeko.stube.server]].  This means the entire interaction
-  loop is testable from a REPL with `dispatch` and a hand-built
-  conversation value, with no server running.
+  [[dev.zeko.stube.runtime]] / [[dev.zeko.stube.http]] / [[dev.zeko.stube.server]].
+  This means the entire interaction loop is testable from a REPL with
+  `dispatch` and a hand-built conversation value, with no server running.
 
   Effect vocabulary
   ─────────────────
@@ -47,7 +47,8 @@
       [:patch-signals <map>]        push a Datastar signal patch
       [:execute-script <js>]        run literal JS in the browser
       [:history :replace|:push url]  sync browser URL (replaceState/pushState)
-      [:io <fn>]                    call `(fn)` off-thread (fire-and-forget)
+      [:io <fn>]                    ask the bound runtime to run `(fn)`
+                                    off-thread; pure folds leave it inert
       [:after ms event]             schedule a future event for this instance
       [:subscribe topic event]      subscribe this instance to published messages
       [:unsubscribe topic?]         remove this instance's topic subscription(s)
@@ -129,6 +130,19 @@
   "Optional side-effect hook bound by the server for `[:unsubscribe …]`."
   nil)
 
+(def ^:dynamic *run-io!*
+  "Optional side-effect hook bound by the runtime for `[:io f]`.  Keeping
+  this as a hook preserves pure `run-effects`/`replay`: without a runtime
+  binding, `:io` is data that produces no fragments and does not execute."
+  nil)
+
+(def ^:dynamic *current-kernel*
+  "Runtime kernel currently folding an effect.  Standalone helpers use
+  this to route regular functions such as `s/publish!` to the embedded
+  kernel when called from component code, while preserving the historical
+  default-kernel behaviour outside a runtime dispatch."
+  nil)
+
 (declare run-effects)
 
 ;; ---------------------------------------------------------------------------
@@ -144,7 +158,6 @@
 (defn- run-wakeup-hooks [conv iids] (lc/run-wakeup-hooks run-effects conv iids))
 
 (def ^:private render-frame    frame/render-frame)
-(def ^:private render-instance frame/render-instance)
 
 (defn resume-top
   "Run `:wakeup` for the current top frame and render it as a restored
@@ -196,31 +209,31 @@
         conv'     (-> conv
                       (conv/push-instance inst)
                       (conv/put-many descendants))
-        iid       (:instance/id inst)]
+        iid       (:instance/id inst)
+        [conv'' fr] (run-start-hooks conv'
+                                     (into [iid] (map :instance/id descendants)))]
     ;; `:start` runs for the whole instantiated subtree.  Stack/task
     ;; components still get the old behaviour, while embedded children can
     ;; subscribe or schedule timers as soon as their parent is booted.
-    (let [[conv'' fr] (run-start-hooks conv'
-                                       (into [iid] (map :instance/id descendants)))]
-      ;; Three outcomes after `:start`:
-      ;;  1. it produced HTML directly (e.g. via `:call`-ing a child);
-      ;;     we don't add a placeholder render on top.
-      ;;  2. it `:answer`-ed or `:end`-ed and the frame is gone;
-      ;;     there is nothing here to render.  This is the common
-      ;;     `defflow` case where the body had zero `await`s and
-      ;;     completed synchronously.
-      ;;  3. the frame is still here with no HTML yet; render the
-      ;;     placeholder so the page sees *something*.
-      (cond
-        (rendered-output? fr)
-        [conv'' fr]
+    ;; Three outcomes after `:start`:
+    ;;  1. it produced HTML directly (e.g. via `:call`-ing a child);
+    ;;     we don't add a placeholder render on top.
+    ;;  2. it `:answer`-ed or `:end`-ed and the frame is gone;
+    ;;     there is nothing here to render.  This is the common
+    ;;     `defflow` case where the body had zero `await`s and
+    ;;     completed synchronously.
+    ;;  3. the frame is still here with no HTML yet; render the
+    ;;     placeholder so the page sees *something*.
+    (cond
+      (rendered-output? fr)
+      [conv'' fr]
 
-        (nil? (conv/instance conv'' iid))
-        [conv'' fr]
+      (nil? (conv/instance conv'' iid))
+      [conv'' fr]
 
-        :else
-        (let [[c f] (render-frame conv'' iid)]
-          [c (conj (vec fr) f)])))))
+      :else
+      (let [[c f] (render-frame conv'' iid)]
+        [c (conj (vec fr) f)]))))
 
 (defmethod step :call-in-slot
   [conv eff]
@@ -246,19 +259,19 @@
         conv'     (-> conv
                       (conv/set-child-slot parent-id slot iid)
                       (conv/put-instance inst)
-                      (conv/put-many descendants))]
-    (let [[conv'' fr] (run-start-hooks conv'
-                                       (into [iid] (map :instance/id descendants)))]
-      (cond
-        (rendered-output? fr)
-        [conv'' fr]
+                      (conv/put-many descendants))
+        [conv'' fr] (run-start-hooks conv'
+                                     (into [iid] (map :instance/id descendants)))]
+    (cond
+      (rendered-output? fr)
+      [conv'' fr]
 
-        (nil? (conv/instance conv'' iid))
-        [conv'' fr]
+      (nil? (conv/instance conv'' iid))
+      [conv'' fr]
 
-        :else
-        (let [[c f] (frame/render-slot-overlay conv'' parent-id old-iid iid)]
-          [c (conj (vec fr) f)])))))
+      :else
+      (let [[c f] (frame/render-slot-overlay conv'' parent-id old-iid iid)]
+        [c (conj (vec fr) f)]))))
 
 (defn- resume-parent
   "Deliver `value` to `parent-id` under `resume-key`, then render the
@@ -411,14 +424,11 @@
 
 (defmethod step :io
   [conv eff]
-  ;; Fire and forget.  Side-effecting work belongs off the request
-  ;; thread so SSE pushes stay snappy.  If you want to feed results back
-  ;; into the conversation, the `f` itself can call back into the
-  ;; framework via the public dispatch API.
-  (let [f (e/io-thunk eff)]
-    (future (try (f)
-                 (catch Throwable t
-                   (println "stube :io effect threw:" (ex-message t))))))
+  ;; Fire and forget when a runtime is interpreting effects.  Pure
+  ;; `run-effects`/`replay` leave the thunk untouched so tests never
+  ;; execute arbitrary side effects by accident.
+  (when-let [run! *run-io!*]
+    (run! (e/io-thunk eff)))
   [conv []])
 
 (defmethod step :after
@@ -636,6 +646,13 @@
   [k cid]
   ((runtime-var 'dev.zeko.stube.runtime/shell-for) k cid))
 
+(defn head-tags
+  "Return Hiccup nodes for the assets required by [[shell-for]].  Host
+  pages should include these in `<head>`: optional stock CSS,
+  preserve.js, Datastar, and optional halos tooling."
+  [k]
+  ((runtime-var 'dev.zeko.stube.runtime/head-tags) k))
+
 (defn dispatch!
   "Dispatch an event into live conversation `cid` in runtime `k` and
   return the produced fragments."
@@ -713,7 +730,11 @@
 (defn ^:no-doc subscriptions [k]
   ((runtime-var 'dev.zeko.stube.runtime/subscriptions) k))
 
-(defn ^:no-doc publish! [k topic msg]
+(defn publish!
+  "Publish `msg` to every live instance subscribed to `topic` in
+  runtime kernel `k`.  Use this from host code outside component
+  dispatch; component code can call `dev.zeko.stube.core/publish!`."
+  [k topic msg]
   ((runtime-var 'dev.zeko.stube.runtime/publish!) k topic msg))
 
 (defn ^:no-doc authorized? [k request cid]

@@ -17,8 +17,9 @@
   | `delete!`    | when a conversation ends (`:end`, reaper)   |
 
   The default is [[in-memory-store]], which keeps the slice-0 behaviour
-  unchanged: the in-process atom in `dev.zeko.stube.server` is the only copy of
-  the truth and `save!` is a no-op.
+  unchanged: the in-process conversation atom on the active
+  `dev.zeko.stube.runtime` kernel is the only copy of the truth and
+  `save!` is a no-op.
 
   ──────────────────────────────────────────────────────────────────────
   Cloroutine and persistence
@@ -84,10 +85,10 @@
 ;; ---------------------------------------------------------------------------
 
 (defn in-memory-store
-  "The default store.  Keeps no copy of its own — `dev.zeko.stube.server`'s
-  in-process atom IS the source of truth — and treats every operation
-  as a no-op.  Use this for tests, REPL iteration, and any deployment
-  where you genuinely don't need crash-resume."
+  "The default store.  Keeps no copy of its own — the runtime kernel's
+  in-process conversation atom IS the source of truth — and treats every
+  operation as a no-op.  Use this for tests, REPL iteration, and any
+  deployment where you genuinely don't need crash-resume."
   []
   (reify ConversationStore
     (load-all [_] {})

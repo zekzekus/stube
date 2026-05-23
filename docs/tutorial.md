@@ -173,7 +173,7 @@ Then handle it:
                 (-> self
                     (update :items conj {:id (random-uuid) :text t})
                     (assoc :draft ""))))
-    :delete [(s/call :ui/confirm {:question "Delete this item?"}
+    :delete [(s/call (s/confirm "Delete this item?")
                      :on-confirm-delete)]
     self))
 
@@ -194,7 +194,7 @@ question and the answer:
 
 ```clojure
 :delete [(assoc self :pending-delete payload)
-         [(s/call :ui/confirm {:question "Delete this item?"}
+         [(s/call (s/confirm "Delete this item?")
                   :on-confirm-delete)]]
 ```
 
@@ -215,8 +215,8 @@ What just happened, at the kernel level:
 1. The click fired with `:event :delete`, `:payload <id>`.
 2. `:handle` returned `[self' [(s/call ...)]]` — *update self,
    then emit one effect: push a child onto the stack.*
-3. The kernel instantiated `:ui/confirm` (one of stube's stock
-   components), recorded that when it `:answer`s the parent's
+3. `s/confirm` registered and embedded `:ui/confirm` (one of stube's
+   stock components); the kernel recorded that when it `:answer`s the parent's
    `:on-confirm-delete` should fire, and rendered the new top
    frame over your list.
 4. The user clicked Yes / No. `:ui/confirm` emitted
@@ -533,6 +533,12 @@ A few next steps worth exploring:
   it on `:tick`.
 - **`s/upload-attrs` for zero‑JS file uploads.** See
   `examples/dev/zeko/stube/examples/file_upload.clj`.
+- **`s/keyed-children` for dynamic collections of child components.**
+  See `examples/dev/zeko/stube/examples/columns.clj` for add/remove/
+  replace/reorder without re-rendering the whole parent.
+- **`s/preserve` / `s/on-mount` for third-party widgets.** Mark the
+  widget host as preserved so Datastar keeps its child DOM alive across
+  morphs.
 - **Custom decorations.** Wrap any component with a site header /
   permission check / breadcrumb with `s/decorate!`.
 - **The REPL.** `(s/inspect cid)` shows the live conversation;
@@ -626,7 +632,7 @@ The complete `src/standup.clj` is below for copy‑paste convenience.
 
       :delete
       [(assoc self :pending-delete payload)
-       [(s/call :ui/confirm {:question "Delete this item?"} :on-confirm-delete)]]
+       [(s/call (s/confirm "Delete this item?") :on-confirm-delete)]]
 
       :edit
       (when-let [item (some #(when (= (:id %) payload) %) (:items self))]

@@ -46,19 +46,20 @@ The real payoff shows up when one component *calls* another:
              [:button (s/on self :click :as :cancel) "Cancel"]])
   :handle (fn [self {:keys [event]}]
             (case event
-              :save   [(s/call :ui/confirm {:question "Save changes?"} :on-confirmed)]
+              :save   [(s/call (s/confirm "Save changes?") :on-confirmed)]
               :cancel [(s/answer :cancelled)]))
   :on-confirmed
   (fn [self yes?]
     [(s/answer (if yes? :saved :cancelled))]))
 ```
 
-`(s/confirm "Save changes?")` is a component. Calling it stacks it on
-top of the current frame. When the user clicks Yes or No it answers
-back — and your `:on-confirmed` resume fires with the value. The
-component doing the asking never thinks about callbacks, promises, or
-modal state machines: it just calls a question and reads the answer.
-That is the Seaside model, rebuilt for 2026.
+`(s/confirm "Save changes?")` returns an embed spec for the stock
+confirmation component. Calling it stacks that component on top of the
+current frame. When the user clicks Yes or No it answers back — and
+your `:on-confirmed` resume fires with the value. The component doing
+the asking never thinks about callbacks, promises, or modal state
+machines: it just calls a question and reads the answer. That is the
+Seaside model, rebuilt for 2026.
 
 ---
 
@@ -70,6 +71,7 @@ That is the Seaside model, rebuilt for 2026.
 | [**API reference**](docs/api.md) | Every public function in `dev.zeko.stube.core`. |
 | [**Internals**](docs/internals.md) | How the kernel, conversation and effects fit together. |
 | [**Rationale**](docs/rationale.md) | Why stube exists. Seaside, the uncommon web, and where the model came from. |
+| [**Changelog**](CHANGELOG.md) | Big-rock changes by release/development pass. |
 
 The design notes that drove the implementation live in
 [`docs/v2.md`](docs/v2.md) and [`docs/v2_1.md`](docs/v2_1.md).
@@ -140,12 +142,17 @@ first appears.
 
 The stock stube shell loads `/stube/preserve.js` before Datastar, so
 standalone apps get the bridge automatically. If you embed stube with
-`shell-for`, include that script in your host page before the Datastar
-runtime:
+`shell-for`, include `(stube/head-tags kernel)` in your host page's
+`<head>`; it returns the stock CSS (unless disabled), the preserve
+bridge, Datastar, and optional halos tooling with the right
+`:base-path` applied:
 
-```html
-<script type="module" src="/widget/stube/preserve.js"></script>
-<script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@main/bundles/datastar.js"></script>
+```clojure
+[:html
+ (into [:head [:title "Host app"]]
+       (stube/head-tags stube-kernel))
+ [:body
+  (stube/shell-for stube-kernel cid)]]
 ```
 
 If you run your own Idiomorph bridge outside Datastar, use the same
@@ -194,9 +201,10 @@ Then in code:
 (require '[dev.zeko.stube.core :as s])
 ```
 
-The version will move freely while the API settles; nothing in
-`dev.zeko.stube.core` is expected to change shape, but anything
-outside it is internal.
+The version will move freely while the API settles. Component authors
+should stay in `dev.zeko.stube.core`. Host frameworks may also use the
+embedder surface in `dev.zeko.stube.kernel` and
+`dev.zeko.stube.adapter.ring`; other namespaces are internal.
 
 ### Datastar SDK pinning
 
@@ -233,7 +241,9 @@ Stable embedder API:
 - `stube/make-kernel` creates an isolated runtime instance.
 - `stube/mint-conversation!` registers a root component for a request.
 - `stube/shell-for` returns a Hiccup fragment for the host layout.
+- `stube/head-tags` returns the CSS/script tags required by that fragment.
 - `stube/dispatch!` dispatches into a live conversation and returns fragments.
+- `stube/publish!` publishes from host code into that runtime kernel.
 - `stube/replay` runs the same interaction path without mutating runtime state.
 - `stube/halt!` closes open streams and clears runtime registries.
 
@@ -309,8 +319,11 @@ a browser.
 
 This is a personal research project, not a product. The implementation
 is real and the bundled examples work, but the API will move as the
-underlying experiment evolves. Anything in `dev.zeko.stube.core` is
-treated as the stable surface; anything else is internal.
+underlying experiment evolves. Component definitions currently live in
+a process-global registry; that is an intentional hot-reload-friendly
+trade-off for now. Runtime state (conversations, SSE sessions, timers,
+subscriptions) lives on isolated kernel values, so embedded kernels do
+not share live state.
 
 Bug reports, design discussions and Seaside-veteran war stories are
 all welcome — the more company on this thread, the better.

@@ -121,7 +121,7 @@
                               (s/on self :click :as :back-click))
                "Back"]]])
 
-  :handle (fn [self {:keys [event]}]
+  :handle (fn [_self {:keys [event]}]
             (case event
               ;; A non-`::back` answer ends the wizard cleanly via the
               ;; wizard task's `:on-done` resume key.

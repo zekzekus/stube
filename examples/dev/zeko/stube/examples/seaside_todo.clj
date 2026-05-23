@@ -717,7 +717,8 @@
       (= :edit (:op answer))
       (let [task (:task answer)]
         (-> self
-            (update :db db-update-task (:email self) (:id task) merge task)
+            (update :db db-update-task (:email self) (:id task)
+                    #(merge % task))
             (assoc :dialog-open? false
                    :message (message :info "Task saved."))))
 

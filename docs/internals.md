@@ -43,18 +43,22 @@ src/dev/zeko/stube/
   effects.clj       ← constructors + accessors for the effect vocabulary
   fragments.clj     ← {:fragment/kind …} + the Datastar SSE translator
   frame.clj         ← render one frame; render-slot-overlay
+  keyed.clj         ← keyed-child reconciliation and rendering
   lifecycle.clj     ← run :start / :stop / :wakeup
   kernel.clj        ← step / run-effects / dispatch
+  runtime.clj       ← per-kernel mutable runtime state and hooks
   flow.clj          ← defflow macro, cloroutine glue
   render.clj        ← hiccup → HTML; data-on / data-bind helpers
   ui.clj            ← stock confirm / prompt / choose / info components
   store.clj         ← ConversationStore protocol + in-memory / file impls
-  async.clj         ← timers, pub/sub, the pending-flow baton
   session.clj       ← session cookie + ownership token
   http.clj          ← ring handlers (shell, SSE, event, back, upload)
+  adapter/ring.clj  ← Reitit route data / Ring handler for embedded kernels
+  kit.clj           ← optional Integrant adapter
   routes.clj        ← reitit-ring wiring
   shell.clj         ← the empty HTML page Datastar bootstraps from
-  server.clj        ← http-kit lifecycle + the live conversation atom
+  server.clj        ← standalone http-kit lifecycle around a default kernel
+  errors.clj        ← local error banner fragments + :on-error hook
   halos*.clj        ← dev tool (overlay + inspector)
 ```
 
@@ -112,6 +116,7 @@ Three observations:
  :instance/resume    :on-login | nil       ; where THIS frame's answer flows
  :instance/rendered? false                  ; toggled after first DOM patch
  :instance/children  {:slot/header "ix-…"} ; eager children from :children
+ :instance/keyed-slots {:slot/cols {…}}     ; keyed-child framework state
  :instance/slot      :slot/main             ; iff this is a call-in-slot child
  :instance/previous  "ix-prev"              ; the displaced child to restore on answer
  …user state from (:component/init cdef)…}
@@ -120,7 +125,8 @@ Three observations:
 User state lives **at the top level** of the instance map, not under
 a `:state` key. Handlers therefore see one merged map. The kernel
 calls `preserve-meta` after every handler return to make sure a
-mis-typed handler can't clobber the `:instance/*` keys.
+mis-typed handler can't clobber the `:instance/*` keys, including
+framework-owned keyed-child metadata.
 
 ### Resume keys, the right way around
 
@@ -129,7 +135,8 @@ v2.md got slightly wrong:
 
 > The resume key lives on the **child** frame, not the parent.
 
-When `(s/call :ui/prompt {…} :on-name)` runs, the kernel:
+When `(s/call (s/prompt "Name?") :on-name)` runs, the helper returns
+an embed spec for `:ui/prompt`, then the kernel:
 
 1. Instantiates `:ui/prompt` and stamps the new child instance with
    `:instance/resume :on-name`.
@@ -154,12 +161,15 @@ The kernel's effect vocabulary is small enough to fit on one card:
 [:call <embed> :resume k]            push a child frame
 [:call-in-slot <slot> <embed> :resume k]
                                       swap an embedded slot's child
+[:set-keyed-children <slot> [[key embed]…]]
+                                      reconcile an ordered keyed child set
 [:answer v]                          pop this frame, deliver v
 [:replace <embed>]                   pop this frame, push another (Seaside `become:`)
 [:patch hiccup]                      extra DOM patch, no stack change
 [:patch-signals {…}]                 push a Datastar signal patch
 [:execute-script "..."]              raw JS in the browser
-[:io fn]                             fire-and-forget off-thread thunk
+[:history :replace|:push url]        sync browser URL
+[:io fn]                             runtime-interpreted off-thread thunk
 [:after ms event]                    schedule a future event for this instance
 [:subscribe topic event]             subscribe this instance to a topic
 [:unsubscribe]  /  [:unsubscribe t]  drop subscription(s)
@@ -201,7 +211,14 @@ Implementation:
 `step` is a multimethod keyed on the effect tag. Each method is one
 small piece of semantics: `:call` instantiates and pushes; `:answer`
 unwinds and resumes; `:replace` does the Seaside `become:`; `:back`
-rewinds history. The whole multimethod is ~250 lines.
+rewinds history. The multimethod is intentionally centralised today;
+`todo.md` tracks the pre-1.0 line-count reduction target.
+
+The kernel also has dynamic side-effect hooks (`*schedule-event!*`,
+`*subscribe!*`, `*unsubscribe!*`, `*run-io!*`) that the runtime binds
+while folding live requests. Without those bindings, the pure fold keeps
+those effects inert: for example, `[:io f]` produces no fragments and
+does not call `f` during `s/dispatch` / `s/replay`.
 
 ### One subtle invariant: post-handler auto-render
 
@@ -229,10 +246,11 @@ http.clj  event-handler
   │ pull signals from the request body (JSON)
   │ pull structured payload from the _stube_payload query param (EDN)
   │ check session authorization
-  │ server/dispatch! cid {:instance-id iid :event :inc :payload p :signals s}
+  │ kernel/dispatch! k cid {:instance-id iid :event :inc :payload p :signals s}
   ▼
-server.clj  dispatch!  →  apply-conv!  →  swap-conv!
-  │ bind render/*cid*, kernel/*schedule-event!*, *subscribe!*, *unsubscribe!*
+runtime.clj  dispatch!  →  apply-conv!  →  swap-conv!
+  │ bind render/*cid*, kernel/*current-kernel*,
+  │      kernel/*schedule-event!*, *subscribe!*, *unsubscribe!*, *run-io!*
   │ atomically: kernel/dispatch conv event  →  [conv' frags]
   │ persist via store/save!
   │ push frags to the open SSE generator
@@ -265,10 +283,10 @@ Two important things this picture flattens:
   child answers, the kernel rebinds `effects/*effect-iid*` to the
   parent's id so any `s/call-in-slot` inside the resume targets the
   correct parent. Embedded children with their own handlers run with
-  the embedded instance as origin. Code in `:io` thunks running off
-  the request thread sees no binding — that's by design; if you
-  want async work to land back in the conversation, dispatch a
-  fresh event from inside the thunk via the public API.
+  the embedded instance as origin. Code in `:io` thunks should treat
+  the conversation as out-of-band; if async work needs to land back in
+  the UI, publish or dispatch a fresh event instead of mutating the old
+  `self`.
 
 ---
 
@@ -374,24 +392,29 @@ and persists cleanly.
 
 ## Async surfaces
 
-`dev.zeko.stube.async` holds three side-effecting registries that
-deliver events back into conversations from off-thread:
+`dev.zeko.stube.runtime` holds the side-effecting registries on each
+kernel value, so embedded kernels do not share live state:
 
 | atom | role |
 |------|------|
-| `!pending-flows`  | one-shot baton: a cid is created in `mount!` and its flow id sits here until the first SSE connect boots it |
-| `!timers`         | scheduled futures created by `[:after ms event]` |
-| `!subscriptions`  | `{topic → {[cid iid] event}}` for pub/sub |
+| `:!conversations` | `{cid → conv}` live conversation state |
+| `:!sse-sessions`  | `{cid → sse-generator}` open Datastar channels |
+| `:!pending-roots` | one-shot baton: a cid is minted by shell GET and its root embed sits here until the first SSE connect boots it |
+| `:!timers`        | scheduled futures created by `[:after ms event]` |
+| `:!subscriptions` | `{topic → {[cid iid] event}}` for pub/sub |
+| `:!shutting-down?` | shutdown/drain gate |
 
-Delivery in all three cases happens via a single function
-(`!dispatch-fn`) that the server installs at startup. Keeping that
-dependency one-way (server requires async, async never requires
-server) avoids a circular require.
+The pure kernel never reaches into those atoms. During `apply-conv!`,
+the runtime binds the kernel's scheduling/subscription/IO hooks; the
+effect fold calls the hook, and the hook updates this kernel's registry
+or starts the relevant future.
 
-`publish!` is a regular function call, not an effect — anyone can
-invoke it (including code that has no conversation context). It
-spawns one future per subscriber and dispatches each as a normal
-event with `:payload` set to the published message.
+`s/publish!` is a regular function call, not an effect. From inside a
+component dispatch it uses the `*current-kernel*` binding, so embedded
+components publish into their own host kernel. Outside a dispatch it
+falls back to the standalone server's default kernel. Delivery spawns
+one future per subscriber and dispatches each as a normal event with
+`:payload` set to the published message.
 
 ---
 
@@ -425,7 +448,7 @@ effort; a disk-full condition must not break the live request.
 
 ## The HTTP layer
 
-Five routes, all in `dev.zeko.stube.http`:
+Five conversation routes, all in `dev.zeko.stube.http`:
 
 ```
 GET  /<mount-path>           → shell-handler   ; mint cid, serve HTML
@@ -435,8 +458,13 @@ POST /conv/:cid/:iid/:event  → event-handler   ; dispatch one event
 POST /stube/upload/:cid/:iid → upload-handler  ; multipart → :upload-received
 ```
 
-Plus `/stube/ui.css` (the stock stylesheet) and `/stube/halos.js`
-(the dev overlay, when halos are enabled).
+Those are the standalone/legacy shapes. Embedded kernels default to the
+shorter adapter routes under their `:base-path`: `/sse/:cid`,
+`/back/:cid`, `/event/:cid/:iid/:event`, and `/upload/:cid/:iid`.
+
+Plus `/stube/ui.css` (the stock stylesheet), `/stube/preserve.js` (the
+preserved-subtree bridge), and `/stube/halos.js` (the dev overlay, when
+halos are enabled).
 
 The SSE handler has three startup paths:
 
@@ -444,9 +472,16 @@ The SSE handler has three startup paths:
 2. **Restored conversation** — the cid exists in memory (loaded
    from disk on startup, or carried over a hot reload), so the top
    frame's `:wakeup` runs and the kernel re-renders shell-style.
-3. **Unknown cid** — the SSE channel stays empty; the browser sees
-   no patches. Stale event POSTs return 410 and a "this page is
-   stale, please reload" patch.
+3. **Unknown cid** — the SSE channel stays empty; the browser sees no
+   patches. Event/upload POSTs for a missing or ended conversation
+   return 410 and, when possible, push a "this page is stale, please
+   reload" patch before closing the conversation.
+
+An event/upload POST for a missing instance inside an otherwise-live
+conversation is different: it is treated as a harmless stale event and
+returns 204 without ending the conversation. Double-clicks, slot swaps,
+keyed-child replacements, timers, and browser retries can all produce
+that shape legitimately.
 
 Session ownership is enforced by a signed cookie set on the shell
 response. The cookie's value is also stamped onto `:conv/owner-token`
@@ -465,6 +500,7 @@ enough to drive someone else's conversation.
   <head>
     <meta charset="utf-8">
     <link rel="stylesheet" href="/stube/ui.css">   <!-- optional -->
+    <script type="module" src="/stube/preserve.js"></script>
     <script type="module" src="<datastar-cdn>"></script>
   </head>
   <body data-init="@get('/conv/CID/sse')">
@@ -479,8 +515,10 @@ event after Datastar attaches — one of the five Datastar facts the
 slice-0 implementation had to discover the hard way; see `v2_1.md`
 §0.)
 
-After that one line of HTML, every UI patch in the user's session
-arrives via the SSE stream.
+`shell/head-tags` exposes the same head nodes for embedders, with
+`:base-path`, `:route-style`, `:ui-css?`, and `:halos?` already applied;
+`kernel/head-tags` is the public wrapper. After that one line of HTML,
+every UI patch in the user's session arrives via the SSE stream.
 
 ---
 
@@ -549,8 +587,8 @@ Want to understand a particular thing? Start here.
 | How SSE patches are emitted | `fragments.clj` |
 | How `defflow` is built | `flow.clj` (~210 lines) |
 | Routes and shell page | `http.clj` + `shell.clj` |
-| Live conversation storage | `server.clj` + `store.clj` |
-| Timers and pub/sub | `async.clj` |
+| Live conversation storage | `runtime.clj` + `store.clj`; `server.clj` is the standalone wrapper |
+| Timers and pub/sub | `runtime.clj` |
 | The stock dialogs | `ui.clj` |
 | The dev overlay | `halos.clj`, `halos/http.clj`, `resources/dev/zeko/stube/halos.js` |
 
@@ -571,7 +609,8 @@ A few things that are deliberately not in stube as of this writing:
   to decide.
 - **No bundled database.** The conversation is your application
   state for the duration of a session; long-lived data goes wherever
-  your app keeps it. `s/io` and `s/after` exist for the connections.
+  your app keeps it. `s/io`, `s/after`, and `s/publish!` are bridges
+  back into that outside world, not a storage layer.
 - **No client-side framework.** That is the entire point. If the
   browser needs to do something Datastar can't, `(s/execute-script)`
   is the escape hatch.

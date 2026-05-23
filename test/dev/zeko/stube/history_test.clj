@@ -10,7 +10,6 @@
             [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.core         :as s]
             [dev.zeko.stube.effects      :as e]
-            [dev.zeko.stube.fragments    :as f]
             [dev.zeko.stube.kernel       :as kernel]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.store        :as store]))
@@ -73,7 +72,7 @@
     {:component/id     :t/hist
      :component/init   (constantly {:n 0})
      :component/render (fn [s] [:div {:id (:instance/id s)} (:n s)])
-     :component/handle (fn [s {:keys [event]}]
+     :component/handle (fn [s _event]
                          (let [n' (inc (:n s))]
                            [(assoc s :n n')
                             [(s/history :replace (str "/counter?n=" n'))]]))})

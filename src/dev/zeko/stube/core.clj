@@ -4,8 +4,8 @@
   Most users only need this namespace.  It re-exports the small set of
   functions that are intended to be called from application code; the
   internals live in [[dev.zeko.stube.kernel]], [[dev.zeko.stube.conversation]],
-  [[dev.zeko.stube.registry]], [[dev.zeko.stube.render]], [[dev.zeko.stube.http]] and
-  [[dev.zeko.stube.server]].
+  [[dev.zeko.stube.registry]], [[dev.zeko.stube.render]], [[dev.zeko.stube.runtime]],
+  [[dev.zeko.stube.http]] and [[dev.zeko.stube.server]].
 
   ──────────────────────────────────────────────────────────────────────
   At a glance
@@ -13,7 +13,7 @@
 
       (require '[dev.zeko.stube.core :as s])
 
-      (s/defcomponent :ui/prompt
+      (s/defcomponent :demo/prompt-number
         :init   (fn [{:keys [text]}] {:text text :answer \"\"})
         :keep   #{:answer}
         :render (fn [self]
@@ -27,11 +27,11 @@
       (s/defcomponent :demo/guess
         :init   (fn [_] {:target (rand-int 100)})
         :handle (fn [_ _]
-                  [(s/call :ui/prompt {:text \"Guess 1–100\"} :on-guess)])
+                  [(s/call :demo/prompt-number {:text \"Guess 1–100\"} :on-guess)])
         :on-guess (fn [self n]
                     (cond
                       (< n (:target self))
-                      [(s/call :ui/prompt {:text \"Too low\"} :on-guess)]
+                      [(s/call :demo/prompt-number {:text \"Too low\"} :on-guess)]
                       :else
                       [(s/end {:winner true})])))
 
@@ -42,8 +42,9 @@
   Stability of this surface
   ──────────────────────────────────────────────────────────────────────
   Everything in this namespace is intended to remain stable across
-  framework versions.  Names and arities outside this namespace are
-  considered internal until the framework reaches 1.0."
+  framework versions.  Host-framework integration also has a stable
+  surface in [[dev.zeko.stube.kernel]] / [[dev.zeko.stube.adapter.ring]].
+  Other namespaces are internal until the framework reaches 1.0."
   ;; Shadow `clojure.core/await`; see [[dev.zeko.stube.flow]] for the rationale.
   (:refer-clojure :exclude [await])
   (:require [dev.zeko.stube.conversation :as conv]
@@ -140,6 +141,22 @@
 ;; `[:call <embed> :resume <k>]` vector the kernel has always understood
 ;; — so existing literal-vector code keeps working.
 
+(defn- embed-spec? [x]
+  (and (map? x) (contains? x :embed/type)))
+
+(defn- ->embed [component-or-embed]
+  (if (embed-spec? component-or-embed)
+    component-or-embed
+    (conv/embed component-or-embed)))
+
+(defn- ->embed-with-args [component-or-embed args]
+  (if (embed-spec? component-or-embed)
+    (throw (ex-info (str "stube embed specs already include args; "
+                         "pass either an embed spec or component id + args")
+                    {:embed component-or-embed
+                     :args  args}))
+    (conv/embed component-or-embed args)))
+
 (defn call
   "Push a child onto the stack.  On `:answer`, the parent's resume key
   is invoked with the answered value.
@@ -148,17 +165,19 @@
       (s/call :ui/prompt :on-pick)         ; no args, resume :on-pick
       (s/call :ui/prompt {:text \"Hi\"})     ; args, no resume
       (s/call :ui/prompt {:text \"Hi\"} :on-pick) ; args + resume
+      (s/call (s/prompt \"Name?\") :on-pick) ; existing embed spec
 
-  Wraps the component id with [[embed]] internally; pass an existing
-  embed spec via [[dev.zeko.stube.effects/call]] if you already have one."
-  ([component-id]
-   (effects/call (conv/embed component-id)))
-  ([component-id args-or-resume]
+  Wraps component ids with [[embed]] internally.  Passing an existing
+  embed spec is useful with stock UI helpers and `defflow`-style helper
+  functions."
+  ([component-id-or-embed]
+   (effects/call (->embed component-id-or-embed)))
+  ([component-id-or-embed args-or-resume]
    (if (keyword? args-or-resume)
-     (effects/call (conv/embed component-id) args-or-resume)
-     (effects/call (conv/embed component-id args-or-resume))))
-  ([component-id args resume]
-   (effects/call (conv/embed component-id args) resume)))
+     (effects/call (->embed component-id-or-embed) args-or-resume)
+     (effects/call (->embed-with-args component-id-or-embed args-or-resume))))
+  ([component-id-or-embed args resume]
+   (effects/call (->embed-with-args component-id-or-embed args) resume)))
 
 (defn become
   "Pop the current frame and push another in its place (Seaside
@@ -168,28 +187,30 @@
 
       (s/become :wizard/step-2)
       (s/become :wizard/step-2 {:from data})
+      (s/become (s/embed :wizard/step-2 {:from data}))
 
   Named `become` instead of `replace` to avoid shadowing
   `clojure.core/replace`."
-  ([component-id]
-   (effects/replace (conv/embed component-id)))
-  ([component-id args]
-   (effects/replace (conv/embed component-id args))))
+  ([component-id-or-embed]
+   (effects/replace (->embed component-id-or-embed)))
+  ([component-id-or-embed args]
+   (effects/replace (->embed-with-args component-id-or-embed args))))
 
 (defn call-in-slot
   "Temporarily swap an embedded slot's child; the new child answers
   back to the parent without taking over the page.
 
       (s/call-in-slot :slot/main :feature/edit)
-      (s/call-in-slot :slot/main :feature/edit {:id 7} :on-saved)"
-  ([slot component-id]
-   (effects/call-in-slot slot (conv/embed component-id)))
-  ([slot component-id args-or-resume]
+      (s/call-in-slot :slot/main :feature/edit {:id 7} :on-saved)
+      (s/call-in-slot :slot/main (s/embed :feature/edit {:id 7}) :on-saved)"
+  ([slot component-id-or-embed]
+   (effects/call-in-slot slot (->embed component-id-or-embed)))
+  ([slot component-id-or-embed args-or-resume]
    (if (keyword? args-or-resume)
-     (effects/call-in-slot slot (conv/embed component-id) args-or-resume)
-     (effects/call-in-slot slot (conv/embed component-id args-or-resume))))
-  ([slot component-id args resume]
-   (effects/call-in-slot slot (conv/embed component-id args) resume)))
+     (effects/call-in-slot slot (->embed component-id-or-embed) args-or-resume)
+     (effects/call-in-slot slot (->embed-with-args component-id-or-embed args-or-resume))))
+  ([slot component-id-or-embed args resume]
+   (effects/call-in-slot slot (->embed-with-args component-id-or-embed args) resume)))
 
 (def ^{:doc "Pop this frame; deliver `value` to the parent under its
   resume key.  See [[dev.zeko.stube.effects/answer]]."}
@@ -221,8 +242,9 @@
   See [[dev.zeko.stube.effects/history]]."}
   history effects/history)
 
-(def ^{:doc "Fire-and-forget `(thunk)` off the request thread.
-  See [[dev.zeko.stube.effects/io]]."}
+(def ^{:doc "Ask the active runtime to run `(thunk)` off the request
+  thread, fire-and-forget.  Pure `dispatch`/`replay` leave this effect
+  inert unless a runtime hook is bound.  See [[dev.zeko.stube.effects/io]]."}
   io effects/io)
 
 (def ^{:doc "Terminate the conversation with a final value.  After
@@ -238,6 +260,8 @@
   embed conv/embed)
 
 (def ^{:doc "See [[dev.zeko.stube.render/on]]."}          on          render/on)
+(def ^{:doc "See [[dev.zeko.stube.render/on-target]]."}   on-target   render/on-target)
+(def ^{:doc "See [[dev.zeko.stube.render/event-url]]."}   event-url   render/event-url)
 (def ^{:doc "See [[dev.zeko.stube.render/bind]]."}        bind        render/bind)
 (def ^{:doc "See [[dev.zeko.stube.render/root-attrs]]."}  root-attrs  render/root-attrs)
 (def ^{:doc "See [[dev.zeko.stube.render/preserve]]."}   preserve   render/preserve)
@@ -414,8 +438,10 @@
 
 (def ^{:doc "Publish `msg` to every live instance subscribed to `topic`.
   Delivery is asynchronous and cid/iid-scoped; stale subscribers are
-  ignored.  Returns the number of subscribers targeted."}
-  publish! server/publish!) ;; re-export through server which re-exports from async
+  ignored.  From component code this targets the active runtime kernel;
+  outside a dispatch it targets the standalone server kernel.  Returns
+  the number of subscribers targeted."}
+  publish! server/publish!)
 
 ;; ---------------------------------------------------------------------------
 ;; Linear flows (slice 1)

@@ -3,9 +3,8 @@
   return ill-shaped state throw a clear Malli-explained error; the
   same code path is a no-op when dev mode is off, with zero hard
   dependency on Malli."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.test :refer [deftest is use-fixtures]]
             [dev.zeko.stube.conversation :as conv]
-            [dev.zeko.stube.core         :as s]
             [dev.zeko.stube.dev          :as dev]
             [dev.zeko.stube.kernel       :as kernel]
             [dev.zeko.stube.registry     :as registry]))

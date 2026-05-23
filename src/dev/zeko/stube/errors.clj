@@ -35,7 +35,10 @@
   "Build the stock error banner targeting `iid`.  An HTML comment in
   the patched markup carries the cid/iid/phase so the surface stays
   identifiable in browser devtools."
-  [cid iid throwable phase]
+  ([cid iid throwable phase]
+   (default-fragment cid iid throwable phase
+                     {:selector (str "#" iid) :patch-mode :outer}))
+  ([cid iid throwable phase opts]
   (f/error
     (render/html
       [:div {:id              iid
@@ -50,7 +53,15 @@
        [:span {:class "stube-error-message"}
         (or (ex-message throwable)
             (.getName ^Class (class throwable)))]])
-    {:selector (str "#" iid) :patch-mode :outer}))
+    opts)))
+
+(defn- fragment-opts
+  "Target the existing instance root for post-render errors; target the
+  shell root for first-render failures where `#iid` does not exist yet."
+  [conv iid]
+  (if (get-in conv [:conv/instances iid :instance/rendered?])
+    {:selector (str "#" iid) :patch-mode :outer}
+    {:selector render/*root-selector* :patch-mode :inner}))
 
 (defn- log-component-error! [cid iid phase ^Throwable t]
   (binding [*out* *err*]
@@ -75,4 +86,4 @@
                  (binding [*out* *err*]
                    (println "stube :on-error hook threw —" (ex-message t)))
                  nil)))
-        (default-fragment cid iid wrapped phase))))
+        (default-fragment cid iid wrapped phase (fragment-opts conv iid)))))
