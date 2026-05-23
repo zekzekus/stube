@@ -24,13 +24,13 @@
     (is (= 410 (:status resp)))
     (is (re-find #"stale" (:body resp)))))
 
-(deftest stale-event-forgets-existing-conversation
+(deftest stale-instance-event-in-live-conversation-is-noop
   (let [cid  (server/create-conversation! :test/root)
         resp (http/event-handler {:path-params {:cid cid
                                                 :iid "ix-missing"
                                                 :event "go"}})]
-    (is (= 410 (:status resp)))
-    (is (nil? (server/conversation cid)))))
+    (is (= 204 (:status resp)))
+    (is (some? (server/conversation cid)))))
 
 (deftest shell-sets-session-cookie
   (let [resp ((http/shell-handler :test/root) {:headers {}})]
@@ -69,6 +69,12 @@
     (is (= 403 (:status (http/event-handler
                          {:path-params {:cid cid :iid "ix-missing" :event "go"}
                           :headers {"cookie" "stube_sid=wrong"}}))))
+    (is (some? (server/conversation cid)))))
+
+(deftest stale-upload-instance-in-live-conversation-is-noop
+  (let [cid  (server/create-conversation! :test/root)
+        resp (http/upload-handler {:path-params {:cid cid :iid "ix-missing"}})]
+    (is (= 204 (:status resp)))
     (is (some? (server/conversation cid)))))
 
 (deftest upload-handler-dispatches-edn-file-summary

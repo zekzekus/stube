@@ -1,8 +1,8 @@
 # API reference
 
-Everything documented here lives in the `dev.zeko.stube.core`
-namespace — the surface I try to keep stable while the rest of the
-project evolves. Aliased as `s` by convention:
+Component-author APIs documented here live in the
+`dev.zeko.stube.core` namespace — the surface I try to keep stable
+while the rest of the project evolves. Aliased as `s` by convention:
 
 ```clojure
 (require '[dev.zeko.stube.core :as s])
@@ -21,14 +21,14 @@ The reference is organised by *what you're trying to do*:
   `defflow`, `decorate`
 - [Effects from a handler](#effects-from-a-handler) — `call`,
   `answer`, `patch`, …
-- [Hiccup helpers](#hiccup-helpers) — `root-attrs`, `on`, `bind`,
-  `render-slot`, …
+- [Hiccup helpers](#hiccup-helpers) — `root-attrs`, `on`,
+  `on-target`, `bind`, `render-slot`, `keyed-children`, …
 - [Stock UI components](#stock-ui-components) — `confirm`, `prompt`,
   `choose`, `info`
 - [Lifecycle and mounting](#lifecycle-and-mounting) — `mount!`,
   `start!`, …
 - [Embedding in a host Ring app](#embedding-in-a-host-ring-app) —
-  `make-kernel`, `ring-routes`, `shell-for`
+  `make-kernel`, `ring-routes`, `shell-for`, `head-tags`
 - [REPL / testing surface](#repl--testing-surface) — `dispatch`,
   `replay`, `inspect`
 - [Persistence](#persistence) — `in-memory-store`, `file-store`
@@ -173,26 +173,28 @@ vectors too, but the constructors are clearer.
 
 | constructor | wire form | meaning |
 |---|---|---|
-| `(s/call id)` `(s/call id args)` `(s/call id args :on-key)` | `[:call embed :resume k]` | push a child onto the stack; on `:answer`, parent's `:on-key` fires |
-| `(s/become id)` `(s/become id args)` | `[:replace embed]` | pop this frame and push another in its place (Seaside `become:`) |
-| `(s/call-in-slot slot id args :on-key)` | `[:call-in-slot slot embed :resume k]` | temporarily swap an embedded slot's child; child answers back without taking over the page |
+| `(s/call id)` `(s/call id args)` `(s/call embed :on-key)` | `[:call embed :resume k]` | push a child onto the stack; on `:answer`, parent's `:on-key` fires |
+| `(s/become id)` `(s/become id args)` `(s/become embed)` | `[:replace embed]` | pop this frame and push another in its place (Seaside `become:`) |
+| `(s/call-in-slot slot id args :on-key)` `(s/call-in-slot slot embed :on-key)` | `[:call-in-slot slot embed :resume k]` | temporarily swap an embedded slot's child; child answers back without taking over the page |
 | `(s/answer value)` | `[:answer v]` | pop this frame; deliver `v` to the parent under its resume key |
 | `(s/patch hiccup)` | `[:patch h]` | emit an extra DOM patch without changing the stack |
 | `(s/patch-signals m)` | `[:patch-signals m]` | push a Datastar signal patch (writes signal values back to the browser) |
 | `(s/execute-script js)` | `[:execute-script js]` | run literal JS in the browser (last-resort escape hatch) |
-| `(s/io thunk)` | `[:io fn]` | call `(thunk)` off the request thread, fire-and-forget |
+| `(s/history :replace url)` / `(s/history :push url)` | `[:history op url]` | sync the browser URL with `replaceState` / `pushState` |
+| `(s/io thunk)` | `[:io fn]` | ask the active runtime to run `(thunk)` off the request thread; pure replay leaves it inert |
 | `(s/after ms event)` | `[:after ms event]` | dispatch `event` to this instance after `ms` |
 | `(s/subscribe topic event)` | `[:subscribe topic event]` | subscribe this instance to `topic`; messages arrive as `event` |
 | `(s/unsubscribe)` / `(s/unsubscribe topic)` | `[:unsubscribe]` etc. | remove subscription(s) for this instance |
+| `(s/set-keyed-children slot pairs)` | `[:set-keyed-children slot pairs]` | reconcile an ordered set of keyed child instances |
 | `s/back` | `[:back]` | walk one step backward through the conversation's `:conv/history` |
 | `(s/end value)` | `[:end v]` | terminate the conversation with a final value; closes SSE |
 
-**Resume keys.** `(s/call :ui/prompt {:text "?"} :on-name)` records
+**Resume keys.** `(s/call (s/prompt "Name?") :on-name)` records
 `:on-name` on the *child's* `:instance/resume`. When the child
 `:answer`s, the kernel looks up `:on-name` on the parent's component
 definition and invokes it with the answered value. The parent's
 resume key isn't on the parent's instance, it's on the cdef — so any
-component that calls `:ui/prompt` can name its own resume.
+component that calls the prompt can name its own resume.
 
 **Structured event payloads.** `(s/on self :click :as [:pick item-id])`
 ships the rest of the vector as `:payload`. The handler sees
@@ -200,17 +202,19 @@ ships the rest of the vector as `:payload`. The handler sees
 
 ### `(s/publish! topic msg)`
 
-A regular function, not an effect — call it from anywhere. Delivers
-`msg` asynchronously to every live subscriber of `topic`. Returns
-the number of subscribers targeted. Stale subscribers are ignored.
+A regular function, not an effect. From component code it targets the
+active runtime kernel; outside a dispatch it targets the standalone
+server kernel. Delivers `msg` asynchronously to every live subscriber
+of `topic`. Returns the number of subscribers targeted. Stale
+subscribers are ignored.
 
 ### `(s/embed type)`  /  `(s/embed type args)`
 
 Returns an embed spec map: `{:embed/type type :embed/args args}`.
-The kernel uses these to instantiate children. You rarely write
-`embed` by hand — `s/call`, `s/become` and `s/call-in-slot` take
-the id and args for you. `:children` declarations and `s/await`
-inside a `defflow` are where embed specs show up most often.
+The kernel uses these to instantiate children. `s/call`, `s/become`
+and `s/call-in-slot` accept either a component id (+ optional args) or
+an existing embed spec. `:children` declarations, stock UI helpers, and
+`s/await` inside a `defflow` are where embed specs show up most often.
 
 ---
 
@@ -245,6 +249,26 @@ your handler sees in `:event`.
 Datastar registers listeners under the colon form (`data-on:<event>`).
 `data-on:submit` automatically calls `preventDefault`, so forms
 never trigger a full‑page reload.
+
+### `(s/on-target target-iid dom-event)`  /  `(s/on-target target-iid dom-event :as route-event)`
+
+Like `on`, but posts to an explicit instance id instead of `self`.
+Use it sparingly for cross-instance controls: for example, a child
+rendering a link that should notify a stable parent without answering
+and disappearing.
+
+```clojure
+[:button (s/on-target (:parent-iid self) :click :as [:open (:id note)])
+ "Open"]
+```
+
+### `(s/event-url iid route-event)`
+
+Low-level helper used by `on` and `on-target`. It returns the URL that
+Datastar should POST to for `iid` and `route-event`, including the EDN
+payload query parameter for structured events. Most code should prefer
+`on`; reach for `event-url` only when writing a custom Datastar
+expression.
 
 ### `(s/preserve self label)` / `(s/on-mount self label expr)`
 
@@ -297,6 +321,33 @@ Inline an embedded child inside the parent's render:
 
 The slot must be declared in `:children` (or by `call-in-slot`).
 
+### `(s/keyed-children self slot)`  /  `(s/set-keyed-children slot pairs)`
+
+Use keyed children when a parent owns an ordered collection of child
+instances, identified by stable application keys instead of fixed slot
+names. The render helper emits the container; the effect reconciles its
+contents.
+
+```clojure
+:render
+(fn [self]
+  [:section (s/root-attrs self)
+   (s/keyed-children self :slot/cols)])
+
+:handle
+(fn [self _]
+  [self [(s/set-keyed-children
+           :slot/cols
+           (mapv (fn [id]
+                   [id (s/embed :board/column {:id id})])
+                 (:column-ids self)))]])
+```
+
+Diff rules are intentionally small: a new key appends/prepends/inserts
+one child fragment, a removed key removes that child subtree, changed
+embed args re-initialise the child in place while preserving its root
+iid, and a pure reorder emits one outer patch for the container.
+
 ### `(s/context self)`
 
 Return the application context injected by an embeddable kernel's
@@ -331,9 +382,9 @@ arrives under `:payload`.
 
 ## Stock UI components
 
-Four canonical dialogs, registered automatically on first use.
-Each is a regular component — you can `s/call` or `s/await` them
-exactly like your own.
+Four canonical dialogs, registered automatically on first use. Each
+function returns an embed spec for a regular component — you can pass it
+to `s/call` or `s/await` exactly like your own embeds.
 
 | function | answers with | purpose |
 |---|---|---|
@@ -360,6 +411,22 @@ disable and ship your own.
 
 Register a flow at a URL path. `path` is a string like `"/wizard"`;
 `flow-id` is the namespaced keyword of a registered component.
+`mounts` returns the current standalone path→flow map.
+
+`mount!` also accepts `{:init-args-fn f}`. The function receives the
+Ring request for the shell GET and returns the init args passed to the
+root component:
+
+```clojure
+(s/mount! "/counter" :demo/counter
+  {:init-args-fn (fn [req]
+                   {:n (parse-long (or (s/query-value req "n") "0"))})})
+```
+
+### `(s/query-value request param-name)`
+
+Read one decoded query parameter directly from a Ring request, without
+requiring params middleware. It is mostly useful inside `:init-args-fn`.
 
 ### `(s/start!)`  /  `(s/start! opts)`
 
@@ -413,16 +480,25 @@ Stable functions:
 | `(stube/make-kernel opts)` | Create an isolated runtime instance. |
 | `(stube/mint-conversation! k root-id init-args request)` | Register a new conversation and return its cid. |
 | `(stube/shell-for k cid)` | Return a Hiccup fragment for the host layout. |
+| `(stube/head-tags k)` | Return the CSS/script Hiccup nodes required by `shell-for`. |
 | `(stube/dispatch! k cid event)` | Dispatch into live state and return produced fragments. |
+| `(stube/publish! k topic msg)` | Publish from host code into this runtime kernel. |
 | `(stube/replay k root-id events)` | Pure replay against the kernel configuration; no live state mutation. |
 | `(stube/halt! k)` | Close streams and clear runtime registries. |
 | `(stube-ring/ring-routes k)` | Reitit route data for SSE/event/back/upload/assets. |
 | `(stube-ring/ring-handler k)` | Plain Ring handler wrapping those routes. |
 
 `opts` supports `:context-fn`, `:store`, `:base-path`,
-`:session-id-fn`, `:on-conv-mint`, and `:on-error`. Values returned by
+`:session-id-fn`, `:on-conv-mint`, `:on-error`, `:ui-css?`,
+`:halos?`, `:route-style`, and `:root-selector`. Values returned by
 `:context-fn` are available to handlers and lifecycle hooks with
 `(s/context self)`.
+
+`stube-ring/ring-routes` also accepts `{:mounts {"/path" :root/id}}`
+or `{:mounts {"/path" {:flow-id :root/id :opts {:init-args-fn f}}}}`
+to add shell routes beside the adapter endpoints. `:base-path` prefixes
+the generated stube endpoints/assets (`/sse`, `/event`, `/stube/ui.css`,
+etc.); mount paths are left exactly as supplied by the host app.
 
 ---
 
@@ -433,13 +509,13 @@ Stable functions:
 Pretty-print a compact summary of conversation `cid` and return it.
 Returns nil if the conversation isn't active.
 
-### `(s/tree cid)`  /  `(s/instance cid iid)`  /  `(s/history cid)`  /  `(s/where type-kw)`
+### `(s/tree cid)`  /  `(s/instance cid iid)`  /  `(s/conv-history cid)`  /  `(s/where type-kw)`
 
 Halos REPL views:
 
 - `tree` prints the component tree.
 - `instance` returns the instance map for `iid`.
-- `history` summarises `:conv/history`.
+- `conv-history` summarises `:conv/history`.
 - `where` returns the `{:file … :line …}` source location captured
   for `type-kw` at `defcomponent` time.
 
@@ -524,15 +600,19 @@ is stale.
 [(s/become :other)]            [(s/call-in-slot :slot :child args :on-key)]
 [(s/answer v)]                 [(s/end v)]
 [(s/patch hiccup)]             [(s/patch-signals m)]
-[(s/io #(…))]                  [(s/after 1000 :tick)]
+[(s/history :replace "/x")]    [(s/io #(…))]
+[(s/after 1000 :tick)]
 [(s/subscribe :topic :ev)]     [(s/unsubscribe)]
 [s/back]                       [(s/execute-script "…")]
+[(s/set-keyed-children :slot/x [[id (s/embed :child args)]])]
 
 ;; Hiccup
 (s/root-attrs self {…} (s/on self :submit))
 (s/on self :click :as [:pick id])
+(s/on-target parent-iid :click :as [:pick id])
 (s/bind :draft)                (s/local-bind self :text)
 (s/render-slot self :slot/x)
+(s/keyed-children self :slot/x)
 (s/back-button "Back")
 (s/upload-attrs self)          (s/upload-frame self)
 

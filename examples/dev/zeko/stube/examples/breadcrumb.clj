@@ -111,26 +111,25 @@
         [:button (merge {:type     "button"
                          :class    (str "stube-button"
                                         (when last? " stube-button--primary"))
-                         :disabled (boolean last?)}
+                         :disabled last?}
                         (s/on self :click :as [:jump idx]))
          (:label (page id))]
         (when-not last? [:span {:style "color:#999;"} "›"])]))])
 
-(def ^:private breadcrumb-component
-  (s/decorate! (s/registry-lookup :demo/breadcrumb-page)
-    (fn [base]
-      {:component/id  :demo/breadcrumb
-       :component/doc "WAPath/WATrail port: a base page decorated with a breadcrumb trail via s/decorate."
-       :component/render
-       (fn [self]
-         [:section (s/root-attrs self {:style "padding:1rem; font-family:system-ui, sans-serif;"})
-          [:h2 "Breadcrumb decoration"]
-          [:p {:style "max-width:42rem; color:#555;"}
-           "The mounted component is not the base page.  It is a decorated "
-           "component definition that reuses the base init/handler and wraps "
-           "the base render output with this breadcrumb trail."]
-          (render-trail self)
-          (without-root-id ((:component/render base) self))])})))
+(s/decorate! (s/registry-lookup :demo/breadcrumb-page)
+  (fn [base]
+    {:component/id  :demo/breadcrumb
+     :component/doc "WAPath/WATrail port: a base page decorated with a breadcrumb trail via s/decorate."
+     :component/render
+     (fn [self]
+       [:section (s/root-attrs self {:style "padding:1rem; font-family:system-ui, sans-serif;"})
+        [:h2 "Breadcrumb decoration"]
+        [:p {:style "max-width:42rem; color:#555;"}
+         "The mounted component is not the base page.  It is a decorated "
+         "component definition that reuses the base init/handler and wraps "
+         "the base render output with this breadcrumb trail."]
+        (render-trail self)
+        (without-root-id ((:component/render base) self))])}))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

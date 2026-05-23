@@ -145,7 +145,9 @@
 ;; ---------------------------------------------------------------------------
 
 (defn io
-  "Call `(thunk)` off-thread, fire-and-forget."
+  "Ask the active runtime to call `(thunk)` off-thread, fire-and-forget.
+  Pure kernel folds leave this effect inert unless a runtime hook is
+  bound."
   [thunk]
   [:io thunk])
 

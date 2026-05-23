@@ -139,6 +139,9 @@
   the server can reconstruct `{:event :pick-day :payload day}` without
   teaching Datastar about stube metadata."
   [iid route-event]
+  (when-not (some? iid)
+    (throw (ex-info "dev.zeko.stube.render/event-url requires a target instance id"
+                    {:route-event route-event})))
   (let [{:keys [event payload]} (parse-route-event route-event)
         cid  (require-cid!)
         base (case *route-style*
@@ -147,6 +150,24 @@
     (if (= no-payload payload)
       base
       (str base "?" payload-query-param "=" (url-encode (pr-str payload))))))
+
+(defn on-target
+  "Like [[on]], but route the event to an explicit target instance id
+  instead of the component whose hiccup is being rendered.
+
+      [:button (s/on-target parent-iid :click :as [:open note-id]) \"Open\"]
+
+  This is intentionally a narrow escape hatch for cross-instance controls
+  such as links rendered inside one child that should notify a stable
+  parent without answering/removing the child."
+  ([target-iid dom-event]
+   (on-target target-iid dom-event :as dom-event))
+  ([target-iid dom-event as-kw route-event]
+   (when-not (= :as as-kw)
+     (throw (ex-info "dev.zeko.stube.render/on-target: 4-arity expects :as as the third argument"
+                     {:got as-kw})))
+   {(keyword (str "data-on:" (name dom-event)))
+    (str "@post('" (event-url target-iid route-event) "')")}))
 
 (defn back-url
   "URL the browser POSTs to for the conversation-level Back action."
@@ -325,12 +346,13 @@
       (s/root-attrs self (s/on self :submit) {:class \"x\"})
 
   The id has to be on the root element of every component so Datastar's
-  morph-by-id can locate the frame on subsequent renders."
+  morph-by-id can locate the frame on subsequent renders.  If an
+  attr-map also contains `:id`, the framework id wins."
   [self & attr-maps]
   (let [iid (or (:instance/id self)
                 (throw (ex-info "dev.zeko.stube.render/root-attrs requires an instance map"
                                 {:got self})))]
-    (apply merge {:id iid} attr-maps)))
+    (assoc (apply merge attr-maps) :id iid)))
 
 (defn bind
   "Return an attribute map that two-way binds the named signal to the

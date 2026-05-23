@@ -19,13 +19,18 @@
            (s/call :ui/prompt {:text "Hi"}))))
   (testing "args + resume"
     (is (= [:call (conv/embed :ui/prompt {:text "Hi"}) :resume :on-pick]
-           (s/call :ui/prompt {:text "Hi"} :on-pick)))))
+           (s/call :ui/prompt {:text "Hi"} :on-pick))))
+  (testing "existing embed spec"
+    (is (= [:call (conv/embed :ui/prompt {:label "Name"}) :resume :on-pick]
+           (s/call (s/embed :ui/prompt {:label "Name"}) :on-pick)))))
 
 (deftest become-builds-replace-effect
   (is (= [:replace (conv/embed :wizard/step-2)]
          (s/become :wizard/step-2)))
   (is (= [:replace (conv/embed :wizard/step-2 {:from :a})]
-         (s/become :wizard/step-2 {:from :a}))))
+         (s/become :wizard/step-2 {:from :a})))
+  (is (= [:replace (conv/embed :wizard/step-2 {:from :a})]
+         (s/become (s/embed :wizard/step-2 {:from :a})))))
 
 (deftest call-in-slot-builds-expected-wire-vector
   (is (= [:call-in-slot :slot/main (conv/embed :feature/edit) :resume nil]
@@ -35,7 +40,9 @@
   (is (= [:call-in-slot :slot/main (conv/embed :feature/edit {:id 7}) :resume nil]
          (s/call-in-slot :slot/main :feature/edit {:id 7})))
   (is (= [:call-in-slot :slot/main (conv/embed :feature/edit {:id 7}) :resume :on-saved]
-         (s/call-in-slot :slot/main :feature/edit {:id 7} :on-saved))))
+         (s/call-in-slot :slot/main :feature/edit {:id 7} :on-saved)))
+  (is (= [:call-in-slot :slot/main (conv/embed :feature/edit {:id 7}) :resume :on-saved]
+         (s/call-in-slot :slot/main (s/embed :feature/edit {:id 7}) :on-saved))))
 
 (deftest leaf-effect-ctors-match-literal-vectors
   (is (= [:answer 42]         (s/answer 42)))

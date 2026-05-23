@@ -106,12 +106,16 @@
   which parent slot it occupies and which child iid should be restored
   when it answers.
 
+  `:instance/keyed-slots` is populated by the keyed-children primitive
+  and is just as framework-owned as fixed `:instance/children` slots.
+
   `:stube/context` is adapter-supplied request/application context.  It
   is protected like instance metadata so handlers can read it via
   `s/context` without accidentally persisting edits to the context map."
   #{:instance/id :instance/type :instance/parent
     :instance/resume :instance/rendered? :instance/children
-    :instance/slot :instance/previous :stube/context})
+    :instance/keyed-slots :instance/slot :instance/previous
+    :stube/context})
 
 (defn instantiate
   "Build a fresh instance map from a component definition and an embed

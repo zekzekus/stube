@@ -15,8 +15,10 @@ User-facing guides:
   `dev.zeko.stube.core`, organised by what you're trying to do.
 - **[Internals](internals.md)** — how the kernel, the conversation
   and the effect language fit together.
+- **[Changelog](../CHANGELOG.md)** — big-rock framework changes by
+  release/development pass.
 
-Design notes (historical, but still accurate):
+Design notes (historical; useful context, not normative API docs):
 
 - **[v2.md](v2.md)** — the original design document.
 - **[v2_1.md](v2_1.md)** — the revised plan that drove the slices,

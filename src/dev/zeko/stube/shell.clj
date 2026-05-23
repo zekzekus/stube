@@ -29,6 +29,24 @@
                         :data-stube-base-path base-path))
      [:div {:id (root-id root-selector)}]]))
 
+(defn head-tags
+  "Hiccup nodes a host page should include in `<head>` for a stube shell
+  fragment: optional stock CSS, the preserve bridge, Datastar, and
+  optional halos tooling.
+
+  Standalone [[html]] uses this directly; embedders normally call the
+  public `dev.zeko.stube.kernel/head-tags` wrapper for their kernel."
+  [{:keys [dev? ui-css? base-path route-style root-selector]
+    :or {ui-css? true base-path "" route-style :legacy root-selector "#root"}}]
+  (binding [render/*base-path* base-path
+            render/*route-style* route-style
+            render/*root-selector* root-selector]
+    (cond-> []
+      ui-css? (conj [:link {:rel "stylesheet" :href (render/ui-css-url)}])
+      true    (conj [:script {:type "module" :src (render/preserve-js-url)}]
+                    [:script {:type "module" :src datastar-cdn}])
+      dev?    (conj [:script {:type "module" :src (render/halos-js-url)}]))))
+
 (defn html
   "Render the shell document for `cid`.  When `dev?` is true (server
   started with `:halos? true`), inject the halos overlay script and the
@@ -49,18 +67,18 @@
       (let [[_ body-attrs root] (fragment cid {:dev? dev?
                                                :base-path base-path
                                                :route-style route-style
-                                               :root-selector root-selector})]
+                                               :root-selector root-selector})
+            assets (head-tags {:dev? dev?
+                               :ui-css? ui-css?
+                               :base-path base-path
+                               :route-style route-style
+                               :root-selector root-selector})]
         (chassis/html
           [chassis/doctype-html5
            [:html {:lang "en"}
-            [:head
-             [:meta {:charset "utf-8"}]
-             [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
-             [:title "stube"]
-             (when ui-css?
-               [:link {:rel "stylesheet" :href (render/ui-css-url)}])
-             [:script {:type "module" :src (render/preserve-js-url)}]
-             [:script {:type "module" :src datastar-cdn}]
-             (when dev?
-               [:script {:type "module" :src (render/halos-js-url)}])]
+            (into [:head
+                   [:meta {:charset "utf-8"}]
+                   [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
+                   [:title "stube"]]
+                  assets)
             [:body body-attrs root]]])))))

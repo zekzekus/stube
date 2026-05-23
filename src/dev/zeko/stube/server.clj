@@ -139,7 +139,7 @@
   (kernel/subscriptions (default-kernel)))
 
 (defn publish! [topic msg]
-  (kernel/publish! (default-kernel) topic msg))
+  (kernel/publish! (or kernel/*current-kernel* (default-kernel)) topic msg))
 
 ;; ---------------------------------------------------------------------------
 ;; Mounts and dev tooling

@@ -36,7 +36,8 @@
   - Key in old but not new           → `:stop`, remove, emit `:remove`
                                        targeting the child iid.
   - Same key, different embed args   → re-`:init` the child in place
-                                       (iid preserved), emit `:outer`
+                                       (iid preserved, descendants rebuilt),
+                                       emit `:outer`
                                        at the child iid.
   - Same key, same embed args        → no fragment.
   - Different order, same key-set    → emit one `:outer` against the
@@ -66,6 +67,23 @@
   [self slot key]
   (get-in self [:instance/keyed-slots slot :children key :iid]))
 
+(defn- attach-context
+  "Mirror the kernel's context attachment for keyed children, which are
+  instantiated from this namespace rather than through `step :call`."
+  [conv inst]
+  (cond-> inst
+    (contains? conv :conv/context)
+    (assoc :stube/context (:conv/context conv))))
+
+(defn- attach-tree-context [conv inst descendants]
+  [(attach-context conv inst)
+   (mapv #(attach-context conv %) descendants)])
+
+(defn- instantiate-child-tree [conv parent-id embed]
+  (let [cdef (registry/lookup! (:embed/type embed))]
+    (apply attach-tree-context conv
+           (conv/instantiate-tree cdef embed parent-id nil registry/lookup!))))
+
 (defn render-children-hiccup
   "Inline the child instances currently registered for `slot` on `self`.
   Mirrors `render/render-slot`: looks each child up in `render/*conv*`,
@@ -93,9 +111,7 @@
 ;; ---------------------------------------------------------------------------
 
 (defn- mint-child [conv parent-id embed run-effects-fn]
-  (let [cdef (registry/lookup! (:embed/type embed))
-        [child descendants]
-        (conv/instantiate-tree cdef embed parent-id nil registry/lookup!)
+  (let [[child descendants] (instantiate-child-tree conv parent-id embed)
         child-iid (:instance/id child)
         conv (-> conv
                  (conv/put-instance child)
@@ -110,22 +126,36 @@
         [conv stop-frags] (lc/run-stop-hooks run-effects-fn conv iids)]
     [(conv/remove-subtree conv child-iid) stop-frags]))
 
+(defn- preserve-root-iid
+  "Install a freshly-instantiated subtree under the existing keyed-child
+  root iid.  Direct descendants must be repointed from the temporary root
+  iid to the preserved iid; deeper descendants already point at their
+  freshly-minted parents."
+  [child descendants child-iid]
+  (let [fresh-iid (:instance/id child)]
+    [(assoc child :instance/id child-iid :instance/rendered? false)
+     (mapv (fn [desc]
+             (cond-> desc
+               (= fresh-iid (:instance/parent desc))
+               (assoc :instance/parent child-iid)))
+           descendants)]))
+
 (defn- reinit-child
-  "Same iid, fresh `:init` with the new embed-args.  Returns
-  `[conv' child-iid]`."
-  [conv child-iid embed]
-  (let [cdef    (registry/lookup! (:embed/type embed))
-        existing (conv/instance conv child-iid)
-        ;; Build a placeholder embed spec that preserves the iid by
-        ;; rebuilding the instance and re-installing it under the same
-        ;; key.  We can't use `instantiate-tree` because it mints a
-        ;; fresh iid; instead init the state and merge.
-        init-fn  (or (:component/init cdef) (constantly {}))
-        new-state (init-fn (or (:embed/args embed) {}))
-        new-inst  (-> existing
-                      (merge new-state)
-                      (assoc :instance/rendered? false))]
-    [(conv/put-instance conv new-inst) child-iid]))
+  "Same key, fresh component state/tree, same root iid.  Stops the old
+  subtree, removes it, instantiates the new subtree, preserves the root
+  iid, runs `:start`, and returns `[conv' child-iid lifecycle-frags]`."
+  [conv parent-id child-iid embed run-effects-fn]
+  (let [[conv-stopped stop-frags] (drop-child conv child-iid run-effects-fn)
+        [child descendants]      (instantiate-child-tree conv-stopped parent-id embed)
+        [child descendants]      (preserve-root-iid child descendants child-iid)
+        conv'                    (-> conv-stopped
+                                     (conv/put-instance child)
+                                     (conv/put-many descendants))
+        [conv'' start-frags]     (lc/run-start-hooks
+                                    run-effects-fn
+                                    conv'
+                                    (into [child-iid] (map :instance/id descendants)))]
+    [conv'' child-iid (into (vec stop-frags) start-frags)]))
 
 (defn- render-child-outer
   "Render `child-iid` with explicit selector + :outer patch mode so it
@@ -198,14 +228,16 @@
       [c' (cond-> (into fs stop-frags)
             rendered? (conj (remove-frag iid)))])))
 
-(defn- reinit-step [rendered? new-embeds old-children]
+(defn- reinit-step [run-effects-fn rendered? parent-id new-embeds old-children]
   (fn [[c fs] k]
     (let [iid    (get-in old-children [k :iid])
-          [c' _] (reinit-child c iid (get new-embeds k))]
+          [c' _ lifecycle-frags] (reinit-child c parent-id iid
+                                               (get new-embeds k)
+                                               run-effects-fn)]
       (if rendered?
         (let [[c'' frag] (render-child-outer c' iid)]
-          [c'' (conj fs frag)])
-        [c' fs]))))
+          [c'' (conj (into fs lifecycle-frags) frag)])
+        [c' (into fs lifecycle-frags)]))))
 
 (defn- mint-step
   [run-effects-fn rendered? parent-id slot new-keys new-embeds]
@@ -258,7 +290,8 @@
                 removed)
 
         [conv frags]
-        (reduce (reinit-step rendered? new-embeds old-children)
+        (reduce (reinit-step run-effects-fn rendered? parent-id
+                             new-embeds old-children)
                 [conv frags]
                 changed-args)
 

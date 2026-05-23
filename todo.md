@@ -2,8 +2,10 @@
 
 The tier-1, tier-2, and tier-3 Seaside sweeps are done. The framework
 boots, persists, schedules, publishes, uploads, and round-trips
-hand-rolled conversations through EDN. What follows is the work between
-"the demos run" and a 1.0 we'd hand to someone else.
+hand-rolled conversations through EDN. The public docs now cover the
+component API, embedding API, tutorial path, internals, and changelog.
+What follows is the work between "the demos run" and a 1.0 we'd hand
+to someone else.
 
 Each item is labelled by its origin:
 
@@ -28,10 +30,10 @@ downstream choices it unblocks or constraints it removes.
 ## 1. The §15 bar — what the codebase needs to be true *as* code
 
 These are not features; they're the non-functional bar the design
-explicitly set. None of them is currently met.
+explicitly set. Some are now met; the rest remain pre-1.0 shape work.
 
-- [ ] **Kernel ≤ 350 lines.** `src/dev/zeko/stube/kernel.clj` is **695
-      lines** — almost double the budget. `invariant-test` currently
+- [ ] **Kernel ≤ 350 lines.** `src/dev/zeko/stube/kernel.clj` is **764
+      lines** — more than double the budget. `invariant-test` currently
       passes only via the `:rationale` opt-out. The right move is to
       extract the parts that aren't kernel-shaped: effect interpreters
       (`:after`, `:subscribe`, `:upload-received` plumbing), the
@@ -51,13 +53,13 @@ explicitly set. None of them is currently met.
       pass.
       [bar §15.3]
 
-- [ ] **Public surface freeze for 1.0.** `dev.zeko.stube.core` is the
-      documented stable namespace, but `stube.server`, `stube.render`,
-      `stube.ui`, and `stube.store` are re-exported piecemeal and used
-      directly by examples in places. Decide what is API and what is
-      internal, mark the rest `^:no-doc` / `:internal`, and add a
-      doc-test that fails if an example reaches past `core` /`flow`
-      /`ui`.
+- [x] **Document and tighten the public surface.** Current component
+      authors use `dev.zeko.stube.core`; host frameworks use
+      `dev.zeko.stube.kernel` plus `dev.zeko.stube.adapter.ring`.
+      Examples no longer reach into render/server/shell internals except
+      for the explicit embedded Ring example. A future 1.0 can still add
+      an automated no-internal-example invariant, but the published
+      boundary is now written down in `docs/api.md`.
       [shape]
 
 ---
@@ -203,20 +205,18 @@ exercised by anything but our local dev server.
 
 ## 6. Documentation & onboarding
 
-The README is enough to get the example browser running. It is not
-enough to *write* a component without reading the source.
+The main docs are now good enough to write a component without reading
+the source; remaining items are about contributor memory and automation.
 
-- [ ] **Public-API reference doc.** Generated from the `core` /
-      `flow` / `ui` namespaces' docstrings. The docstrings are already
-      good; what's missing is the rendered, navigable surface.
+- [x] **Public-API reference doc.** `docs/api.md` covers the stable
+      component-author API in `dev.zeko.stube.core` plus the stable
+      host-embedding surface in `dev.zeko.stube.kernel` /
+      `dev.zeko.stube.adapter.ring`.
       [shape, supports bar §15.4 "fits in your head"]
 
-- [ ] **"Build a small app" tutorial.** The example browser shows
-      what the framework can do; nothing yet walks a reader through
-      *making* a stube app. Target audience: a Clojure developer who
-      has never used Seaside. ~30 minutes from `git clone` to a
-      working two-screen flow. Reuse the wizard / todo demos, don't
-      invent new fiction.
+- [x] **"Build a small app" tutorial.** `docs/tutorial.md` walks a
+      Clojure developer through a live todo board with bindings,
+      call/answer, slot-local editing, pub/sub, and `defflow`.
       [shape]
 
 - [ ] **Decision log per design question.** `v2_1.md` §14 already
@@ -259,7 +259,8 @@ accident:
 
 - Time-travel UI (history exists; browsing it is an app).
 - Server-side optimistic updates (Datastar does them client-side).
-- First-class streaming flows (`:io` + `:patch` already covers it).
+- First-class streaming flows (runtime `:io` plus events/publishes can
+  cover it until a workload needs a primitive).
 - Per-component CSS scoping (Hiccup is global; Tailwind/CSS modules
   belong at the build layer).
 - WebSocket transport (SSE is the right primitive for our shape).

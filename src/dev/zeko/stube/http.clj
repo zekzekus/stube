@@ -184,6 +184,10 @@
              "Cache-Control" "no-store"}
    :body    "<!doctype html><title>uploaded</title>uploaded"})
 
+(defn- no-op-response []
+  {:status  204
+   :headers {"Cache-Control" "no-store"}})
+
 ;; ---------------------------------------------------------------------------
 ;; Handlers
 ;; ---------------------------------------------------------------------------
@@ -342,9 +346,14 @@
        (not (kernel/authorized? k req cid))
        (session/forbidden-response)
 
-       (or (:conv/ended? live)
-           (nil? (conv/instance live iid)))
+       (:conv/ended? live)
        (stale-response! k cid)
+
+       (nil? (conv/instance live iid))
+       ;; Match kernel/runtime semantics: a late iframe POST for an
+       ;; instance that was already removed is harmless, not proof that
+       ;; the whole page is stale.
+       (no-op-response)
 
        :else
        (with-mdc {:cid cid :iid iid}
@@ -375,9 +384,14 @@
        (not (kernel/authorized? k req cid))
        (session/forbidden-response)
 
-       (or (:conv/ended? live)
-           (nil? (conv/instance live iid)))
+       (:conv/ended? live)
        (stale-response! k cid)
+
+       (nil? (conv/instance live iid))
+       ;; Stale instance events happen normally after double-clicks,
+       ;; slot swaps, timers, or browser retries. The pure kernel treats
+       ;; them as no-ops; the HTTP boundary must not kill the conversation.
+       (no-op-response)
 
        :else
        (with-mdc {:cid cid :iid iid}

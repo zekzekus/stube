@@ -160,7 +160,7 @@
                               :style "padding:0.4rem 1rem;"}
                              (s/on self :click :as :again))
               "Pick another"]])
-  :handle (fn [self _] [(s/answer :again)]))
+  :handle (fn [_self _] [(s/answer :again)]))
 
 (s/defflow :demo/calendar []
   (loop []

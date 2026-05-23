@@ -1,0 +1,10 @@
+{:linters
+ {:unresolved-var
+  {:exclude [dev.zeko.stube.core/await]}
+
+  ;; `s/defflow` is a macro whose binding vector destructures embed args
+  ;; inside the generated cloroutine. clj-kondo cannot infer those local
+  ;; bindings from the macro body, so silence unresolved locals inside the
+  ;; defflow form while still linting the rest of each namespace normally.
+  :unresolved-symbol
+  {:exclude [(dev.zeko.stube.core/defflow)]}}}

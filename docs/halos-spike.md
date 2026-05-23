@@ -82,9 +82,9 @@ What already exists (`s/inspect`) plus:
   and iid.
 - `(s/instance cid iid)` — returns the instance map (EDN-clean check
   baked in).
-- `(s/history cid)` — list snapshots with timestamps.
-- `(s/where cid iid)` — `(meta (registry/lookup! type))` → `:file`/`:line`
-  of the `defcomponent`.
+- `(s/conv-history cid)` — list snapshots with timestamps.
+- `(s/where type-kw)` — source `:file`/`:line` captured by
+  `defcomponent`.
 
 Cheap, useful regardless of whether halos ship.
 

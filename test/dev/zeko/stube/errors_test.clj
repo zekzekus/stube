@@ -94,5 +94,8 @@
         errs      (error-fragments frags)]
     (is (= 1 (count errs)))
     (is (str/includes? (:fragment/html (first errs)) "render-bad"))
+    (is (= {:selector "#root" :patch-mode :inner}
+           (:fragment/opts (first errs)))
+        "first-render errors patch the shell root because #iid is not in the DOM yet")
     (testing "no normal elements fragment slipped through"
       (is (not-any? #(= :elements (:fragment/kind %)) frags)))))

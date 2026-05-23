@@ -2,12 +2,11 @@
   "Single note column. Edit / cancel / save / delete are column-local
   events handled here; close emits `[:answer [:close note-id]]` (which
   disposes this column — desired). Wiki-link clicks must NOT dispose
-  the source column, so they POST directly to the desk's event endpoint
-  using `render/event-url` and the parent-id passed in via embed args."
+  the source column, so they use `s/on-target` to POST directly to the
+  desk instance id passed in via embed args."
   (:require [dev.zeko.stube.core :as s]
             [dev.zeko.stube.examples.kasten.markdown :as md]
-            [dev.zeko.stube.examples.kasten.mock :as mock]
-            [dev.zeko.stube.render :as render]))
+            [dev.zeko.stube.examples.kasten.mock :as mock]))
 
 (defn- zoom-icon []
   [:svg {:xmlns "http://www.w3.org/2000/svg"
@@ -71,12 +70,11 @@
         fwd (:note/forward-links note)
         parent-id (:parent-id self)
         chip (fn [linked]
-               (let [url (render/event-url parent-id [:open (:xt/id linked)])]
-                 [:button.note-folgezettel__chip
-                  {:type "button"
-                   :title (:note/title linked)
-                   (keyword "data-on:click") (str "@post('" url "')")}
-                  (:note/title linked)]))
+               [:button.note-folgezettel__chip
+                (merge {:type "button"
+                        :title (:note/title linked)}
+                       (s/on-target parent-id :click :as [:open (:xt/id linked)]))
+                (:note/title linked)])
         panel (fn [direction label items]
                 [:div {:class (str "note-folgezettel__panel "
                                    "note-folgezettel__panel--" (name direction))}
@@ -98,12 +96,11 @@
   (let [parent-id (:parent-id self)]
     (fn [raw-slug]
       (if-let [note (get-in mock/catalog [:notes-by-slug raw-slug])]
-        (let [url (render/event-url parent-id [:open (:xt/id note)])]
-          [:button.note-link.note-link--internal
-           {:type "button"
-            :aria-label (str "Open note " (:note/title note))
-            (keyword "data-on:click") (str "@post('" url "')")}
-           raw-slug])
+        [:button.note-link.note-link--internal
+         (merge {:type "button"
+                 :aria-label (str "Open note " (:note/title note))}
+                (s/on-target parent-id :click :as [:open (:xt/id note)]))
+         raw-slug]
         [:span.note-link-cluster.note-link-cluster--unresolved
          [:span.note-link.note-link--unresolved
           {:title (str "No note found for slug " raw-slug)}
@@ -179,7 +176,7 @@
            [:p.note-column__footnote (:note/footnote note)])]]]))
 
   :handle
-  (fn [self {:keys [event payload]}]
+  (fn [self {:keys [event]}]
     (case event
       :edit
       (-> self

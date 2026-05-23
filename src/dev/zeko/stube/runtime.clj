@@ -112,9 +112,16 @@
             render/*base-path* (:base-path k)
             render/*route-style* (:route-style k)
             render/*root-selector* (:root-selector k)
+            pure/*current-kernel* k
             pure/*schedule-event!* #(schedule-event! k %)
             pure/*subscribe!* #(subscribe! k %)
             pure/*unsubscribe!* #(unsubscribe! k %)
+            pure/*run-io!* #(future
+                              (try (%)
+                                   (catch Throwable t
+                                     (binding [*out* *err*]
+                                       (println "dev.zeko.stube.runtime: :io effect threw —"
+                                                (ex-message t))))))
             errors/*on-error* (:on-error k)]
     (f)))
 
@@ -313,6 +320,15 @@
                        :route-style (:route-style k)
                        :root-selector (:root-selector k)}))
 
+(defn head-tags
+  "Return Hiccup head nodes required by [[shell-for]] for kernel `k`."
+  [k]
+  (shell/head-tags {:dev? (halos? k)
+                    :ui-css? (ui-css? k)
+                    :base-path (:base-path k)
+                    :route-style (:route-style k)
+                    :root-selector (:root-selector k)}))
+
 ;; ---------------------------------------------------------------------------
 ;; Per-kernel timers and pub/sub
 ;; ---------------------------------------------------------------------------
@@ -443,7 +459,8 @@
               (some? ctx) (assoc :conv/context ctx))]
     (binding [render/*base-path* (:base-path k)
               render/*route-style* (:route-style k)
-              render/*root-selector* (:root-selector k)]
+              render/*root-selector* (:root-selector k)
+              pure/*run-io!* nil]
       (let [[booted boot-frags]
             (with-render-bindings
               k (:conv/id c0)
