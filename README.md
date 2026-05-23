@@ -198,6 +198,15 @@ The version will move freely while the API settles; nothing in
 `dev.zeko.stube.core` is expected to change shape, but anything
 outside it is internal.
 
+### Datastar SDK pinning
+
+stube pins the Datastar SDK transitively via its
+`dev.data-star.clojure/http-kit` dependency. **Do not** add
+`dev.data-star.clojure/sdk` as a direct dep in your project — let the
+transitive pin do its job, otherwise a version mismatch between the
+SDK and the http-kit adapter can produce silent SSE breakage that is
+painful to track down. If you need a newer SDK, upgrade stube.
+
 ---
 
 ## Embedding in an existing Ring app
