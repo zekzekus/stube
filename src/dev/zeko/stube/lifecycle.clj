@@ -67,17 +67,24 @@
 (defn run-stop-hooks
   "Run `:stop` for the instance ids, preserving any emitted fragments.
   The instances are still present while hooks run; callers remove them
-  afterwards."
+  afterwards.
+
+  Uses `lookup` (not `lookup!`) for the cdef: a component that was
+  de-registered after the instance was created (hot-reload, test
+  teardown, shutdown after `registry/clear!`) simply has no `:stop` to
+  run.  `:start` and `:wakeup` still error loudly on missing cdefs —
+  the asymmetry is intentional, since stop has nowhere to surface a
+  late-binding error to."
   [run-effects-fn conv iids]
   (reduce (fn [[c frags] iid]
             (if-let [inst (conv/instance c iid)]
-              (let [cdef (registry/lookup! (:instance/type inst))]
-                (if-let [stop-fn (:stop cdef)]
-                  (let [[_ fx] (coerce-return inst (stop-fn inst))
-                        [c' more] (e/with-origin iid
-                                    (run-effects-fn c fx))]
-                    [c' (into frags more)])
-                  [c frags]))
+              (if-let [stop-fn (some-> (registry/lookup (:instance/type inst))
+                                       :stop)]
+                (let [[_ fx] (coerce-return inst (stop-fn inst))
+                      [c' more] (e/with-origin iid
+                                  (run-effects-fn c fx))]
+                  [c' (into frags more)])
+                [c frags])
               [c frags]))
           [conv []]
           iids))

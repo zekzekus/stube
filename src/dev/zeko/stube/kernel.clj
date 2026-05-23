@@ -657,6 +657,12 @@
 (defn ^:no-doc reap! [k ttl]
   ((runtime-var 'dev.zeko.stube.runtime/reap!) k ttl))
 
+(defn shutting-down?
+  "True after [[halt!]] has begun draining `k`.  HTTP adapters should
+  refuse new conversation mints (typically 503) while this is true."
+  [k]
+  ((runtime-var 'dev.zeko.stube.runtime/shutting-down?) k))
+
 (defn ^:no-doc register-sse! [k cid sse-gen]
   ((runtime-var 'dev.zeko.stube.runtime/register-sse!) k cid sse-gen))
 

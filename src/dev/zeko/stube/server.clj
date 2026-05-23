@@ -265,9 +265,14 @@
      stop-fn)))
 
 (defn stop!
-  "Stop the running server, if any."
+  "Stop the running server, if any.  Runs the kernel shutdown sequence
+  ahead of closing the http-kit listener so `:stop` hooks fire, open
+  SSE streams receive a final `:close`, and the store is flushed
+  before the JVM exits."
   []
   (stop-reaper!)
+  (when-let [k @!kernel]
+    (kernel/halt! k))
   (when-let [stop-fn @!server]
     (stop-fn)
     (reset! !server nil)))

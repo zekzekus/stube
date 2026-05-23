@@ -215,22 +215,28 @@
    (shell-handler k flow-id {}))
   ([k flow-id {:keys [init-args-fn] :or {init-args-fn (constantly {})}}]
    (fn [req]
-     (let [[_sid set-cookie] (kernel/ensure-session k req)
-           init-args (init-args-fn req)
-           cid       (kernel/mint-conversation! k flow-id init-args req)
-           dev?      (kernel/halos? k)
-           pre-on?   (and dev? (halos-http/requested? req))]
-       (when pre-on?
-         (kernel/enable-halos! k cid))
-       {:status  200
-        :headers (cond-> {"Content-Type" "text/html; charset=utf-8"
-                          "Cache-Control" "no-store"}
-                   set-cookie (assoc "Set-Cookie" set-cookie))
-        :body    (shell/html cid {:dev? dev?
-                                  :ui-css? (kernel/ui-css? k)
-                                  :base-path (kernel/base-path k)
-                                  :route-style (kernel/route-style k)
-                                  :root-selector (kernel/root-selector k)})}))))
+     (if (kernel/shutting-down? k)
+       {:status  503
+        :headers {"Content-Type" "text/plain; charset=utf-8"
+                  "Cache-Control" "no-store"
+                  "Retry-After"   "5"}
+        :body    "stube is shutting down; try again in a moment."}
+       (let [[_sid set-cookie] (kernel/ensure-session k req)
+             init-args (init-args-fn req)
+             cid       (kernel/mint-conversation! k flow-id init-args req)
+             dev?      (kernel/halos? k)
+             pre-on?   (and dev? (halos-http/requested? req))]
+         (when pre-on?
+           (kernel/enable-halos! k cid))
+         {:status  200
+          :headers (cond-> {"Content-Type" "text/html; charset=utf-8"
+                            "Cache-Control" "no-store"}
+                     set-cookie (assoc "Set-Cookie" set-cookie))
+          :body    (shell/html cid {:dev? dev?
+                                    :ui-css? (kernel/ui-css? k)
+                                    :base-path (kernel/base-path k)
+                                    :route-style (kernel/route-style k)
+                                    :root-selector (kernel/root-selector k)})})))))
 
 (defn- resume-render
   "Render the current top frame of a conversation that already has
