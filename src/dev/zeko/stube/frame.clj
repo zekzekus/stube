@@ -12,6 +12,7 @@
     frame) and Datastar's default morph-by-id (subsequent renders),
     so input focus and scroll state survive across re-renders."
   (:require [dev.zeko.stube.conversation :as conv]
+            [dev.zeko.stube.errors       :as errors]
             [dev.zeko.stube.fragments    :as f]
             [dev.zeko.stube.halos        :as halos]
             [dev.zeko.stube.registry     :as registry]
@@ -30,13 +31,19 @@
 
   When `:conv/halos?` is set, the outer hiccup is decorated with
   `data-stube-*` attrs and the resulting HTML is cached on the instance
-  under `:instance/last-html` so the dev panel's HTML tab can show it."
+  under `:instance/last-html` so the dev panel's HTML tab can show it.
+
+  A throw from the user's `:render` (or from Chassis while serialising
+  its output) is caught here: the conversation is returned unchanged,
+  and an `:error` fragment patches a banner in place of `iid` so the
+  failure stays localised to one frame.  See [[dev.zeko.stube.errors]]."
   [conv iid opts]
   (let [inst      (conv/instance conv iid)
         cdef      (registry/lookup! (:instance/type inst))
         render-fn (or (:component/render cdef) default-render)
-        halos?    (boolean (:conv/halos? conv))
-        html      (binding [render/*conv* conv]
+        halos?    (boolean (:conv/halos? conv))]
+    (try
+      (let [html  (binding [render/*conv* conv]
                     ;; Keep the dynamic conversation bound through HTML
                     ;; serialization too: user render fns may return lazy
                     ;; seqs whose elements call `s/render-slot` only when
@@ -44,11 +51,13 @@
                     (let [hiccup (cond-> (render-fn inst)
                                    halos? (halos/decorate-root inst))]
                       (render/html hiccup)))
-        marked    (conv/mark-rendered conv iid)
-        conv'     (cond-> marked
-                    halos? (assoc-in [:conv/instances iid :instance/last-html]
-                                     html))]
-    [conv' (f/elements html opts)]))
+            marked (conv/mark-rendered conv iid)
+            conv'  (cond-> marked
+                     halos? (assoc-in [:conv/instances iid :instance/last-html]
+                                      html))]
+        [conv' (f/elements html opts)])
+      (catch Throwable t
+        [conv (errors/build-fragment conv iid t :render)]))))
 
 (defn render-frame
   "Produce the elements fragment for `iid` and return `[conv' fragment]`.
