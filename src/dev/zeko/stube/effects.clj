@@ -10,6 +10,7 @@
       [:patch <hiccup>]
       [:patch-signals <map>]
       [:execute-script <js>]
+      [:history :replace|:push <url>]
       [:io <fn>]
       [:after <ms> <event>]
       [:subscribe <topic> <event>]
@@ -163,6 +164,36 @@
   ([topic] [:unsubscribe topic]))
 
 (defn unsubscribe-topic [eff] (nth eff 1 nil))
+
+;; ---------------------------------------------------------------------------
+;; URL history effects
+;; ---------------------------------------------------------------------------
+
+(defn history
+  "Sync the browser URL without a page reload.
+
+  Two modes:
+
+      (history :replace url)  ; → [:history :replace url]
+      (history :push    url)  ; → [:history :push url]
+
+  `:replace` calls `history.replaceState`; `:push` calls `history.pushState`.
+  URL may be an absolute path, a relative path, or a full URL string.
+
+  Use `:replace` when a mutation updates the \"current\" logical page (e.g.
+  search filter change) and `:push` when the user navigates to a new page
+  (e.g. opening a note, advancing a wizard step).
+
+  URL parsing on first load is not in scope — read `?q=` from the GET
+  request and pass it as init-args to `mint-conversation!`."
+  [mode url]
+  (when-not (#{:replace :push} mode)
+    (throw (ex-info "history mode must be :replace or :push"
+                    {:got mode})))
+  [:history mode url])
+
+(defn history-mode [eff] (nth eff 1))
+(defn history-url  [eff] (nth eff 2))
 
 ;; ---------------------------------------------------------------------------
 ;; Conversation-level

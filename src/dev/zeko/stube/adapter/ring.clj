@@ -42,8 +42,14 @@
             [(join-path base "/stube/halos/:cid/panel")  {:get  {:handler (h halos-http/panel-handler k)}}]
             [(join-path base "/stube/halos/:cid/enable") {:post {:handler (h halos-http/enable-handler k)}}]]
            (concat (core-routes k)
-                   (for [[path flow-id] mounts]
-                     [path {:get {:handler (http/shell-handler k flow-id)}}]))))))
+                   (for [[path mount-val] mounts
+                         :let [{:keys [flow-id opts]
+                                :or {opts {}}}
+                               (if (map? mount-val)
+                                 mount-val
+                                 {:flow-id mount-val})]
+                         :when flow-id]
+                     [path {:get {:handler (http/shell-handler k flow-id opts)}}]))))))
 
 (defn ring-handler
   "Return a Ring handler for kernel `k`.

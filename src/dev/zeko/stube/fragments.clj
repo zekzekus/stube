@@ -53,6 +53,19 @@
    :fragment/script js
    :fragment/opts {}})
 
+(defn history-script
+  "Build a `:script` fragment that pushes or replaces the browser URL.
+
+  `mode` is `:replace` or `:push`; `url` is the new URL string.
+  Translates to a one-shot `history.replaceState` / `history.pushState`
+  call so no new SSE event type is needed."
+  [mode url]
+  (let [method (case mode
+                 :replace "replaceState"
+                 :push    "pushState"
+                 (throw (ex-info "history-script: unknown mode" {:mode mode})))]
+    (script (str "history." method "(null,''," (pr-str (str url)) ")"))))
+
 (def close
   "Tell the SSE channel to close.  Used after `:end`."
   {:fragment/kind :close})

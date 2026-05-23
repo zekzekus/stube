@@ -31,6 +31,7 @@
             [dev.zeko.stube.examples.tabs]
             [dev.zeko.stube.examples.todo]
             [dev.zeko.stube.examples.tree]
+            [dev.zeko.stube.examples.url-state-counter]
             [dev.zeko.stube.examples.wizard]))
 
 ;; ---------------------------------------------------------------------------
@@ -74,6 +75,8 @@
     :blurb "CTChat: multi-user publish/subscribe over live conversations."}
    {:path "/protected-counter" :title "Protected counter"      :group "Tier 3"
     :blurb "WASessionProtectedCounter: app login composed with cid owner cookies."}
+   {:path "/url-counter"    :title "URL-state counter"         :group "Tier 2"
+    :blurb "S-2: `s/history` syncs the counter value into the address bar without a reload."}
    {:path "/seaside-todo"   :title "Seaside book ToDo"         :group "Book app"
     :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}
    {:path "/kasten"         :title "Kasten notes desk"         :group "Book app"
@@ -109,36 +112,36 @@
 
   :render
   (fn [self]
-    (let [{:keys [path title group blurb]} (:entry self)
-          flow-id (get (s/mounts) path)
-          doc     (some-> flow-id s/help first-paragraph)]
-      [:article (s/root-attrs self {:class "stube-card"
-                                    :style "min-height:20rem;"})
-       [:div {:style "display:flex; align-items:baseline; gap:0.75rem;
+     (let [{:keys [path title group blurb]} (:entry self)
+           flow-id (:flow-id (get (s/mounts) path))
+           doc     (some-> flow-id s/help first-paragraph)]
+       [:article (s/root-attrs self {:class "stube-card"
+                                     :style "min-height:20rem;"})
+        [:div {:style "display:flex; align-items:baseline; gap:0.75rem;
                       flex-wrap:wrap;"}
-        [:h2 {:style "margin-top:0;"} title]
-        [:span {:style "color:#777; font-size:0.85rem;"} group]]
-       [:p blurb]
-       [:dl {:style "display:grid; grid-template-columns:7rem 1fr; gap:0.4rem 0.75rem;"}
-        [:dt {:style "font-weight:600;"} "Path"]
-        [:dd {:style "margin:0;"} [:code path]]
-        [:dt {:style "font-weight:600;"} "Mounted flow"]
-        [:dd {:style "margin:0;"}
-         (if flow-id [:code (str flow-id)] [:em "not mounted"])]
-        [:dt {:style "font-weight:600;"} "Registry"]
-        [:dd {:style "margin:0;"}
-         (if (and flow-id (s/registry-lookup flow-id))
-           "component registered"
-           "component not currently registered")]]
-       (when doc
-         [:details {:style "margin-top:1rem;"}
-          [:summary "Component docstring"]
-          [:p {:style "color:#555; line-height:1.45;"} doc]])
-       [:p {:style "margin-top:1.25rem;"}
-        [:a {:href  path
-             :class "stube-button stube-button--primary"
-             :style "display:inline-block; text-decoration:none;"}
-         "Open standalone"]]])))
+         [:h2 {:style "margin-top:0;"} title]
+         [:span {:style "color:#777; font-size:0.85rem;"} group]]
+        [:p blurb]
+        [:dl {:style "display:grid; grid-template-columns:7rem 1fr; gap:0.4rem 0.75rem;"}
+         [:dt {:style "font-weight:600;"} "Path"]
+         [:dd {:style "margin:0;"} [:code path]]
+         [:dt {:style "font-weight:600;"} "Mounted flow"]
+         [:dd {:style "margin:0;"}
+          (if flow-id [:code (str flow-id)] [:em "not mounted"])]
+         [:dt {:style "font-weight:600;"} "Registry"]
+         [:dd {:style "margin:0;"}
+          (if (and flow-id (s/registry-lookup flow-id))
+            "component registered"
+            "component not currently registered")]]
+        (when doc
+          [:details {:style "margin-top:1rem;"}
+           [:summary "Component docstring"]
+           [:p {:style "color:#555; line-height:1.45;"} doc]])
+        [:p {:style "margin-top:1.25rem;"}
+         [:a {:href  path
+              :class "stube-button stube-button--primary"
+              :style "display:inline-block; text-decoration:none;"}
+          "Open standalone"]]])))
 
 ;; ---------------------------------------------------------------------------
 ;; Browser parent
