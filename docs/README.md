@@ -15,6 +15,9 @@ User-facing guides:
   `dev.zeko.stube.core`, organised by what you're trying to do.
 - **[Internals](internals.md)** — how the kernel, the conversation
   and the effect language fit together.
+- **[Decisions](decisions/)** — short ADRs for the design calls that
+  shaped the framework (resume-key naming, EDN-clean state,
+  embed-vs-call, app-store and principal).
 - **[Changelog](../CHANGELOG.md)** — big-rock framework changes by
   release/development pass.
 

@@ -423,6 +423,42 @@ falls back to the standalone server's default kernel. Delivery spawns
 one future per subscriber and dispatches each as a normal event with
 `:payload` set to the published message.
 
+### Single-JVM scope
+
+Pub/sub is **in-process only by design**. A `(s/publish! topic msg)`
+call walks the kernel's `:!subscriptions` atom, which is a plain
+Clojure map of subscribers in the same JVM. Across two JVMs (two
+nodes behind a load balancer, a worker container alongside a web
+container) the subscribers in the other process never see the
+message.
+
+This is deliberate. The kernel intentionally has no opinion on
+distributed messaging — every reasonable choice (Redis pub/sub,
+Postgres `LISTEN`, NATS, Kafka, Cloud Pub/Sub) brings its own
+durability, ordering, and back-pressure model, and most apps want to
+pick one based on infrastructure they already run. A real
+cross-process layer would slot in as a small `Publisher` protocol the
+runtime can be handed at `make-kernel` time:
+
+```clojure
+(defprotocol Publisher
+  (publish-out!  [this topic msg])
+  (subscribe-in! [this topic on-msg]))
+```
+
+The local `:!subscriptions` walk stays the in-process fast path; the
+hook fires for each publish so an external bus can fan the message
+out to the other nodes, and a subscribe-side daemon dispatches
+incoming messages back into the right kernel. Until a user asks for
+this, the protocol isn't worth the surface area — but the seam is
+named here so the eventual change is additive.
+
+If you are running two nodes today and need them to see each other's
+publishes, the working-today recipe is: stand up your bus of choice
+in `:app`, and have components call `(some-bus-publish (:bus (s/app))
+topic msg)` directly instead of `(s/publish! topic msg)`. The kernel
+stays in its lane; the bus stays in its.
+
 ---
 
 ## Persistence

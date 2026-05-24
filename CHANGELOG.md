@@ -5,6 +5,13 @@ development entry.
 
 ## Unreleased
 
+- Documentation: cross-process pub/sub is now called out as
+  single-JVM-by-design in `docs/internals.md`, with a sketched
+  `Publisher` protocol for the eventual seam if a real bus is ever
+  wanted, plus a working-today recipe using `:app` as a bring-your-own
+  bus. New `docs/decisions/` folder with four short ADRs covering
+  resume-key naming, EDN-clean conversation state, the embed/call
+  split, and the `:app` + `:principal-fn` contract.
 - SSE heartbeat for reverse-proxy idle timeouts. Every kernel now runs
   a per-conversation keepalive thread that sends a `stube-keepalive`
   event (an SSE event-type Datastar ignores) every
