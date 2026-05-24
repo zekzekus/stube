@@ -125,10 +125,14 @@ root flow that turns into `[:end value]` and closes the SSE channel.
 - `await` cannot appear inside a nested `(fn …)`, a lazy seq, or
   any form that escapes synchronous evaluation. `let`, `do`, `if`,
   `cond`, `when`, `loop`+`recur` are all fine.
-- `try`/`catch` *across* an `await` is not supported in slice 1.
-- The continuation is not EDN-serialisable, so flow conversations
-  are skipped by `file-store`. Hand-rolled task components are
-  EDN-clean.
+- `try`/`catch` *across* an `await` is not supported.
+- The continuation is **not EDN-serialisable**, so any conversation
+  that contains a live `defflow` is in-memory-only. `file-store`
+  logs a warning and skips its save; the flow stays live in the
+  current process but does not survive a restart. This is a
+  deliberate property of `defflow`, not a gap to be fixed — see
+  *Durable flows: defflow vs. task components* in the tutorial for
+  the EDN-clean alternative.
 
 **Suspend points are var-identity.** Cloroutine recognises `await` by
 the var it resolves to, not by its name. `s/await` and
@@ -675,10 +679,12 @@ deployments where crash-resume isn't required.
 
 One EDN file per conversation under `dir`. Atomic temp-file +
 rename; reads use `clojure.edn/read-string` with no eval.
-Conversations that contain non-EDN values (the common case is a
+Conversations that contain non-EDN values (almost always a
 `defflow` cloroutine continuation) are skipped with a warning to
 `*err*` — the live conversation is unaffected, only its disk copy
-is stale.
+is stale. This is the documented `defflow` durability boundary;
+see *Durable flows: defflow vs. task components* in the tutorial
+for the EDN-clean shape.
 
 ```clojure
 (s/start! {:store (s/file-store "/var/lib/stube/convs")})

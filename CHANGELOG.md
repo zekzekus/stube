@@ -5,6 +5,14 @@ development entry.
 
 ## Unreleased
 
+- `defflow` durability is now documented as a deliberate property,
+  not a pending gap. A conversation containing a `defflow` is
+  in-memory only by design (its cloroutine continuation is not
+  EDN-serialisable). For long-running flows that must survive a
+  restart, write the same shape as a hand-rolled task component with
+  `:start` + named resume keys; the tutorial now shows the two side
+  by side. The store's skip-on-defflow warning is more pointed about
+  the workaround.
 - Application-boundary primitives for embedders:
   - New `:app` option on `make-kernel` carries an opaque host value
     (typically a map of long-lived dependencies) that component code

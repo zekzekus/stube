@@ -22,15 +22,28 @@
   `save!` is a no-op.
 
   ──────────────────────────────────────────────────────────────────────
-  Cloroutine and persistence
+  defflow is in-memory only — by design
   ──────────────────────────────────────────────────────────────────────
 
-  `dev.zeko.stube.flow` continuations are stateful objects, not EDN values.  A
-  conversation that contains a live `defflow` instance therefore can't
-  go through the EDN file store as-is; the store will log a warning
-  and skip that conversation.  Hand-rolled task components from slice
-  0 (the `:start` + resume-key pattern) ARE EDN-clean and persist
-  perfectly.  Closing this gap is open work for a later slice."
+  `dev.zeko.stube.flow` continuations are live cloroutine objects, not
+  EDN values.  A conversation that contains a `defflow` instance is
+  therefore not durable: on a clean restart its on-disk copy is gone
+  (the [[file-store]] logs a warning and skips the save).
+
+  This is a deliberate property of the framework, not a gap.  `defflow`
+  is the ergonomic for transient flows — wizards a user completes in
+  one sitting, multi-step UIs whose value comes from the linear-code
+  shape.  If the flow needs to survive a deploy or a process crash,
+  write it as a hand-rolled task component instead: a `:start` hook
+  plus named resume keys threads the same state through an EDN-clean
+  map, and persists transparently through this store.  See the
+  *Durable flows: defflow vs. task components* section of the tutorial
+  for a side-by-side example.
+
+  The kernel does not refuse to register or run a `defflow`-containing
+  conversation against a [[file-store]]; the live behaviour is normal.
+  Only the durable copy is skipped, and the warning fires so you can
+  feel the boundary."
   (:require [clojure.edn  :as edn]
             [clojure.java.io :as io])
   (:import (java.time Instant)))
@@ -136,11 +149,12 @@
   the default tagged-literal handler, so a corrupted file is the worst
   attacker reach.
 
-  If a conversation contains values that are not EDN-printable (the
-  most common cause is a `dev.zeko.stube.flow` cloroutine continuation), the
-  store logs a warning to `*err*` and *skips* the save without raising.
-  The conversation stays live in memory; only its on-disk copy is
-  stale."
+  If a conversation contains values that are not EDN-printable (almost
+  always a `dev.zeko.stube.flow` cloroutine continuation), the store
+  logs a warning to `*err*` and *skips* the save without raising.  The
+  conversation stays live in memory; only its on-disk copy is stale.
+  This is the documented `defflow` boundary — see the namespace
+  docstring for how to write a durable equivalent."
   [dir]
   (let [^java.io.File dir-file (io/file dir)]
     (.mkdirs dir-file)
@@ -177,9 +191,13 @@
               tmp  (io/file dir-file (str cid ".edn.tmp"))]
           (if-not (safe-printable? conv)
             (binding [*out* *err*]
-              (println "dev.zeko.stube.store: conv" cid
-                       "contains non-EDN values (e.g. a defflow continuation);"
-                       "skipping disk save."))
+              (println (str "dev.zeko.stube.store: conv " cid
+                            " contains non-EDN values (almost certainly a "
+                            "defflow continuation). Skipping disk save; the "
+                            "conversation stays live in memory but will not "
+                            "survive a restart. Rewrite as a hand-rolled "
+                            "task component (`:start` + named resume keys) "
+                            "to make it durable — see the store ns docstring.")))
             (do (spit tmp (binding [*print-dup* false] (pr-str conv)))
                 (.renameTo tmp dst)))
           conv))

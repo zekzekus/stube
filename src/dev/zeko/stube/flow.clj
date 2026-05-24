@@ -40,9 +40,15 @@
     `loop`+`recur` are all fine.
   * `try`/`catch` *across* an `await` is not supported in slice 1 (open
     question, see `v2_1.md` §13).
-  * Storing the coroutine on the instance map gives up strict EDN
-    serialisability for flow instances; persistence (slice 3) will
-    treat them as a separate concern."
+  * Storing the coroutine on the instance map gives up EDN
+    serialisability for flow instances.  A conversation containing a
+    `defflow` is therefore not durable — the [[dev.zeko.stube.store]]
+    file store logs a warning and skips its on-disk save.  This is a
+    deliberate property: `defflow` is the ergonomic for transient
+    flows.  When you need a long-running flow that survives restarts,
+    write a hand-rolled task component with `:start` plus named resume
+    keys.  The tutorial section *Durable flows: defflow vs. task
+    components* shows the same wizard in both shapes."
     (:refer-clojure :exclude [await])
     (:require [cloroutine.core :as cr]
               [dev.zeko.stube.effects  :as e]
@@ -183,7 +189,8 @@
     times.  The body's final expression is the value the flow answers
     to its parent (or, for a root flow, the value of `:end`).
 
-  Restrictions are documented at the top of [[dev.zeko.stube.flow]]."
+  Restrictions and the in-memory-only durability boundary are
+  documented at the top of [[dev.zeko.stube.flow]]."
   [id bindings & body]
   (when-not (qualified-keyword? id)
     (throw (ex-info "defflow id must be a namespaced keyword" {:got id})))

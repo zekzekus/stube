@@ -487,9 +487,62 @@ A few rules of the road:
   `let`, `if`, `cond`, `when`, `loop`/`recur`, `do` are all fine.
 - The body's final value becomes the flow's `:answer`. As the
   root flow, that turns into `:end` and closes the SSE stream.
-- Persistence: `defflow` continuations are not EDN, so the
-  file‑backed store skips them. Use defcomponent task components
-  with explicit resume keys when you need EDN persistence.
+- **`defflow` conversations are in‑memory only**, on purpose.  The
+  continuation is a live cloroutine object; the EDN store logs a
+  warning and skips it.  The next section shows the same flow
+  written as a durable task component.
+
+### Durable flows: defflow vs. task components
+
+Pick `defflow` when the user will complete the flow in one sitting
+and "lose state on a restart" is acceptable.  For long‑running flows
+(approvals that wait days, multi‑step forms users return to next
+week), write the same shape as a hand‑rolled task component — one
+that snapshots cleanly into EDN.
+
+The two shapes are interchangeable for the same wizard:
+
+```clojure
+;; A. defflow — transient, ergonomic, in-memory only
+(s/defflow :standup/onboard []
+  (let [name (s/await (s/prompt "Who's standing up?"))
+        ok?  (s/await (s/confirm (str "Welcome, " name "!  Begin?")))]
+    (if ok?
+      (s/await (s/embed :standup/board {:user name}))
+      (recur))))
+
+;; B. Hand-rolled task — durable, EDN-clean, survives restart
+(s/defcomponent :standup/onboard-task
+  :init   (constantly {})
+  :start  (fn [self]
+            [self [(s/call (s/prompt "Who's standing up?") :on-name)]])
+
+  :on-name
+  (fn [self name]
+    [(s/call (s/confirm (str "Welcome, " name "!  Begin?"))
+             :on-confirm)
+     ;; Stash the name so :on-confirm can read it.
+     (assoc self :pending-name name)])
+
+  :on-confirm
+  (fn [self ok?]
+    (if ok?
+      [(s/call (s/embed :standup/board {:user (:pending-name self)})
+               :on-done)]
+      [(s/call (s/prompt "Try again — who's standing up?") :on-name)]))
+
+  :on-done
+  (fn [_self value]
+    [(s/answer value)]))
+```
+
+The task version threads its partial state (`:pending-name`)
+through the same instance map every component uses.  Every step is
+a plain `pr-str` of a Clojure map, so [`s/file-store`](api.md#s/file-store-dir)
+persists it across restarts and a deploy mid‑flow doesn't lose the
+user's place.  The shape is more verbose, which is the trade you
+make for durability — and `defflow` is the ergonomic alternative
+when you don't need it.
 
 Take `:user` into the board's `:init` so the user's name flows
 through:
