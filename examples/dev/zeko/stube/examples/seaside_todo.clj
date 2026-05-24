@@ -416,17 +416,16 @@
 (s/defcomponent :demo/seaside-todo-menu
   :render
   (fn [self]
-    (let [parent {:instance/id (:instance/parent self)}]
-      [:nav (s/root-attrs self {:style "display:flex; flex-direction:column; gap:0.35rem;"})
-       (for [[label route] menu-entries]
-         [:button (merge {:key   label
-                          :type  "button"
-                          :class "stube-button stube-button--block"}
-                         (s/on parent :click :as route))
-          label])
-       [:p {:style "font-size:0.8rem; color:#777; line-height:1.35;"}
-        "Like " [:code "StMenuComponent>>#addEntry:withAction:"]
-        ", but the callback is an EDN event routed to the parent."]])))
+    [:nav (s/root-attrs self {:style "display:flex; flex-direction:column; gap:0.35rem;"})
+     (for [[label route] menu-entries]
+       [:button (merge {:key   label
+                        :type  "button"
+                        :class "stube-button stube-button--block"}
+                       (s/on-target (:instance/parent self) :click :as route))
+        label])
+     [:p {:style "font-size:0.8rem; color:#777; line-height:1.35;"}
+      "Like " [:code "StMenuComponent>>#addEntry:withAction:"]
+      ", but the callback is an EDN event routed to the parent."]]))
 
 ;; ---------------------------------------------------------------------------
 ;; Task editor, generated from descriptions

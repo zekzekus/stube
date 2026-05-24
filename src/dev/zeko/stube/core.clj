@@ -69,21 +69,6 @@
 ;; Component definition
 ;; ---------------------------------------------------------------------------
 
-(def ^:private colocated-keys
-  "Top-level `defcomponent` keys lifted to their `:component/<name>`
-  homes so the kernel finds them."
-  [:init :render :handle :keep :doc :state])
-
-(defn- lift-colocated [opts]
-  (reduce (fn [m k]
-            (if (contains? m k)
-              (-> m
-                  (assoc (keyword "component" (name k)) (get m k))
-                  (dissoc k))
-              m))
-          opts
-          colocated-keys))
-
 (defn register-component!
   "Plain function form of [[defcomponent]].  Two arities:
 
@@ -93,12 +78,17 @@
   `source-map` is `{:file ... :line ...}` to be attached under
   `:component/source` (so the halos dev tool can jump to a definition).
   The macro supplies it from call-site `&form` meta; hand-rolled
-  data-driven callers can pass nil."
+  data-driven callers can pass nil.
+
+  `registry/register!` lifts colocated author keys (`:init`, `:render`,
+  `:handle`, `:keep`, `:doc`, `:state`, `:start`, `:stop`, `:wakeup`,
+  `:children`) to `:component/<name>` so cdefs are uniform regardless of
+  which entry point produced them."
   ([id opts]
    (register-component! id opts nil))
   ([id opts source]
    (registry/register!
-     (cond-> (-> opts lift-colocated (assoc :component/id id))
+     (cond-> (assoc opts :component/id id)
        source (assoc :component/source source)))))
 
 (defmacro defcomponent
@@ -399,14 +389,19 @@
 ;; History & persistence (slice 3)
 ;; ---------------------------------------------------------------------------
 
-(def ^{:doc "An effect that walks one step backward through the
-  conversation's history.  Use it from a handler to wire a \"Back\"
-  button, or render `(s/back-button \"Back\")` for the stock
-  conversation-level button.
+(def ^{:doc "Construct a `[:back]` effect that walks one step backward
+  through the conversation's `:conv/history`.  Use it from a handler to
+  wire a \"Back\" button, or render `(s/back-button \"Back\")` for the
+  stock conversation-level button.
+
+      [(s/back)]   ; from inside a handler
 
   When emitted from a top-level handler, it pops the most recent
   conversation snapshot off `:conv/history` and re-renders the
-  restored top frame.  No-op if the history is empty."}
+  restored top frame.  No-op if the history is empty.
+
+  `s/back` is a zero-arity function, matching every other effect
+  constructor (`s/end`, `s/after`, etc.).  Always call it with parens."}
   back effects/back)
 
 (def ^{:doc "See [[dev.zeko.stube.store/in-memory-store]]."}  in-memory-store store/in-memory-store)

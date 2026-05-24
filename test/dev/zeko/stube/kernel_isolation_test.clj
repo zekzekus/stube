@@ -95,8 +95,8 @@
 (deftest replay-works-against-kernel-without-starting-server
   (install-test-component!)
   (let [k (kernel/make-kernel {:context-fn (constantly {:name "replay"})})
-        [c _frags] (kernel/replay k :isolation/counter [{:event :inc}
-                                                        {:event :inc}])]
+        [c _frags] (kernel/replay-with k :isolation/counter [{:event :inc}
+                                                             {:event :inc}])]
     (is (= 2 (:n (conv/top-instance c))))
     (is (= "replay" (:name (s/context (conv/top-instance c)))))
     (is (empty? (kernel/active-conversations k)))))

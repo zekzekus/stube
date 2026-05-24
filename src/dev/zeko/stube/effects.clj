@@ -211,8 +211,9 @@
 ;; Conversation-level
 ;; ---------------------------------------------------------------------------
 
-(def back
+(defn back
   "Restore the previous conversation snapshot from `:conv/history`."
+  []
   [:back])
 
 (defn end

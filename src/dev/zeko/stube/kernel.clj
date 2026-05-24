@@ -659,11 +659,17 @@
   [k cid event]
   ((runtime-var 'dev.zeko.stube.runtime/dispatch!) k cid event))
 
-(defn replay
+(defn replay-with
   "Purely replay `events` against `root-id` using runtime `k`'s render
-  configuration.  Runtime state is not mutated."
+  configuration.  Runtime state is not mutated.
+
+  Differs in shape from [[dev.zeko.stube.core/replay]], which does not
+  take a kernel.  Use this one when you want the replay to honour the
+  same base-path / route-style / context the kernel produces in
+  production; the bare `core/replay` is for unit-tests of components
+  whose render output doesn't depend on those bindings."
   [k root-id events]
-  ((runtime-var 'dev.zeko.stube.runtime/replay) k root-id events))
+  ((runtime-var 'dev.zeko.stube.runtime/replay-with) k root-id events))
 
 (defn halt!
   "Close open SSE streams and clear runtime registries for `k`."

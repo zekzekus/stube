@@ -469,9 +469,11 @@
       (nil? (:instance-id event)) (assoc :instance-id (conv/top-id conv))
       (nil? (:signals event))     (assoc :signals {}))))
 
-(defn replay
+(defn replay-with
   "Purely replay `events` against a fresh conversation rooted at
-  `root-id`.  Kernel state is not read or mutated."
+  `root-id`, using `k`'s render configuration but mutating no runtime
+  state.  See [[dev.zeko.stube.kernel/replay-with]] for the public-facing
+  forwarder."
   [k root-id events]
   (let [ctx (context-for k nil)
         c0  (cond-> (conv/new-conversation)

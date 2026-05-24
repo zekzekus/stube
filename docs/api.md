@@ -130,6 +130,23 @@ root flow that turns into `[:end value]` and closes the SSE channel.
   are skipped by `file-store`. Hand-rolled task components are
   EDN-clean.
 
+**Suspend points are var-identity.** Cloroutine recognises `await` by
+the var it resolves to, not by its name. `s/await` and
+`dev.zeko.stube.flow/await` are intentionally the *same var*: `core` does
+`:refer-clojure :exclude [await]` and then `:refer [await]` from
+`dev.zeko.stube.flow`. As long as you call `(s/await …)` (the standard
+require) you'll never notice this. The traps:
+
+- Don't bring the flow ns in under its own alias and call
+  `(flow/await …)` from inside a `defflow` body — that's the same var,
+  but readers will mistake it for an unrelated function.
+- Don't shadow `await` in a local `let` or function arg. The macro
+  walks the body for the var; a locally-bound `await` will be a normal
+  Clojure expression and never suspend.
+
+If your body silently runs through to the final expression without
+ever pausing, this is almost always the cause.
+
 ### `(s/await embed-spec)`
 
 Inside a `defflow` body, suspend until the embedded child answers,
@@ -186,7 +203,7 @@ vectors too, but the constructors are clearer.
 | `(s/subscribe topic event)` | `[:subscribe topic event]` | subscribe this instance to `topic`; messages arrive as `event` |
 | `(s/unsubscribe)` / `(s/unsubscribe topic)` | `[:unsubscribe]` etc. | remove subscription(s) for this instance |
 | `(s/set-keyed-children slot pairs)` | `[:set-keyed-children slot pairs]` | reconcile an ordered set of keyed child instances |
-| `s/back` | `[:back]` | walk one step backward through the conversation's `:conv/history` |
+| `(s/back)` | `[:back]` | walk one step backward through the conversation's `:conv/history` |
 | `(s/end value)` | `[:end v]` | terminate the conversation with a final value; closes SSE |
 
 **Resume keys.** `(s/call (s/prompt "Name?") :on-name)` records
@@ -423,6 +440,13 @@ root component:
                    {:n (parse-long (or (s/query-value req "n") "0"))})})
 ```
 
+`unmount!` removes a previously-mounted path. It does **not** end live
+conversations rooted there — those keep running until the SSE channel
+closes or you call `s/end!`. The use case is dev REPL workflow: drop a
+mount before re-registering at the same path with different opts. In a
+production app you typically mount once at boot and never call
+`unmount!`.
+
 ### `(s/query-value request param-name)`
 
 Read one decoded query parameter directly from a Ring request, without
@@ -483,7 +507,7 @@ Stable functions:
 | `(stube/head-tags k)` | Return the CSS/script Hiccup nodes required by `shell-for`. |
 | `(stube/dispatch! k cid event)` | Dispatch into live state and return produced fragments. |
 | `(stube/publish! k topic msg)` | Publish from host code into this runtime kernel. |
-| `(stube/replay k root-id events)` | Pure replay against the kernel configuration; no live state mutation. |
+| `(stube/replay-with k root-id events)` | Pure replay against the kernel configuration; no live state mutation. Distinct from `core/replay` which is the kernel-less convenience used by component-author tests. |
 | `(stube/halt! k)` | Close streams and clear runtime registries. |
 | `(stube-ring/ring-routes k)` | Reitit route data for SSE/event/back/upload/assets. |
 | `(stube-ring/ring-handler k)` | Plain Ring handler wrapping those routes. |
@@ -603,7 +627,7 @@ is stale.
 [(s/history :replace "/x")]    [(s/io #(…))]
 [(s/after 1000 :tick)]
 [(s/subscribe :topic :ev)]     [(s/unsubscribe)]
-[s/back]                       [(s/execute-script "…")]
+[(s/back)]                     [(s/execute-script "…")]
 [(s/set-keyed-children :slot/x [[id (s/embed :child args)]])]
 
 ;; Hiccup

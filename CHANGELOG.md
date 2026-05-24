@@ -5,6 +5,23 @@ development entry.
 
 ## Unreleased
 
+- API polish pass before 1.0:
+  - `s/back` is now a zero-arity function `(s/back)` returning the
+    `[:back]` effect, matching every other effect constructor. Call
+    sites that used the bare value need a pair of parens.
+  - `dev.zeko.stube.kernel/replay` is now `kernel/replay-with` so the
+    kernel-aware host helper no longer collides in name with the
+    kernel-less `core/replay` used by component-author tests.
+  - `registry/register!` now lifts every colocated author key —
+    `:start`, `:stop`, `:wakeup`, `:children` in addition to the
+    previous `:init`/`:render`/`:handle`/`:keep`/`:doc`/`:state` — to
+    its `:component/<name>` home. Component definitions registered via
+    any entry point (`defcomponent`, `register-component!`,
+    `decorate!`) are now uniform; the kernel reads them under a single
+    namespace.
+  - Updated the Seaside-todo menu example to use `s/on-target`
+    against the parent iid instead of synthesising a fake parent
+    instance map.
 - Hardened stale-event handling: POSTs for missing instances inside a
   live conversation are now harmless `204` no-ops instead of ending the
   whole conversation; missing/ended conversations still surface the

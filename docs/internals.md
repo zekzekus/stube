@@ -45,7 +45,11 @@ src/dev/zeko/stube/
   frame.clj         ← render one frame; render-slot-overlay
   keyed.clj         ← keyed-child reconciliation and rendering
   lifecycle.clj     ← run :start / :stop / :wakeup
-  kernel.clj        ← step / run-effects / dispatch
+  kernel.clj        ← step / run-effects / dispatch (pure fold) plus
+                       the stable embedder façade (make-kernel,
+                       mint-conversation!, shell-for, head-tags,
+                       dispatch!, replay-with, publish!, halt!) that
+                       forwards into runtime via requiring-resolve
   runtime.clj       ← per-kernel mutable runtime state and hooks
   flow.clj          ← defflow macro, cloroutine glue
   render.clj        ← hiccup → HTML; data-on / data-bind helpers
@@ -64,10 +68,13 @@ src/dev/zeko/stube/
 
 Three observations:
 
-1. **The kernel does not require the server.** `kernel.clj` works
-   over plain values; the server is what drives it. That is why
-   `(s/dispatch conv event)` and `(s/replay …)` work with no HTTP
-   layer running.
+1. **The kernel does not require the server.** The pure fold half of
+   `kernel.clj` works over plain values; the server is what drives it.
+   That is why `(s/dispatch conv event)` and `(s/replay …)` work with
+   no HTTP layer running. The embedder-façade half of the same file
+   (the `make-kernel`-and-friends block) lazily forwards into
+   `runtime.clj` via `requiring-resolve` so the pure fold can stay
+   load-order-independent while hosts get a single import surface.
 2. **`render.clj` is at the wire boundary but knows nothing about
    Datastar.** It produces HTML strings and Datastar *attribute*
    names; the SSE event types are all in `fragments.clj`.
