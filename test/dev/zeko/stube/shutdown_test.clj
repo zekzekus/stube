@@ -81,6 +81,32 @@
     (is (some #{:close} @pushed)
         "halt! flushed a :close fragment to every registered SSE stream")))
 
+(deftest register-sse-starts-and-unregister-stops-keepalive-thread
+  ;; Use a 60s heartbeat so the thread is in `Thread/sleep` for the
+  ;; whole test (we never want it to actually fire and call into the
+  ;; SDK with a non-Datastar channel here).
+  (let [k       (embed/make-kernel {:sse-keepalive-ms 60000})
+        sse-gen (reify Object)
+        cid     "cv-keepalive-test"]
+    (embed/register-sse! k cid sse-gen)
+    (let [^Thread t (get @(:!sse-keepalive k) cid)]
+      (is (some? t) "register-sse! starts a keepalive thread")
+      (is (.isAlive t) "keepalive thread is alive after registration")
+      (embed/unregister-sse! k cid)
+      (is (not (contains? @(:!sse-keepalive k) cid))
+          "unregister-sse! removes the keepalive entry")
+      (.join t 1000)
+      (is (not (.isAlive t)) "keepalive thread exited after interrupt"))))
+
+(deftest keepalive-disabled-when-interval-is-nil
+  (let [k       (embed/make-kernel {:sse-keepalive-ms nil})
+        sse-gen (reify Object)
+        cid     "cv-keepalive-off"]
+    (embed/register-sse! k cid sse-gen)
+    (is (not (contains? @(:!sse-keepalive k) cid))
+        "no keepalive thread is started when :sse-keepalive-ms is nil")
+    (embed/unregister-sse! k cid)))
+
 (deftest halt-flushes-store-with-pending-conversations
   (register-flag-component!)
   (let [{:keys [saved store]} (recording-store)

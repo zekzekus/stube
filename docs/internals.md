@@ -495,6 +495,64 @@ response. The cookie's value is also stamped onto `:conv/owner-token`
 and checked on every subsequent route hit — so a leaked URL is not
 enough to drive someone else's conversation.
 
+### SSE behind a reverse proxy
+
+Long-polling SSE connections fall foul of the proxy idle timers that
+most HTTP fronts apply to "stuck" upstream connections. The defaults
+that bite people:
+
+| front          | default idle timeout              |
+|----------------|-----------------------------------|
+| nginx          | 60s (`proxy_read_timeout`)        |
+| AWS ALB        | 60s (idle timeout, per-target)    |
+| Caddy          | 30s (`reverse_proxy` flush)       |
+| HAProxy        | 50s (`timeout server`)            |
+
+stube ships an SSE comment-frame heartbeat to keep these connections
+warm. Every `:sse-keepalive-ms` (default 15s) the runtime sends a
+`stube-keepalive` event with an empty data line. Datastar ignores
+unknown event types, so the client sees nothing — only the proxy sees
+activity. The heartbeat is cancelled on `unregister-sse!` and `halt!`.
+
+Set the option to `nil` or `0` to disable (useful in tests or when
+the host's fronting layer has no idle timeout):
+
+```clojure
+(embed/make-kernel {:sse-keepalive-ms nil})
+```
+
+You still need to make sure the proxy does not *buffer* the SSE
+stream — heartbeats save the connection from being closed for being
+idle, but a proxy that holds bytes back until it has a full chunk
+will defer your UI updates by seconds. Sample config knobs for the
+two most common deployments:
+
+```nginx
+# nginx — disable proxy buffering on the SSE route only.
+location ~ ^/.*?/sse/ {
+  proxy_pass            http://stube;
+  proxy_http_version    1.1;
+  proxy_set_header      Connection "";
+  proxy_buffering       off;
+  proxy_cache           off;
+  # The heartbeat is 15s; raise the timer so it stays well above that.
+  proxy_read_timeout    1h;
+  proxy_send_timeout    1h;
+}
+```
+
+```
+# ALB target group — raise the idle timeout on the load balancer.
+# (The heartbeat keeps things alive within the new window.)
+aws elbv2 modify-load-balancer-attributes \
+  --load-balancer-arn $ARN \
+  --attributes Key=idle_timeout.timeout_seconds,Value=300
+```
+
+For Caddy, `flush_interval -1` on the SSE route plus `transport http
+{ read_buffer 4096 }` is sufficient. For HAProxy, `option
+http-server-close` plus a large `timeout tunnel` works.
+
 ---
 
 ## The shell

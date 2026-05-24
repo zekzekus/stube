@@ -27,8 +27,9 @@
   mode keyword translation and turns fragments into SSE events.  Before
   it existed, the translator was duplicated between [[dev.zeko.stube.http]] and
   [[dev.zeko.stube.server]]."
-  (:require [charred.api                         :as json]
-            [starfederation.datastar.clojure.api :as d*]))
+  (:require [charred.api                               :as json]
+            [starfederation.datastar.clojure.api       :as d*]
+            [starfederation.datastar.clojure.protocols :as sse-protocols]))
 
 ;; ---------------------------------------------------------------------------
 ;; Constructors
@@ -134,3 +135,19 @@
     (d*/lock-sse! sse-gen
       (doseq [f fragments]
         (push-fragment! sse-gen f)))))
+
+(defn push-keep-alive!
+  "Write a no-op SSE event to keep the connection alive across
+  reverse-proxy idle timeouts.  Datastar ignores any event type it
+  does not know, so the client sees no DOM change; only the proxy
+  sees activity on the channel.
+
+  Returns true on a successful write, false when the underlying
+  channel is already closed (which is the signal to stop scheduling
+  further heartbeats)."
+  [sse-gen]
+  (try
+    (d*/lock-sse! sse-gen
+      (sse-protocols/send-event! sse-gen "stube-keepalive" [""] {}))
+    true
+    (catch Throwable _ false)))

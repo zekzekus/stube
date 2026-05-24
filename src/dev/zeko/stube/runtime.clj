@@ -18,7 +18,7 @@
   (:import (java.time Duration Instant)
            (java.util UUID)))
 
-(declare dispatch! schedule-event! subscribe! unsubscribe!)
+(declare dispatch! schedule-event! stop-keepalive! subscribe! unsubscribe!)
 
 ;; ---------------------------------------------------------------------------
 ;; Kernel values
@@ -33,20 +33,24 @@
 
 (defn- default-options [opts]
   (let [custom-session? (contains? opts :session-id-fn)]
-    (merge {:context-fn       (constantly nil)
-            :app              nil
-            :principal-fn     nil
-            :store            (store/in-memory-store)
-            :base-path        ""
-            :route-style      :adapter
-            :root-selector    "#root"
-            :session-id-fn    session/request-session
+    (merge {:context-fn        (constantly nil)
+            :app               nil
+            :principal-fn      nil
+            :store             (store/in-memory-store)
+            :base-path         ""
+            :route-style       :adapter
+            :root-selector     "#root"
+            :session-id-fn     session/request-session
             :ensure-session-fn (when-not custom-session?
                                  session/ensure-session)
-            :on-conv-mint     (fn [conv _request] conv)
-            :on-error         nil
-            :ui-css?          true
-            :halos?           false}
+            :on-conv-mint      (fn [conv _request] conv)
+            :on-error          nil
+            :ui-css?           true
+            :halos?            false
+            ;; SSE comment-frame heartbeat that keeps reverse-proxy idle
+            ;; timers happy.  15s sits under the common 30/60s thresholds
+            ;; (nginx, ALB).  Set to nil or 0 to disable.
+            :sse-keepalive-ms  15000}
            opts)))
 
 (defn make-kernel
@@ -69,7 +73,11 @@
   * `:base-path` — URL prefix used by shell/render helpers.
   * `:session-id-fn` — host session lookup; defaults to `stube_sid`.
   * `:on-conv-mint` — optional `(fn [conv request] conv')` hook.
-  * `:on-error` — reserved hook for adapter error reporting."
+  * `:on-error` — reserved hook for adapter error reporting.
+  * `:sse-keepalive-ms` — interval in milliseconds for the SSE
+    heartbeat that keeps reverse-proxy idle timers happy.  Defaults
+    to 15000.  Set to nil or 0 to disable (e.g. when the host's proxy
+    has no idle timeout, or in tests)."
   ([]
    (make-kernel {}))
   ([opts]
@@ -80,6 +88,7 @@
             :base-path (normalize-base-path base-path)
             :!conversations  (atom restored)
             :!sse-sessions   (atom {})
+            :!sse-keepalive  (atom {})
             :!pending-roots  (atom {})
             :!timers         (atom {})
             :!subscriptions  (atom {})
@@ -275,6 +284,7 @@
   subscriptions, and persisted copy."
   [k cid]
   (cancel-timers! k cid)
+  (stop-keepalive! k cid)
   (remove-subscriptions-for-cid! k cid)
   (forget-pending-root! k cid)
   (swap! (:!conversations k) dissoc cid)
@@ -316,10 +326,40 @@
 ;; SSE and dispatch
 ;; ---------------------------------------------------------------------------
 
+(defn- start-keepalive!
+  "Start a daemon Thread that pings `sse-gen` every `interval-ms` until
+  either the channel rejects the write or the thread is interrupted.
+  Returns the Thread so the caller can stash it for cancellation."
+  [sse-gen interval-ms]
+  (let [^Thread t (Thread.
+                    ^Runnable
+                    (fn []
+                      (try
+                        (loop []
+                          (Thread/sleep ^long interval-ms)
+                          (when (f/push-keep-alive! sse-gen)
+                            (recur)))
+                        (catch InterruptedException _ nil)
+                        (catch Throwable _ nil)))
+                    "stube-sse-keepalive")]
+    (.setDaemon t true)
+    (.start t)
+    t))
+
+(defn- stop-keepalive! [k cid]
+  (when-let [^Thread t (get @(:!sse-keepalive k) cid)]
+    (.interrupt t)
+    (swap! (:!sse-keepalive k) dissoc cid)))
+
 (defn register-sse! [k cid sse-gen]
-  (swap! (:!sse-sessions k) assoc cid sse-gen))
+  (swap! (:!sse-sessions k) assoc cid sse-gen)
+  (when-let [ms (:sse-keepalive-ms k)]
+    (when (pos? ms)
+      (stop-keepalive! k cid)
+      (swap! (:!sse-keepalive k) assoc cid (start-keepalive! sse-gen ms)))))
 
 (defn unregister-sse! [k cid]
+  (stop-keepalive! k cid)
   (swap! (:!sse-sessions k) dissoc cid))
 
 (defn sse [k cid]
@@ -571,6 +611,8 @@
   (when (compare-and-set! (:!shutting-down? k) false true)
     (doseq [cid (keys @(:!timers k))]
       (cancel-timers! k cid))
+    (doseq [cid (keys @(:!sse-keepalive k))]
+      (stop-keepalive! k cid))
     (run-shutdown-stop-hooks! k)
     (doseq [[_cid sse-gen] @(:!sse-sessions k)]
       (try
@@ -578,6 +620,7 @@
         (catch Throwable _ nil)))
     (flush-store! k)
     (reset! (:!sse-sessions k) {})
+    (reset! (:!sse-keepalive k) {})
     (reset! (:!pending-roots k) {})
     (reset! (:!subscriptions k) {})
     (reset! (:!cid-locks k) {})

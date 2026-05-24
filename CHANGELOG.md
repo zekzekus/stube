@@ -5,6 +5,13 @@ development entry.
 
 ## Unreleased
 
+- SSE heartbeat for reverse-proxy idle timeouts. Every kernel now runs
+  a per-conversation keepalive thread that sends a `stube-keepalive`
+  event (an SSE event-type Datastar ignores) every
+  `:sse-keepalive-ms` milliseconds, default 15000. The heartbeat
+  stops when the SSE channel unregisters or the kernel halts. Pass
+  `nil` or `0` to disable. `docs/internals.md` carries an "SSE behind
+  a reverse proxy" section with nginx, ALB, Caddy, and HAProxy knobs.
 - `defflow` durability is now documented as a deliberate property,
   not a pending gap. A conversation containing a `defflow` is
   in-memory only by design (its cloroutine continuation is not
