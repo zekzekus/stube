@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.1.2
+
 - Fix the `:call-in-slot` previous-chain leak surfaced by
   `kernel-property-test` during the 0.1.1 sweep. New
   `conversation/subtree-ids` walks `:instance/previous` chains
