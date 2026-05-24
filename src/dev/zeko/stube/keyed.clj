@@ -122,9 +122,13 @@
     [conv child-iid start-frags]))
 
 (defn- drop-child [conv child-iid run-effects-fn]
-  (let [iids (conv/descendant-ids conv child-iid)
+  ;; A keyed child that is being removed from the list is destroyed
+  ;; outright; if it ever called-in-slot internally, the previous-
+  ;; chain instances need their `:stop` hooks and need to be swept
+  ;; from `:conv/instances` along with the rest of the subtree.
+  (let [iids (conv/subtree-ids conv child-iid)
         [conv stop-frags] (lc/run-stop-hooks run-effects-fn conv iids)]
-    [(conv/remove-subtree conv child-iid) stop-frags]))
+    [(conv/remove-subtree+previous conv child-iid) stop-frags]))
 
 (defn- preserve-root-iid
   "Install a freshly-instantiated subtree under the existing keyed-child

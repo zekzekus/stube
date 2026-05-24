@@ -106,21 +106,26 @@
   ;;
   ;;   * every iid on the call stack exists in :conv/instances
   ;;   * every iid named by some parent's :instance/children exists
+  ;;   * every :instance/parent points at a live ancestor
+  ;;   * every :instance/previous (the displaced slot occupant stashed
+  ;;     by :call-in-slot) points at a live instance — or `nil`
   ;;
-  ;; We deliberately do NOT assert that every :instance/parent points
-  ;; at a live ancestor.  `:call-in-slot` parks the previous slot
-  ;; occupant on the new instance via `:instance/previous` precisely
-  ;; so it can be restored on `:answer`; when the parent itself is
-  ;; replaced or ended before that answer arrives, the previous chain
-  ;; becomes an orphan with a dangling `:instance/parent`.  Fixing
-  ;; that requires sweeping previous chains in pop-top/remove-subtree
-  ;; and is its own piece of work — out of scope here.
+  ;; The previous-chain checks were added when the
+  ;; pop-top/subtree-ids fix landed: prior to that, call-in-slot
+  ;; followed by replace/end leaked the previous-chain instances with
+  ;; dangling :instance/parent pointers.
   (let [instances (:conv/instances c)
         ids       (set (keys instances))]
     (doseq [iid (:conv/stack c)]
       (assert (contains? ids iid)
               (str "stack iid " iid " missing from :conv/instances")))
     (doseq [[iid inst] instances]
+      (when-let [parent (:instance/parent inst)]
+        (assert (contains? ids parent)
+                (str "parent " parent " of " iid " missing from :conv/instances")))
+      (when-let [prev (:instance/previous inst)]
+        (assert (contains? ids prev)
+                (str "previous " prev " of " iid " missing from :conv/instances")))
       (doseq [[_slot child-iid] (:instance/children inst)]
         (when child-iid
           (assert (contains? ids child-iid)

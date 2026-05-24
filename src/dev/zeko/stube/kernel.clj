@@ -330,7 +330,10 @@
   (let [leaving-id      (conv/top-id conv)
         leaving         (conv/top-instance conv)
         resume-key      (:instance/resume leaving)
-        stop-iids       (conv/descendant-ids conv leaving-id)
+        ;; The whole frame is being destroyed — pull in previous-chained
+        ;; slot occupants too so their `:stop` fires and they get swept
+        ;; from `:conv/instances` by pop-top below.
+        stop-iids       (conv/subtree-ids conv leaving-id)
         [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
         [conv' _popped] (conv/pop-top conv-stopped)
         parent-id       (conv/top-id conv')
@@ -375,7 +378,8 @@
   (let [embed-spec            (e/replace-embed eff)
         old-inst              (conv/top-instance conv)
         old-id                (:instance/id old-inst)
-        stop-iids             (conv/descendant-ids conv old-id)
+        ;; The whole old frame goes; sweep previous-chain instances too.
+        stop-iids             (conv/subtree-ids conv old-id)
         [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
         [conv-popped _popped-id] (conv/pop-top conv-stopped)
         parent                (when-let [pid (conv/top-id conv-popped)]
@@ -505,7 +509,9 @@
 
 (defmethod step :end
   [conv _eff]
-  (let [stop-iids (vec (mapcat #(conv/descendant-ids conv %) (:conv/stack conv)))
+  ;; The whole conversation is going away — sweep previous-chain
+  ;; instances too so their `:stop` hooks fire.
+  (let [stop-iids (vec (mapcat #(conv/subtree-ids conv %) (:conv/stack conv)))
         [conv' stop-frags] (run-stop-hooks conv stop-iids)]
     [(assoc conv' :conv/ended? true) (conj (vec stop-frags) f/close)]))
 

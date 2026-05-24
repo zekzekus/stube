@@ -249,7 +249,15 @@
 (defn descendant-ids
   "Return a vector of all instance ids transitively reachable from `iid`
   via `:instance/children` or `:instance/keyed-slots`, including `iid`
-  itself, in pre-order."
+  itself, in pre-order.
+
+  Does **not** follow `:instance/previous` chains (the displaced slot
+  occupants stashed by `[:call-in-slot …]` while their replacement is
+  pending).  Use this on the slot-answer path, where the previous gets
+  restored, and for render-side walks like [[mark-rendered]] where
+  previous-chained instances are not visible in the DOM.  When the
+  whole subtree is being destroyed (frame pop, `:replace`, `:end`,
+  keyed removal), use [[subtree-ids]] instead."
   [conv iid]
   (loop [acc [] frontier [iid]]
     (if-let [i (first frontier)]
@@ -265,12 +273,53 @@
                      (concat child-iids keyed-iids))))
       acc)))
 
+(defn subtree-ids
+  "Like [[descendant-ids]] but also follows each instance's
+  `:instance/previous` chain.
+
+  `[:call-in-slot …]` stashes the displaced slot occupant on the new
+  child's `:instance/previous` so the slot can revert on `:answer`.
+  When the *parent* frame goes away before that answer arrives, those
+  previous-chained instances have no live referent and would otherwise
+  leak in `:conv/instances`.  Frame-destruction paths use this wider
+  walk so the chain is swept and each ancestor's `:stop` hook fires
+  exactly once.
+
+  Visited iids are tracked in a set, but a previous-chain can only
+  ever be a strict tree (each entry is set once at the moment of
+  call-in-slot to an existing, distinct iid)."
+  [conv iid]
+  (loop [acc [] seen #{} frontier [iid]]
+    (if-let [i (first frontier)]
+      (if (contains? seen i)
+        (recur acc seen (rest frontier))
+        (let [inst        (instance conv i)
+              child-iids  (vals (:instance/children inst))
+              keyed-iids  (for [[_slot slot-state] (:instance/keyed-slots inst)
+                                [_k entry]         (:children slot-state)
+                                :let [iid (:iid entry)]
+                                :when iid]
+                            iid)
+              prev-iid    (:instance/previous inst)]
+          (recur (conj acc i)
+                 (conj seen i)
+                 (cond-> (into (vec (rest frontier))
+                               (concat child-iids keyed-iids))
+                   prev-iid (conj prev-iid)))))
+      acc)))
+
 (defn pop-top
-  "Pop the top frame and remove its instance — and every embedded
-  descendant — from the conversation.  Returns `[conv' popped-id]`."
+  "Pop the top frame and remove its entire subtree from the
+  conversation — embedded descendants and every previous-chained slot
+  occupant.  Returns `[conv' popped-id]`.
+
+  The wider sweep matters: a frame can have called-in-slot one or
+  more times before being popped, leaving a previous-chain dangling
+  off each new slot child.  The narrow [[descendant-ids]] walk would
+  miss those instances and leave them orphaned in `:conv/instances`."
   [conv]
   (let [popped     (top-id conv)
-        all-gone   (descendant-ids conv popped)]
+        all-gone   (subtree-ids conv popped)]
     [(-> conv
          (update :conv/stack pop)
          (update :conv/instances #(apply dissoc % all-gone)))
@@ -278,9 +327,21 @@
 
 (defn remove-subtree
   "Remove `iid` and every embedded descendant from `:conv/instances`
-  without touching the call stack."
+  without touching the call stack.  Mirrors [[descendant-ids]] — does
+  *not* follow `:instance/previous` chains.
+
+  Right for the slot-answer path, where the previous occupant gets
+  restored as the new slot value.  Wrong for whole-subtree teardown;
+  use [[remove-subtree+previous]] there."
   [conv iid]
   (update conv :conv/instances #(apply dissoc % (descendant-ids conv iid))))
+
+(defn remove-subtree+previous
+  "Like [[remove-subtree]] but follows `:instance/previous` chains.
+  Use this when the whole subtree is being destroyed (keyed-child
+  removal, frame replace/end)."
+  [conv iid]
+  (update conv :conv/instances #(apply dissoc % (subtree-ids conv iid))))
 
 (defn put-instance
   "Replace `inst` in the instances map without touching the stack."

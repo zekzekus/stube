@@ -198,6 +198,81 @@
       (is (str/includes? html2 "received=saved"))
       (is (str/includes? html2 "label")))))
 
+(deftest replacing-parent-sweeps-call-in-slot-previous-chain
+  ;; Regression for the leak the property test surfaced: when a
+  ;; parent frame is replaced (or ended, or popped on :answer)
+  ;; before its slot child has answered, the previous-chain
+  ;; instances stashed on `:instance/previous` were orphaned in
+  ;; `:conv/instances`.  After the fix, subtree-ids walks previous
+  ;; chains and pop-top sweeps them; this test pins the new
+  ;; behaviour so we don't regress.
+  (let [stops (atom #{})]
+    (registry/register!
+      {:component/id     :t/leaf-with-stop
+       :component/render (fn [s] [:span {:id (:instance/id s)} "leaf"])
+       :stop             (fn [s] (swap! stops conj (:instance/id s)) nil)})
+    (registry/register!
+      {:component/id     :t/replacer
+       :component/render (fn [s] [:p {:id (:instance/id s)} "replaced"])})
+    (registry/register!
+      {:component/id     :t/parent-with-slot
+       :children         {:slot/body (conv/embed :t/leaf-with-stop)}
+       :component/render (fn [self]
+                           [:div {:id (:instance/id self)}
+                            (s/render-slot self :slot/body)])
+       :component/handle (fn [s {:keys [event]}]
+                           (case event
+                             :swap [s [[:call-in-slot :slot/body
+                                        (conv/embed :t/leaf-with-stop)
+                                        :resume :on-leaf]]]
+                             :replace [s [(s/become (conv/embed :t/replacer))]]))
+       :on-leaf          (fn [s _v] s)})
+    (let [[c0]    (run-boot :t/parent-with-slot)
+          parent  (conv/top-id c0)
+          initial-leaf (get-in (conv/instance c0 parent)
+                               [:instance/children :slot/body])
+          ;; Call-in-slot once: leaf2 takes the slot, leaf1 is parked
+          ;; on leaf2.:instance/previous.
+          [c1 _]  (kernel/dispatch c0 {:instance-id parent
+                                       :event       :swap
+                                       :signals     {}})
+          leaf2   (get-in (conv/instance c1 parent)
+                          [:instance/children :slot/body])
+          ;; Call-in-slot again: leaf3 takes the slot, leaf2 parked
+          ;; on leaf3.:instance/previous (chain: leaf3 → leaf2 → leaf1).
+          [c2 _]  (kernel/dispatch c1 {:instance-id parent
+                                       :event       :swap
+                                       :signals     {}})
+          leaf3   (get-in (conv/instance c2 parent)
+                          [:instance/children :slot/body])]
+      (is (= initial-leaf (:instance/previous (conv/instance c2 leaf2)))
+          "leaf2 still references leaf1 as its previous occupant")
+      (is (= leaf2 (:instance/previous (conv/instance c2 leaf3)))
+          "leaf3 still references leaf2 as its previous occupant")
+      (is (every? #(some? (conv/instance c2 %)) [initial-leaf leaf2 leaf3])
+          "all three slot occupants are still live before the replace")
+
+      ;; Now replace the parent frame.  Pre-fix, leaf1 and leaf2 would
+      ;; remain in :conv/instances with dangling :instance/parent
+      ;; pointers; their :stop hooks would never have fired.
+      (let [[c3 _] (kernel/dispatch c2 {:instance-id parent
+                                        :event       :replace
+                                        :signals     {}})]
+        (is (nil? (conv/instance c3 parent))
+            "parent is gone after :replace")
+        (is (nil? (conv/instance c3 initial-leaf))
+            "leaf1 (previous-of-previous) is swept from :conv/instances")
+        (is (nil? (conv/instance c3 leaf2))
+            "leaf2 (previous-of-current) is swept from :conv/instances")
+        (is (nil? (conv/instance c3 leaf3))
+            "leaf3 (current slot occupant) is swept from :conv/instances")
+        (is (contains? @stops initial-leaf)
+            ":stop fired for the deepest previous-chained leaf")
+        (is (contains? @stops leaf2)
+            ":stop fired for the middle previous-chained leaf")
+        (is (contains? @stops leaf3)
+            ":stop fired for the slot child as well")))))
+
 (deftest slot-resume-accepts-map-return-shape
   (registry/register!
     {:component/id     :t/label

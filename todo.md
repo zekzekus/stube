@@ -20,22 +20,19 @@ Three tiers:
 
 ## 1 · Correctness
 
-- [ ] **Fix the `:call-in-slot` previous-chain leak.**
-      `:call-in-slot` parks the previous slot occupant on
-      `:instance/previous` so the answer path can restore it. When the
-      parent frame is replaced or ended *before* the slot child has
-      answered, that previous-pointer chain becomes garbage:
-      `:conv/instances` keeps every leaf in the chain, each with
-      `:instance/parent` pointing at a removed iid. Surfaced by
-      `kernel_property_test`; named and bounded by a comment in that
-      file so the property test still catches everything else.
-      The fix: walk previous-chains in `conv/pop-top` and
-      `conv/remove-subtree`, sweep their iids out of `:conv/instances`,
-      and run their `:stop` hooks during the sweep (they were never
-      stopped — call-in-slot does not stop the displaced child, it
-      preserves it). Once landed, relax the property test back to
-      asserting that *every* `:instance/parent` points at a live iid.
-      [surfaced 0.1.1, blocks 1.0]
+(No open items.  The `:call-in-slot` previous-chain leak surfaced
+during the 0.1.1 sweep landed shortly after: `conv/subtree-ids`
+walks `:instance/previous` chains alongside `:instance/children`
+and `:instance/keyed-slots`, and the destruction paths
+(`pop-top`, `:replace`, `:end`, `answer-from-stack`, keyed-child
+removal, halt) use it so previous-chain instances get their
+`:stop` hooks and are swept from `:conv/instances`.  The narrow
+`descendant-ids` survives for paths where the previous gets
+restored — `answer-from-slot`, `mark-rendered`, and wakeup —
+because restoring an instance is not the same as destroying its
+ancestors.  Pinned by `embed-test/replacing-parent-sweeps-call-in-slot-previous-chain`
+and by the strengthened structural assertions in
+`kernel-property-test`.)
 
 ---
 

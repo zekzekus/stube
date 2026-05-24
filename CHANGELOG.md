@@ -5,7 +5,18 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- Fix the `:call-in-slot` previous-chain leak surfaced by
+  `kernel-property-test` during the 0.1.1 sweep. New
+  `conversation/subtree-ids` walks `:instance/previous` chains
+  alongside `:instance/children` and `:instance/keyed-slots`; the
+  frame-destruction paths (`pop-top`, `:replace`, `:end`, root-frame
+  `:answer`, keyed-child removal, runtime `halt!`) use it so
+  previous-chain instances get their `:stop` hooks and are swept
+  from `:conv/instances`. The narrow `descendant-ids` survives for
+  paths where the previous gets restored (`answer-from-slot`,
+  `mark-rendered`, history wakeup). Pinned by a focused regression in
+  `embed-test` and by tightened structural assertions in
+  `kernel-property-test`.
 
 ## 0.1.1
 

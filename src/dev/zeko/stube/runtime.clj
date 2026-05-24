@@ -565,7 +565,9 @@
   [conv]
   (vec
     (mapcat (fn [frame-iid]
-              (rseq (conv/descendant-ids conv frame-iid)))
+              ;; Shutdown destroys everything — include previous-
+              ;; chain instances so their `:stop` hooks fire too.
+              (rseq (conv/subtree-ids conv frame-iid)))
             (rseq (or (:conv/stack conv) [])))))
 
 (defn- run-shutdown-stop-hooks! [k]
