@@ -2,9 +2,11 @@
 # Release driver for stube.  Invoked from `make release VERSION=x.y.z`.
 #
 # Sequence (every step exits non-zero on first failure):
-#   1. sanity-check args, env, working copy
+#   1. sanity-check args, env, working copy, CHANGELOG draft
 #   2. run the full test suite
-#   3. bump the version in build.clj, README.md, docs/tutorial.md
+#   3. bump the version in build.clj, README.md, docs/tutorial.md;
+#      rename `## Unreleased` in CHANGELOG.md to `## VERSION` and
+#      restore a fresh `## Unreleased` placeholder above it
 #   4. describe the commit, advance master, start a fresh working copy
 #   5. clean + deploy the jar to Clojars
 #   6. push master via `jj git push`
@@ -35,6 +37,25 @@ if [[ "$jj_status" != *"The working copy has no changes."* ]]; then
   exit 1
 fi
 
+echo "→ checking CHANGELOG.md has a drafted ## Unreleased section"
+# Pull the body between `## Unreleased` and the next `## ` heading,
+# strip blank lines and the (No changes yet.) placeholder.  If
+# nothing remains, the release is empty — refuse rather than mint a
+# version section with no notes.
+unreleased_body=$(awk '
+  /^## Unreleased[[:space:]]*$/ { in_section = 1; next }
+  /^## / && in_section          { in_section = 0 }
+  in_section                    { print }
+' CHANGELOG.md \
+  | grep -vE '^[[:space:]]*$' \
+  | grep -vE '^[[:space:]]*\(No changes yet\.\)[[:space:]]*$' \
+  || true)
+
+if [[ -z "$unreleased_body" ]]; then
+  echo "CHANGELOG.md ## Unreleased is empty; add entries before releasing." >&2
+  exit 1
+fi
+
 echo "→ running tests"
 clojure -X:test
 
@@ -45,6 +66,23 @@ echo "→ bumping version to $VERSION"
 sed -i -E 's/(\(def version[[:space:]]+")[^"]+"/\1'"$VERSION"'"/' build.clj
 sed -i -E 's/(\{:mvn\/version[[:space:]]+")[^"]+"/\1'"$VERSION"'"/' \
   README.md docs/tutorial.md
+
+echo "→ promoting CHANGELOG.md ## Unreleased to ## $VERSION"
+# Rewrite the first `## Unreleased` heading to `## VERSION` and
+# re-insert a fresh empty `## Unreleased` above it.  Awk because sed
+# replacement-with-embedded-newlines is awkward across implementations.
+awk -v ver="$VERSION" '
+  /^## Unreleased[[:space:]]*$/ && !done {
+    print "## Unreleased"
+    print ""
+    print "(No changes yet.)"
+    print ""
+    print "## " ver
+    done = 1
+    next
+  }
+  { print }
+' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
 
 echo "→ committing version bump"
 jj describe -m "Release $VERSION"
