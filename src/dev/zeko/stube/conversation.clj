@@ -99,7 +99,8 @@
   these as read-only; the kernel ignores any user changes to them.
 
   `:instance/children` is the slot→iid map populated when a component
-  declares `:children` in its definition.  See [[instantiate-tree]].
+  declares `:children` (lifted to `:component/children`) in its
+  definition.  See [[instantiate-tree]].
 
   `:instance/slot` and `:instance/previous` are used by the
   `[:call-in-slot …]` overlay primitive: the temporary child remembers
@@ -121,7 +122,7 @@
   "Build a fresh instance map from a component definition and an embed
   spec.  `parent-id` and `resume-key` may be nil for root instances.
 
-  This is the *flat* constructor: it does not look at `:children`.
+  This is the *flat* constructor: it does not look at `:component/children`.
   Use [[instantiate-tree]] when you want the kernel to materialise the
   whole subtree."
   [cdef {:keys [embed/args]} parent-id resume-key]
@@ -137,9 +138,10 @@
 
 (defn instantiate-tree
   "Build a parent instance plus every child eagerly declared by its
-  component definition's `:children` map.
+  component definition's `:component/children` map (lifted from
+  `:children` at registration time by `registry/register!`).
 
-  `:children` is either a map `{slot-key embed-spec}` or a function of
+  `:component/children` is either a map `{slot-key embed-spec}` or a function of
   the freshly-initialised parent state returning such a map.  Slot keys
   are arbitrary keywords the parent can reference from its `:render`
   via `(s/render-slot self slot-key)`.
@@ -154,7 +156,7 @@
   `:instance/children` populated with `{slot-key child-iid}`."
   [cdef embed-spec parent-id resume-key lookup-cdef]
   (let [self          (instantiate cdef embed-spec parent-id resume-key)
-        children-spec (:children cdef)
+        children-spec (:component/children cdef)
         children-spec (if (fn? children-spec)
                         (children-spec self)
                         children-spec)

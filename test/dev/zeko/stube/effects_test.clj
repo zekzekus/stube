@@ -50,7 +50,7 @@
   (is (= [:patch-signals {:x 1}] (s/patch-signals {:x 1})))
   (is (= [:execute-script "alert(1)"] (s/execute-script "alert(1)")))
   (is (= [:end {:done true}]  (s/end {:done true})))
-  (is (= [:back] s/back))
+  (is (= [:back] (s/back)))
   (is (= [:after 1000 :tick] (s/after 1000 :tick)))
   (is (= [:subscribe :topic :msg] (s/subscribe :topic :msg)))
   (is (= [:unsubscribe] (s/unsubscribe)))

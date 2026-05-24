@@ -244,7 +244,7 @@ Stable embedder API:
 - `stube/head-tags` returns the CSS/script tags required by that fragment.
 - `stube/dispatch!` dispatches into a live conversation and returns fragments.
 - `stube/publish!` publishes from host code into that runtime kernel.
-- `stube/replay` runs the same interaction path without mutating runtime state.
+- `stube/replay-with` runs the same interaction path against a kernel configuration without mutating runtime state.
 - `stube/halt!` closes open streams and clears runtime registries.
 
 `examples/dev/zeko/stube/examples/embedded_ring.clj` shows a plain Ring
@@ -292,20 +292,36 @@ clojure -M:examples  # open http://localhost:8080/ in your browser
 clojure -X:test      # run the test suite
 ```
 
-The example browser at `/` indexes every shipped demo. Individual
-URLs:
+The example browser at `/` indexes every shipped demo with a blurb
+and a deep link. A few highlights, grouped by what each demo exercises
+first:
 
-| path | what it shows |
-|------|---------------|
-| `/guess`         | `defflow` — guess‑the‑number as straight‑line code |
-| `/multicounter`  | three embedded counters; one click re‑renders one widget |
-| `/todo`          | edit‑in‑place todo list using `call-in-slot` |
-| `/wizard`        | multi‑step form with a real Back button |
-| `/chat`          | pub/sub across browser tabs |
-| `/calendar`      | structured event payloads |
-| `/file-upload`   | zero‑JS multipart uploads |
-| `/clock`         | scheduled `after` events |
-| `/seaside-todo`  | a fuller port of the HPI *Introduction to Seaside* tutorial |
+| group | path | what it shows |
+|-------|------|---------------|
+| Foundation | `/guess`             | `defflow` — guess‑the‑number as straight‑line code |
+| Foundation | `/multicounter`      | three embedded counters; morph‑by‑id keeps siblings intact |
+| Foundation | `/wizard`            | multi‑step form whose Back button rewinds the conversation |
+| Tier 1     | `/calc`              | dense button‑event routing in one component |
+| Tier 1     | `/dialogs`           | reusable confirm/prompt/choose via call/answer |
+| Tier 1     | `/tabs`              | inactive embedded children stay alive off‑screen |
+| Tier 1     | `/calendar`          | structured per‑cell click payloads |
+| Tier 1     | `/todo`              | edit‑in‑place todo list using `call-in-slot` |
+| Tier 2     | `/paginated-list`    | pagination plus an EDN‑safe row‑render callback |
+| Tier 2     | `/table-report`      | column config maps and click‑to‑sort headers |
+| Tier 2     | `/tree`              | recursive rendering and per‑node expansion |
+| Tier 2     | `/breadcrumb`        | a base page wrapped with `s/decorate` |
+| Tier 2     | `/example-browser`   | dynamic mount/registry lookup plus detail child swapping |
+| Tier 2     | `/url-counter`       | `s/history` syncs counter value into the address bar |
+| Tier 3     | `/file-upload`       | zero‑JS multipart uploads via `:upload-received` |
+| Tier 3     | `/clock`             | cid‑scoped scheduled events via `s/after` |
+| Tier 3     | `/shared-counter`    | shared app state plus topic subscriptions |
+| Tier 3     | `/chat`              | pub/sub across browser tabs |
+| Tier 3     | `/protected-counter` | app login composed with cid owner cookies |
+| Tier 3     | `/preserved-widget`  | `s/preserve` keeps third‑party DOM children alive |
+| Tier 3     | `/error-frame`       | a throwing handler turns into a local banner, SSE intact |
+| Tier 3     | `/columns`           | `s/keyed-children` adds/removes/replaces a column |
+| Book app   | `/seaside-todo`      | a fuller port of the HPI *Introduction to Seaside* tutorial |
+| Book app   | `/kasten`            | horizontal stack of open note columns, wiki‑links, slot‑local editing |
 
 Install the [Datastar Inspector](https://data-star.dev/) browser
 extension to watch the SSE stream live; on the REPL side,

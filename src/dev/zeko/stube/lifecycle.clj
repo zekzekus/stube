@@ -45,7 +45,7 @@
   [run-effects-fn conv iid]
   (if-let [inst (conv/instance conv iid)]
     (let [cdef (registry/lookup! (:instance/type inst))]
-      (if-let [start-fn (:start cdef)]
+      (if-let [start-fn (:component/start cdef)]
         (let [[inst' fx] (coerce-return inst (start-fn inst))
               inst'      (conv/preserve-meta inst inst')
               conv'      (conv/put-instance conv inst')
@@ -79,7 +79,7 @@
   (reduce (fn [[c frags] iid]
             (if-let [inst (conv/instance c iid)]
               (if-let [stop-fn (some-> (registry/lookup (:instance/type inst))
-                                       :stop)]
+                                       :component/stop)]
                 (let [[_ fx] (coerce-return inst (stop-fn inst))
                       [c' more] (e/with-origin iid
                                   (run-effects-fn c fx))]
@@ -94,7 +94,7 @@
   [run-effects-fn conv iid]
   (if-let [inst (conv/instance conv iid)]
     (let [cdef (registry/lookup! (:instance/type inst))]
-      (if-let [wakeup-fn (:wakeup cdef)]
+      (if-let [wakeup-fn (:component/wakeup cdef)]
         (let [[inst' fx] (coerce-return inst (wakeup-fn inst))
               inst'      (conv/preserve-meta inst inst')
               conv'      (conv/put-instance conv inst')

@@ -3,19 +3,28 @@
 
   In stube, a *component* is a plain map of the form
 
-      {:component/id      :auth/login
-       :component/doc     \"Prompt for credentials.\"
-       :component/init    (fn [args] state-map)
-       :component/render  (fn [self]  hiccup)
-       :component/handle  (fn [self event] [self' effects])
-       :component/keep    #{:signal-keys}
-       :on-foo            (fn [self answer-value] [self' effects])
+      {:component/id       :auth/login
+       :component/doc      \"Prompt for credentials.\"
+       :component/init     (fn [args] state-map)
+       :component/render   (fn [self]  hiccup)
+       :component/handle   (fn [self event] [self' effects])
+       :component/keep     #{:signal-keys}
+       :component/start    (fn [self] [self' effects])
+       :component/stop     (fn [self] [self' effects])
+       :component/wakeup   (fn [self] [self' effects])
+       :component/children {:slot/x embed-spec}
+       :on-foo             (fn [self answer-value] [self' effects])
        …}
 
   Behaviour lives in the values; the key under which the kernel finds them
   is by namespaced convention.  Resume keys (`:on-foo`, `:on-step-3`, …)
   are looked up dynamically when an `[:answer …]` effect pops a child
   frame: the parent's `:instance/resume` value names the function to call.
+
+  Author keys (`:init`, `:render`, `:handle`, `:keep`, `:doc`, `:state`,
+  `:start`, `:stop`, `:wakeup`, `:children`) are lifted to their
+  `:component/<name>` homes by [[register!]] so every cdef the kernel
+  reads has a single uniform namespace.
 
   The registry maps `:component/id` to the component map.  It is held in a
   single atom so component definitions can be evaluated at namespace load
@@ -24,6 +33,24 @@
 ;; A single global registry.  Re-defining a component (e.g. during REPL
 ;; iteration) replaces the previous entry by id.
 (defonce ^:private !components (atom {}))
+
+(def ^:private colocated-keys
+  "Component-author-facing keys lifted to `:component/<name>` at
+  registration time so the kernel finds them under a single namespace.
+  Resume keys (`:on-foo`, etc.) are not on this list — they pass through
+  verbatim because the kernel looks them up by exact name."
+  [:init :render :handle :keep :doc :state
+   :start :stop :wakeup :children])
+
+(defn- lift-colocated [cdef]
+  (reduce (fn [m k]
+            (if (contains? m k)
+              (-> m
+                  (assoc (keyword "component" (name k)) (get m k))
+                  (dissoc k))
+              m))
+          cdef
+          colocated-keys))
 
 ;; Only `:component/id` is strictly required.  All lifecycle keys
 ;; (`:component/init`, `:component/render`, `:component/handle`,
@@ -46,9 +73,16 @@
   cdef)
 
 (defn register!
-  "Add or replace a component definition.  Returns the registered map."
+  "Add or replace a component definition.  Returns the registered map.
+
+  Colocated author keys (`:init`, `:render`, `:handle`, `:keep`, `:doc`,
+  `:state`, `:start`, `:stop`, `:wakeup`, `:children`) are lifted to
+  `:component/<name>` here, so the kernel can read every cdef under a
+  single namespace regardless of which entry point produced it
+  (`defcomponent` macro, `register-component!` function, or
+  `decorate!`)."
   [cdef]
-  (let [cdef (validate! cdef)]
+  (let [cdef (-> cdef validate! lift-colocated)]
     (swap! !components assoc (:component/id cdef) cdef)
     cdef))
 

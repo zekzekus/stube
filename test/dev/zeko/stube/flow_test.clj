@@ -43,7 +43,7 @@
   (let [cdef (registry/lookup! :t/empty)]
     (is (= :t/empty (:component/id cdef)))
     (is (fn? (:component/init cdef)))
-    (is (fn? (:start cdef))                    "flows always provide :start")
+    (is (fn? (:component/start cdef))          "flows always provide :start")
     (is (fn? (get cdef flow/resume-key))       "and the single resume hook")))
 
 ;; ---------------------------------------------------------------------------
