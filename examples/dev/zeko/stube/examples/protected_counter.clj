@@ -7,19 +7,47 @@
 
   Then visit <http://localhost:8080/protected-counter>.
 
-  stube already binds every cid to the browser's `stube_sid` cookie, so
-  another browser cannot post events into this conversation.  The app's
-  own authenticated principal is ordinary conversation state here; a
-  host app with real auth would pass/verify that principal at its own
-  boundary rather than asking stube to invent an auth model."
-  (:require [clojure.string :as str]
-            [dev.zeko.stube.core :as s]))
+  Two layers of protection cooperate here:
+
+  * **Framework layer** — stube binds every cid to the browser's
+    `stube_sid` cookie, so another browser cannot POST events into this
+    conversation.
+  * **Application layer** — the embedder declares a `:principal-fn`
+    when constructing the kernel; that principal is stamped onto the
+    conversation at mint time and surfaced through `(s/principal)`.
+    Components decide what to render based on whether a principal is
+    present.
+
+  The standalone server in this example fakes a tiny session store via
+  query string (`?user=ada`) so the demo stays self-contained.  A real
+  host would read the principal out of its own session middleware in
+  `:principal-fn` instead."
+  (:require [dev.zeko.stube.core :as s]))
+
+;; ---------------------------------------------------------------------------
+;; Fake host session — replace with your auth middleware in a real app.
+;; ---------------------------------------------------------------------------
+;;
+;; This is a stand-in for whatever your host already does to identify
+;; the user — Ring session middleware, a JWT, an OAuth flow, etc.  The
+;; kernel never sees this code; it only sees the principal that
+;; :principal-fn extracts from a request.
+
+(defn- request-principal
+  "Read a `?user=` query param off the request as the demo's principal."
+  [request]
+  (some-> request :query-string
+          (->> (re-find #"(?:^|&)user=([^&]+)"))
+          second))
+
+;; ---------------------------------------------------------------------------
+;; Component
+;; ---------------------------------------------------------------------------
 
 (s/defcomponent :demo/protected-counter
-  :doc "WASessionProtectedCounter port: app-level login composed with stube's cid owner cookie."
+  :doc "Counter that is only interactive when the host has a logged-in principal."
 
-  :init (constantly {:user nil :user-name "" :n 0})
-  :keep #{:user-name}
+  :init (constantly {:n 0})
 
   :render
   (fn [self]
@@ -27,7 +55,7 @@
                 {:class "stube-card"
                  :style "max-width:28rem; margin:1rem; font-family:system-ui, sans-serif;"})
      [:h2 {:style "margin-top:0;"} "Protected counter"]
-     (if-let [user (:user self)]
+     (if-let [user (s/principal)]
        [:div
         [:p "Signed in as " [:strong user] "."]
         [:div {:style "font-size:2rem; font-variant-numeric:tabular-nums;"}
@@ -38,42 +66,32 @@
           "−"]
          [:button (merge {:type "button" :class "stube-button stube-button--primary"}
                          (s/on self :click :as :inc))
-          "+"]
-         [:button (merge {:type "button" :class "stube-button"}
-                         (s/on self :click :as :logout))
-          "Log out"]]
+          "+"]]
         [:p {:style "color:#666; font-size:0.9rem;"}
          "Try copying this page's POST URL into another browser session: "
          "the framework-level owner cookie rejects it before the handler runs."]]
-       [:form (merge {:style "display:grid; gap:0.75rem;"}
-                     (s/on self :submit :as :login))
+       [:div
+        [:p "This page is only available to a signed-in user."]
         [:p {:style "color:#555;"}
-         "Enter any name to bind this conversation to an app-level principal."]
-        [:label
-         [:span {:class "stube-label"} "User"]
-         [:input (merge {:class "stube-input" :name "user-name"
-                         :value (:user-name self)
-                         :placeholder "ada"}
-                        (s/local-bind self :user-name))]]
-        [:button {:type "submit" :class "stube-button stube-button--primary"}
-         "Sign in"]])])
+         "In a real host, this branch would link to the host's login flow.  "
+         "For this demo, append "
+         [:code "?user=ada"]
+         " to the URL and reload to mint a fresh conversation with a principal."]])])
 
   :handle
   (fn [self {:keys [event]}]
     (case event
-      :login
-      (let [user (str/trim (str (:user-name self)))]
-        (if (str/blank? user)
-          nil
-          (assoc self :user user :user-name "" :n 0)))
-
-      :logout (assoc self :user nil :n 0)
-      :inc    (update self :n inc)
-      :dec    (update self :n dec)
+      :inc (update self :n inc)
+      :dec (update self :n dec)
       nil)))
+
+;; ---------------------------------------------------------------------------
+;; Wiring
+;; ---------------------------------------------------------------------------
 
 (s/mount! "/protected-counter" :demo/protected-counter)
 
 (defn -main [& _args]
-  (s/start! {:port 8080})
+  (s/start! {:port           8080
+             :principal-fn   request-principal})
   @(promise))

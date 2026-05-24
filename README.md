@@ -251,6 +251,20 @@ Stable embedder API:
 host serving `/healthz` and `/api/foo` beside a stube widget under
 `/widget`.
 
+Two embedder options anchor the host/framework split:
+
+- `:app` — opaque host value (typically a small map of dependencies)
+  read from component code via `(s/app)`. Not persisted with the
+  conversation; rebuild from JVM state on each `make-kernel` call.
+- `:principal-fn` — `(fn [request] principal-or-nil)` invoked at mint
+  time. Result is persisted on the conversation and surfaced through
+  `(s/principal)`. Fixed for the life of the conversation — end the
+  conversation and re-mint when identity changes.
+
+See the *Application boundaries* section in [`docs/api.md`](docs/api.md)
+for the contract and `examples/dev/zeko/stube/examples/protected_counter.clj`
+for a worked example.
+
 ### kit-clj / Integrant
 
 Already on [kit-clj](https://kit-clj.github.io/)?  Three lines in

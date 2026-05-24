@@ -23,13 +23,15 @@
 (defonce ^:private !server      (atom nil))
 (defonce ^:private !reaper-stop (atom nil))
 
-(defn- new-kernel [{:keys [store ui-css? halos?]
+(defn- new-kernel [{:keys [store ui-css? halos? app principal-fn]
                     :or {ui-css? true halos? false}}]
-  (embed/make-kernel {:store       (or store (store/in-memory-store))
-                      :route-style :legacy
-                      :base-path   ""
-                      :ui-css?     ui-css?
-                      :halos?      halos?}))
+  (embed/make-kernel {:store        (or store (store/in-memory-store))
+                      :route-style  :legacy
+                      :base-path    ""
+                      :ui-css?      ui-css?
+                      :halos?       halos?
+                      :app          app
+                      :principal-fn principal-fn}))
 
 (defn default-kernel
   "The kernel instance used by the standalone server API."
@@ -242,15 +244,24 @@
 
 (defn start!
   "Start http-kit on `port` (default 8080).  Idempotent: a second call
-  with the server already running stops the old one first."
+  with the server already running stops the old one first.
+
+  Accepts the embedder options `:app` and `:principal-fn` and forwards
+  them to the underlying kernel.  See
+  [[dev.zeko.stube.embed/make-kernel]] for the full set."
   ([] (start! {}))
-  ([{:keys [port store ui-css? halos? conversation-ttl reaper-interval]
+  ([{:keys [port store ui-css? halos? app principal-fn
+            conversation-ttl reaper-interval]
      :or {port 8080 ui-css? true halos? false}}]
    (when @!server
      (stop!))
    (when-let [old @!kernel]
      (embed/halt! old))
-   (let [k (new-kernel {:store store :ui-css? ui-css? :halos? halos?})]
+   (let [k (new-kernel {:store        store
+                        :ui-css?      ui-css?
+                        :halos?       halos?
+                        :app          app
+                        :principal-fn principal-fn})]
      (reset! !kernel k)
      (when (and store (seq (embed/active-conversations k)))
        (println (str "stube: restored " (count (embed/active-conversations k))

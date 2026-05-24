@@ -5,6 +5,29 @@ development entry.
 
 ## Unreleased
 
+- Application-boundary primitives for embedders:
+  - New `:app` option on `make-kernel` carries an opaque host value
+    (typically a map of long-lived dependencies) that component code
+    reads via `(s/app)`. The value is not serialised with the
+    conversation; rebuild it from live JVM state on each
+    `make-kernel` call.
+  - New `:principal-fn` option is invoked once when a conversation is
+    minted; its result is persisted on the conversation under
+    `:conv/principal` and surfaced through `(s/principal)`. The
+    principal is fixed for the life of the conversation — end and
+    re-mint to change identity. There is no `set-principal!`
+    operation by design.
+  - Both options are accepted by `s/start!` for the standalone
+    server. The `protected_counter` example now reads its principal
+    via `(s/principal)` instead of carrying app-level login state on
+    the conversation.
+- Extracted `dev.zeko.stube.embed` as the documented host-embedder
+  namespace. `dev.zeko.stube.kernel` is back to being just the pure
+  effect fold (`step`, `run-effects`, `dispatch`, `boot`,
+  `resume-top`, `redraw-top`). Internal callers, tests, examples, and
+  docs have been updated. The §15.4 line-count invariant has been
+  replaced by a structural one: the runtime stays organised around a
+  single effect multimethod.
 - API polish pass before 1.0:
   - `s/back` is now a zero-arity function `(s/back)` returning the
     `[:back]` effect, matching every other effect constructor. Call

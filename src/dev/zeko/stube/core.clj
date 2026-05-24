@@ -297,6 +297,28 @@
   [self]
   (:stube/context self))
 
+(defn app
+  "Return the opaque host-app value the embedder attached to the kernel
+  via `:app`.  Typically a small map of dependencies such as
+  `{:db ds :auth-fn (fn [request] ...)}`.
+
+  Returns `nil` outside a runtime dispatch/render (e.g. when component
+  code is exercised through `core/replay` in a unit test).  Component
+  tests that need a stand-in can wrap the call site with
+  `(binding [dev.zeko.stube.kernel/*current-app* my-stub] …)`."
+  []
+  kernel/*current-app*)
+
+(defn principal
+  "Return the authenticated principal the embedder stamped onto this
+  conversation via `:principal-fn` at mint time.
+
+  Returns `nil` for anonymous conversations.  The principal is fixed
+  for the life of the conversation — to refresh it (post-login, after
+  account switching), end the conversation and re-mint."
+  []
+  kernel/*current-principal*)
+
 (def ^{:doc "Sentinel returned by cancellable stock UI components."}
   cancel ui/cancel)
 

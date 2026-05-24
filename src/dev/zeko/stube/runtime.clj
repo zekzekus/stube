@@ -34,6 +34,8 @@
 (defn- default-options [opts]
   (let [custom-session? (contains? opts :session-id-fn)]
     (merge {:context-fn       (constantly nil)
+            :app              nil
+            :principal-fn     nil
             :store            (store/in-memory-store)
             :base-path        ""
             :route-style      :adapter
@@ -54,6 +56,15 @@
 
   * `:context-fn` — `(fn [request] ctx)` stored on each conversation and
     readable in handlers with `(s/context self)`.
+  * `:app` — opaque host value (typically a small map of dependencies
+    such as `{:db ds :mail mailer}`).  Read from component code with
+    `(s/app)`.  Not persisted; rebuild from live JVM state on each
+    `make-kernel` call.
+  * `:principal-fn` — `(fn [request] principal-or-nil)` invoked once at
+    mint time.  Result is persisted on the conversation as
+    `:conv/principal`; component code reads it with `(s/principal)`.
+    Re-authentication is the host's job — if the principal needs to
+    change, end the conversation and re-mint.
   * `:store` — persistence backend from `dev.zeko.stube.store`.
   * `:base-path` — URL prefix used by shell/render helpers.
   * `:session-id-fn` — host session lookup; defaults to `stube_sid`.
@@ -116,29 +127,35 @@
 (defn with-kernel-bindings
   "Run `f` with render URL context and async hooks for kernel `k`."
   [k cid f]
-  (binding [render/*cid* cid
-            render/*base-path* (:base-path k)
-            render/*route-style* (:route-style k)
-            render/*root-selector* (:root-selector k)
-            pure/*current-kernel* k
-            pure/*schedule-event!* #(schedule-event! k %)
-            pure/*subscribe!* #(subscribe! k %)
-            pure/*unsubscribe!* #(unsubscribe! k %)
-            pure/*run-io!* #(future
-                              (try (%)
-                                   (catch Throwable t
-                                     (binding [*out* *err*]
-                                       (println "dev.zeko.stube.runtime: :io effect threw —"
-                                                (ex-message t))))))
-            errors/*on-error* (:on-error k)]
-    (f)))
+  (let [principal (get-in @(:!conversations k) [cid :conv/principal])]
+    (binding [render/*cid* cid
+              render/*base-path* (:base-path k)
+              render/*route-style* (:route-style k)
+              render/*root-selector* (:root-selector k)
+              pure/*current-kernel* k
+              pure/*current-app* (:app k)
+              pure/*current-principal* principal
+              pure/*schedule-event!* #(schedule-event! k %)
+              pure/*subscribe!* #(subscribe! k %)
+              pure/*unsubscribe!* #(unsubscribe! k %)
+              pure/*run-io!* #(future
+                                (try (%)
+                                     (catch Throwable t
+                                       (binding [*out* *err*]
+                                         (println "dev.zeko.stube.runtime: :io effect threw —"
+                                                  (ex-message t))))))
+              errors/*on-error* (:on-error k)]
+      (f))))
 
 (defn- with-render-bindings [k cid f]
-  (binding [render/*cid* cid
-            render/*base-path* (:base-path k)
-            render/*route-style* (:route-style k)
-            render/*root-selector* (:root-selector k)]
-    (f)))
+  (let [principal (get-in @(:!conversations k) [cid :conv/principal])]
+    (binding [render/*cid* cid
+              render/*base-path* (:base-path k)
+              render/*route-style* (:route-style k)
+              render/*root-selector* (:root-selector k)
+              pure/*current-app* (:app k)
+              pure/*current-principal* principal]
+      (f))))
 
 ;; ---------------------------------------------------------------------------
 ;; Conversation lifecycle
@@ -171,11 +188,16 @@
 (defn- context-for [k request]
   ((:context-fn k) request))
 
+(defn- principal-for [k request]
+  (when-let [f (:principal-fn k)] (f request)))
+
 (defn- install-conversation! [k root-id init-args request owner-token]
-  (let [ctx  (context-for k request)
+  (let [ctx       (context-for k request)
+        principal (principal-for k request)
         conv (cond-> (conv/new-conversation)
-               owner-token (assoc :conv/owner-token owner-token)
-               (some? ctx) (assoc :conv/context ctx))
+               owner-token       (assoc :conv/owner-token owner-token)
+               (some? ctx)       (assoc :conv/context ctx)
+               (some? principal) (assoc :conv/principal principal))
         conv ((:on-conv-mint k) conv request)
         cid  (:conv/id conv)]
     (swap! (:!conversations k) assoc cid conv)

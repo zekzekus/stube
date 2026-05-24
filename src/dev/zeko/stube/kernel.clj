@@ -140,6 +140,19 @@
   default-kernel behaviour outside a runtime dispatch."
   nil)
 
+(def ^:dynamic *current-app*
+  "Opaque host value attached to the kernel via the `:app` option.  Bound
+  by the runtime during dispatch and render so component code can read
+  it through `dev.zeko.stube.core/app` without threading a kernel
+  reference."
+  nil)
+
+(def ^:dynamic *current-principal*
+  "Authenticated principal stamped onto the conversation at mint time
+  via `:principal-fn`.  Bound by the runtime around dispatch and render
+  so component code can read it through `dev.zeko.stube.core/principal`."
+  nil)
+
 (declare run-effects)
 
 ;; ---------------------------------------------------------------------------

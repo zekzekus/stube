@@ -102,6 +102,40 @@
     (is (= "replay" (:name (s/context (conv/top-instance c)))))
     (is (empty? (embed/active-conversations k)))))
 
+(deftest app-and-principal-are-visible-to-component-code
+  (let [seen     (atom [])
+        login-fn (fn [request] (some-> request :query-string keyword))]
+    (registry/register!
+      {:component/id     :isolation/app-principal
+       :component/init   (constantly {})
+       :component/render (fn [self]
+                           [:div (s/root-attrs self)
+                            (pr-str {:app (s/app) :principal (s/principal)})])
+       :component/handle (fn [self _]
+                           (swap! seen conj {:app (s/app) :principal (s/principal)})
+                           self)})
+    (let [k    (embed/make-kernel {:app          {:db ::stub-db}
+                                   :principal-fn login-fn})
+          cid  (embed/mint-conversation! k :isolation/app-principal {}
+                                         {:query-string "ada"})]
+      (let [root (embed/pending-root k cid)]
+        (embed/apply-conv! k cid
+          (fn [c] (kernel/run-effects c (kernel/boot root)))))
+      (let [iid (conv/top-id (embed/conversation k cid))]
+        (embed/dispatch! k cid {:instance-id iid :event :ping :signals {}}))
+      (is (= [{:app {:db ::stub-db} :principal :ada}] @seen)
+          "handler sees both :app and :principal bound by the runtime")
+      (is (= :ada (:conv/principal (embed/conversation k cid)))
+          ":principal-fn result is persisted on the conversation"))))
+
+(deftest principal-defaults-to-nil-without-principal-fn
+  (registry/register!
+    {:component/id     :isolation/no-principal
+     :component/render (fn [self] [:div (s/root-attrs self)])})
+  (let [k   (embed/make-kernel)
+        cid (embed/mint-conversation! k :isolation/no-principal {} {})]
+    (is (nil? (:conv/principal (embed/conversation k cid))))))
+
 (deftest ring-routes-use-kernel-base-path
   (let [k      (embed/make-kernel {:base-path "/widget"})
         paths  (set (map first (ring-adapter/ring-routes k)))]

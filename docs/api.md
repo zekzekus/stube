@@ -372,6 +372,24 @@ Return the application context injected by an embeddable kernel's
 kernel. Host apps use this to pass dependencies such as DB handles to
 component handlers without globals.
 
+### `(s/app)`
+
+Return the opaque host value the embedder attached to the kernel via
+the `:app` option. Typically a small map of long-lived dependencies
+(`{:db ds :mail-fn …}`) that you do not want to serialise into
+conversation state. Returns nil outside a runtime dispatch/render.
+See the *Application boundaries* section under
+[Embedding in a host Ring app](#embedding-in-a-host-ring-app) for the
+contract.
+
+### `(s/principal)`
+
+Return the authenticated principal stamped onto the current
+conversation by `:principal-fn` at mint time. Returns nil for
+anonymous conversations. The principal is fixed for the life of the
+conversation — re-mint after login or logout. See the same
+*Application boundaries* section for the rationale.
+
 ### `(s/back-button label)` / `(s/back-button label attrs)`
 
 A small button wired to the conversation-level `[:back]`. Pops one
@@ -512,17 +530,81 @@ Stable functions:
 | `(stube-ring/ring-routes k)` | Reitit route data for SSE/event/back/upload/assets. |
 | `(stube-ring/ring-handler k)` | Plain Ring handler wrapping those routes. |
 
-`opts` supports `:context-fn`, `:store`, `:base-path`,
-`:session-id-fn`, `:on-conv-mint`, `:on-error`, `:ui-css?`,
-`:halos?`, `:route-style`, and `:root-selector`. Values returned by
-`:context-fn` are available to handlers and lifecycle hooks with
-`(s/context self)`.
+`opts` supports `:context-fn`, `:app`, `:principal-fn`, `:store`,
+`:base-path`, `:session-id-fn`, `:on-conv-mint`, `:on-error`,
+`:ui-css?`, `:halos?`, `:route-style`, and `:root-selector`. Values
+returned by `:context-fn` are available to handlers and lifecycle
+hooks with `(s/context self)`.
 
 `stube-ring/ring-routes` also accepts `{:mounts {"/path" :root/id}}`
 or `{:mounts {"/path" {:flow-id :root/id :opts {:init-args-fn f}}}}`
 to add shell routes beside the adapter endpoints. `:base-path` prefixes
 the generated stube endpoints/assets (`/sse`, `/event`, `/stube/ui.css`,
 etc.); mount paths are left exactly as supplied by the host app.
+
+### Application boundaries: `:app` and `:principal-fn`
+
+The kernel deliberately owns very little of the host's world. Two
+embedder options pass the rest through cleanly.
+
+`:app` is an opaque host value the kernel carries with itself for the
+life of the kernel. It is typically a small map of dependencies that
+component code would otherwise reach for at top level:
+
+```clojure
+(embed/make-kernel
+  {:app {:db        datasource
+         :mail-fn   send-mail!
+         :now-fn    #(java.time.Instant/now)}})
+```
+
+Component code reads it via `(s/app)`:
+
+```clojure
+(s/defcomponent :app/invoice-preview
+  :init (fn [{:keys [invoice-id]}]
+          {:invoice ((:fetch-invoice (s/app)) invoice-id)})
+  :render ...)
+```
+
+The value is **not persisted with the conversation** — it's the live
+kernel's responsibility. Build it from JVM state on each
+`make-kernel` call; do not store database connections or file handles
+in conversation EDN.
+
+`:principal-fn` is a `(fn [request] principal-or-nil)` called once
+when a conversation is minted. The result is persisted on the
+conversation under `:conv/principal` and surfaced through
+`(s/principal)`:
+
+```clojure
+(embed/make-kernel
+  {:principal-fn (fn [request] (get-in request [:session :user]))})
+
+(s/defcomponent :app/dashboard
+  :render
+  (fn [self]
+    (if-let [user (s/principal)]
+      [:section "Hi, " (:name user)]
+      [:a {:href "/login"} "Sign in"])))
+```
+
+The principal is **fixed at mint time**. If your app needs the user
+to log out, change accounts, or otherwise switch identity, the host
+should end the conversation (`(s/end nil)` from a handler, or
+`(s/end! cid)` from admin code) and let the next request mint a
+fresh one. The framework deliberately does not offer a
+`(set-principal!)` operation; reusing one conversation across two
+identities is the kind of bug `:principal-fn`-at-mint exists to
+prevent.
+
+Both options are also accepted by `s/start!` for the standalone
+server:
+
+```clojure
+(s/start! {:app          {:db datasource}
+           :principal-fn (fn [req] (-> req :session :user))})
+```
 
 ---
 

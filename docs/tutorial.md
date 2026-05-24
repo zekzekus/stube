@@ -516,7 +516,55 @@ restarts because it's the root flow, but the world (which lives in
 
 ---
 
-## 6 · Where to go from here
+## 6 · Wiring in app dependencies and a logged-in user
+
+Real apps need two things stube deliberately stays out of: a place to
+park live dependencies (a database, a mail client, the clock you mock
+in tests) and a notion of "who is signed in." Both ride on the kernel
+construction call, not on conversation state.
+
+```clojure
+(s/start!
+  {:port         8080
+   :app          {:db   datasource
+                  :mail send-mail!
+                  :now  #(java.time.Instant/now)}
+   :principal-fn (fn [request] (get-in request [:session :user]))})
+```
+
+Inside any component you can then write:
+
+```clojure
+(s/defcomponent :standup/recent
+  :init   (fn [_] {:posts ((:fetch-recent (s/app)))})
+  :render (fn [self]
+            [:section (s/root-attrs self)
+             [:p "Signed in as " (or (:name (s/principal)) "guest") "."]
+             ;; ... render posts ...
+             ]))
+```
+
+A few rules of thumb:
+
+- **`(s/app)` is for stuff you would never want in EDN** — JDBC pools,
+  Java handles, atoms. The kernel does not persist it.
+- **`(s/principal)` is fixed for the life of a conversation.** On
+  login or logout, end the current conversation (`(s/end nil)` from a
+  handler) and let the next request mint a fresh one. Stube does not
+  offer a "change principal" operation on purpose; reusing one
+  conversation across two identities is exactly the bug
+  mint-time principals prevent.
+- **In tests**, both default to `nil`. Component tests that need a
+  stand-in can wrap the dispatch with
+  `(binding [dev.zeko.stube.kernel/*current-app* {:db stub}] …)`.
+
+See `examples/dev/zeko/stube/examples/protected_counter.clj` for a
+working demo, including the framework-owner-cookie protection that
+sits one layer below the app-level principal.
+
+---
+
+## 7 · Where to go from here
 
 You now have a real Clojure app, server‑rendered, live‑updating,
 zero JavaScript, ~160 lines. Real applications stitch the same
