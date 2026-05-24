@@ -4,8 +4,16 @@
   Mirrors kasten's behaviour — adding a 5th column appends ONE child
   fragment and a tiny scroll-to-end script.  Existing columns are not
   re-rendered; their DOM state (scroll position, focus, inputs) is
-  untouched."
+  untouched.
+
+  The X button on each column publishes a `:demo.columns/close` event
+  back to the parent.  Keyed children, unlike `:call-in-slot`
+  children, have no resume handler — so `s/answer` would error.
+  Pub/sub is the framework's recommended channel for child→parent
+  notifications in that case."
   (:require [dev.zeko.stube.core :as s]))
+
+(def ^:private close-topic :demo.columns/close)
 
 (s/defcomponent :demo/column
   :doc "One column in the columns demo."
@@ -13,6 +21,12 @@
   :init   (fn [{:keys [title]}]
             {:title (or title "Untitled")
              :body  ""})
+
+  ;; `s/local-bind` scopes the `:body` signal to this instance
+  ;; (`body-<iid>` on the wire), so typing in one column does not
+  ;; bleed into siblings.  `:keep` lifts the per-instance signal back
+  ;; onto `self` before handlers run.
+  :keep #{:body}
 
   :render (fn [self]
             [:article (s/root-attrs self
@@ -29,11 +43,12 @@
              [:textarea (merge {:rows 10 :placeholder "Notes…"
                                 :style "width:100%; box-sizing:border-box;
                                         margin-top:0.5rem;"}
-                               (s/bind :body))]])
+                               (s/local-bind self :body))]])
 
   :handle (fn [self {:keys [event]}]
             (case event
-              :close [(s/answer (:title self))]
+              :close (let [title (:title self)]
+                       [self [(s/io #(s/publish! close-topic title))]])
               self)))
 
 (defn- columns->pairs [titles]
@@ -47,7 +62,8 @@
                   :next-i 4})
 
   :start (fn [self]
-           [self [(s/set-keyed-children :slot/cols (columns->pairs (:titles self)))]])
+           [self [(s/set-keyed-children :slot/cols (columns->pairs (:titles self)))
+                  (s/subscribe close-topic :close-column)]])
 
   :render
   (fn [self]
@@ -72,7 +88,7 @@
       (s/keyed-children self :slot/cols)]])
 
   :handle
-  (fn [self {:keys [event]}]
+  (fn [self {:keys [event payload]}]
     (case event
       :add
       (let [n        (:next-i self)
@@ -92,6 +108,15 @@
       (let [titles (vec (butlast (:titles self)))
             self'  (assoc self :titles titles)]
         [self' [(s/set-keyed-children :slot/cols (columns->pairs titles))]])
+
+      ;; `:close-column` payload is the title of the column whose X
+      ;; was clicked (published by the child).  Drop it from the
+      ;; titles list and reconcile the keyed slot — only that column's
+      ;; fragment is patched out.
+      :close-column
+      (let [titles (vec (remove #(= % payload) (:titles self)))]
+        [(assoc self :titles titles)
+         [(s/set-keyed-children :slot/cols (columns->pairs titles))]])
 
       self)))
 
