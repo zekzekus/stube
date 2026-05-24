@@ -41,7 +41,7 @@
 (s/defcomponent :demo/chat
   :doc "CTChat port: shared messages plus per-conversation pub/sub delivery."
 
-  :init (constantly {:name "Ada" :draft "" :messages @!messages})
+  :init (fn [_] {:name "Ada" :draft "" :messages @!messages})
   :keep #{:name :draft}
   :start  (fn [_self] (subscribe-effects))
   :wakeup (fn [self] [(assoc self :messages @!messages) (subscribe-effects)])
@@ -59,7 +59,7 @@
      [:ol {:style "min-height:12rem; max-height:18rem; overflow:auto;
                     padding-left:1.25rem; border:1px solid #ddd; padding-top:0.5rem;"}
       (for [{:keys [id name text at]} (:messages self)]
-        [:li {:key id :style "margin-bottom:0.6rem;"}
+        [:li {:id (str "msg-" id) :style "margin-bottom:0.6rem;"}
          [:strong name] " " [:small {:style "color:#777;"} at]
          [:div text]])]
      [:form (merge {:style "display:grid; grid-template-columns:8rem 1fr auto;
@@ -81,12 +81,15 @@
   (fn [self {:keys [event payload]}]
     (case event
       :send
+      ;; Pub/sub is the single source of truth: the local instance is
+      ;; also subscribed to `topic`, so the message comes back via
+      ;; `:chat-message` (next branch) and gets folded in by `remember`.
+      ;; Updating `:messages` here too would render the same message
+      ;; twice on the sender's SSE stream.
       (let [text (str/trim (str (:draft self)))]
         (when-not (str/blank? text)
           (let [msg (new-message (:name self) text)]
-            [(-> self
-                 (assoc :draft "")
-                 (update :messages remember msg))
+            [(assoc self :draft "")
              [(s/io #(publish-message! msg))]])))
 
       :chat-message

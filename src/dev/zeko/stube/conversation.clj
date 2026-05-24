@@ -246,13 +246,21 @@
 
 (defn descendant-ids
   "Return a vector of all instance ids transitively reachable from `iid`
-  via `:instance/children`, including `iid` itself, in pre-order."
+  via `:instance/children` or `:instance/keyed-slots`, including `iid`
+  itself, in pre-order."
   [conv iid]
   (loop [acc [] frontier [iid]]
     (if-let [i (first frontier)]
-      (let [inst   (instance conv i)
-            child-iids (vals (:instance/children inst))]
-        (recur (conj acc i) (into (vec (rest frontier)) child-iids)))
+      (let [inst        (instance conv i)
+            child-iids  (vals (:instance/children inst))
+            keyed-iids  (for [[_slot slot-state] (:instance/keyed-slots inst)
+                              [_k entry]         (:children slot-state)
+                              :let [iid (:iid entry)]
+                              :when iid]
+                          iid)]
+        (recur (conj acc i)
+               (into (vec (rest frontier))
+                     (concat child-iids keyed-iids))))
       acc)))
 
 (defn pop-top

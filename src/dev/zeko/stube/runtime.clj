@@ -72,6 +72,14 @@
             :!pending-roots  (atom {})
             :!timers         (atom {})
             :!subscriptions  (atom {})
+            ;; Per-cid monitor objects.  `swap-conv!` locks on the
+            ;; matching monitor so the dispatch function runs exactly
+            ;; once even when concurrent events race on the same
+            ;; conversation.  Without this, `swap!`'s retry semantics
+            ;; would re-run handlers (and their side effects: spawned
+            ;; futures, publish calls, subscribe atoms) more than once,
+            ;; causing fan-out amplification.
+            :!cid-locks      (atom {})
             :!shutting-down? (atom false)))))
 
 (defn current-store [k] (:store k))
@@ -190,25 +198,35 @@
    (let [[sid _set-cookie] (ensure-session k request)]
      (install-conversation! k root-id init-args request sid))))
 
+(defn- cid-lock
+  "Return (and lazily mint) the per-cid monitor object for `cid`.  Locking
+  on this serialises every `swap-conv!` for `cid` so the dispatch
+  function (which has side effects: spawned futures, publish/subscribe
+  mutations) runs exactly once."
+  [k cid]
+  (or (get @(:!cid-locks k) cid)
+      (-> (swap! (:!cid-locks k)
+                 (fn [m]
+                   (if (contains? m cid) m (assoc m cid (Object.)))))
+          (get cid))))
+
 (defn swap-conv!
-  "Atomically apply `(f conv) → [conv' fragments]` to conversation `cid`."
+  "Apply `(f conv) → [conv' fragments]` to conversation `cid` under the
+  per-cid lock, then atomically commit `conv'`.  `f` is called exactly
+  once — unlike a bare `swap!` whose retry semantics would re-run `f`
+  (and its side effects) under contention."
   [k cid f]
-  (let [box (volatile! nil)]
-    (swap! (:!conversations k)
-           (fn [m]
-             (if-let [c (get m cid)]
-               (let [pair     (f c)
-                     [c' _fr] pair]
-                 (vreset! box pair)
-                 (assoc m cid c'))
-               m)))
-    (when-let [[c' _] @box]
-      (try
-        (store/save! (:store k) c')
-        (catch Throwable t
-          (binding [*out* *err*]
-            (println "dev.zeko.stube.runtime: store save! threw —" (ex-message t))))))
-    @box))
+  (locking (cid-lock k cid)
+    (when-let [c (get @(:!conversations k) cid)]
+      (let [pair     (f c)
+            [c' _fr] pair]
+        (swap! (:!conversations k) assoc cid c')
+        (try
+          (store/save! (:store k) c')
+          (catch Throwable t
+            (binding [*out* *err*]
+              (println "dev.zeko.stube.runtime: store save! threw —" (ex-message t)))))
+        pair))))
 
 (defn- cancel-timers! [k cid]
   (doseq [f (get @(:!timers k) cid)]
@@ -239,6 +257,7 @@
   (forget-pending-root! k cid)
   (swap! (:!conversations k) dissoc cid)
   (swap! (:!sse-sessions k) dissoc cid)
+  (swap! (:!cid-locks k) dissoc cid)
   (try
     (store/delete! (:store k) cid)
     (catch Throwable t
@@ -537,5 +556,6 @@
     (reset! (:!sse-sessions k) {})
     (reset! (:!pending-roots k) {})
     (reset! (:!subscriptions k) {})
+    (reset! (:!cid-locks k) {})
     (reset! (:!conversations k) {}))
   nil)
