@@ -2,9 +2,12 @@
   "Demonstrates S-5: a deliberately-thrown :handle becomes an in-page
   banner without dropping the SSE stream.
 
-  After clicking Boom, the component's frame is replaced with the stock
-  `.stube-error` banner; +1 keeps working because the conversation is
-  intact."
+  After clicking Boom, the component's frame (this section, including
+  the +1 button) is replaced in place by the stock `.stube-error`
+  banner.  The SSE stream stays open and the conversation state
+  survives — on a page that hosts multiple components, the others
+  continue to work; here there is nothing else on the page, so reload
+  to start a fresh frame."
   (:require [dev.zeko.stube.core :as s]))
 
 (s/defcomponent :demo/error-frame
