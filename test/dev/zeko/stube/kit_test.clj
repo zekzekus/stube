@@ -9,7 +9,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [integrant.core :as ig]
             [reitit.ring :as ring]
-            [dev.zeko.stube.kernel :as stube]
+            [dev.zeko.stube.embed :as stube]
             [dev.zeko.stube.kit] ;; registers ig multimethods
             ))
 

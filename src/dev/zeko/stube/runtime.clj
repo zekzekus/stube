@@ -472,7 +472,7 @@
 (defn replay-with
   "Purely replay `events` against a fresh conversation rooted at
   `root-id`, using `k`'s render configuration but mutating no runtime
-  state.  See [[dev.zeko.stube.kernel/replay-with]] for the public-facing
+  state.  See [[dev.zeko.stube.embed/replay-with]] for the public-facing
   forwarder."
   [k root-id events]
   (let [ctx (context-for k nil)

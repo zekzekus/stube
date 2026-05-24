@@ -35,7 +35,7 @@
   optional halos tooling.
 
   Standalone [[html]] uses this directly; embedders normally call the
-  public `dev.zeko.stube.kernel/head-tags` wrapper for their kernel."
+  public `dev.zeko.stube.embed/head-tags` wrapper for their kernel."
   [{:keys [dev? ui-css? base-path route-style root-selector]
     :or {ui-css? true base-path "" route-style :legacy root-selector "#root"}}]
   (binding [render/*base-path* base-path

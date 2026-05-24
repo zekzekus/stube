@@ -12,8 +12,8 @@
   | `/stube/halos/:cid/panel`      | GET    | render the inspector side-panel HTML   |"
   (:require [clojure.java.io       :as io]
             [clojure.string        :as str]
+            [dev.zeko.stube.embed   :as embed]
             [dev.zeko.stube.halos   :as halos]
-            [dev.zeko.stube.kernel  :as kernel]
             [dev.zeko.stube.render  :as render]
             [dev.zeko.stube.session :as session]))
 
@@ -41,7 +41,7 @@
    (js-handler (default-kernel) req))
   ([k _req]
    (cond
-     (not (kernel/halos? k))
+     (not (embed/halos? k))
      {:status 404 :body "stube halos disabled"}
 
      :else
@@ -68,17 +68,17 @@
   ([k {:keys [path-params] :as req}]
    (let [cid (:cid path-params)]
      (cond
-       (not (kernel/halos? k))
+       (not (embed/halos? k))
        {:status 404 :body "stube halos disabled"}
 
-       (nil? (kernel/conversation k cid))
+       (nil? (embed/conversation k cid))
        {:status 410 :body "no such conversation"}
 
-       (not (kernel/authorized? k req cid))
+       (not (embed/authorized? k req cid))
        (session/forbidden-response)
 
        :else
-       (do (kernel/enable-halos-and-redraw! k cid)
+       (do (embed/enable-halos-and-redraw! k cid)
            {:status 204})))))
 
 (defn panel-handler
@@ -90,12 +90,12 @@
    (panel-handler (default-kernel) req))
   ([k {:keys [path-params] :as req}]
    (cond
-     (not (kernel/halos? k))
+     (not (embed/halos? k))
      {:status 404 :body "stube halos disabled"}
 
      :else
      (let [cid  (:cid path-params)
-           conv (kernel/conversation k cid)]
+           conv (embed/conversation k cid)]
        (cond
          (or (nil? conv) (not (:conv/halos? conv)))
          {:status  410
@@ -103,7 +103,7 @@
                     "Cache-Control" "no-store"}
           :body    "<div class=\"stube-halo-body\">halos not active for this conversation</div>"}
 
-         (not (kernel/authorized? k req cid))
+         (not (embed/authorized? k req cid))
          (session/forbidden-response)
 
          :else

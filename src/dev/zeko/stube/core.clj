@@ -5,7 +5,9 @@
   functions that are intended to be called from application code; the
   internals live in [[dev.zeko.stube.kernel]], [[dev.zeko.stube.conversation]],
   [[dev.zeko.stube.registry]], [[dev.zeko.stube.render]], [[dev.zeko.stube.runtime]],
-  [[dev.zeko.stube.http]] and [[dev.zeko.stube.server]].
+  [[dev.zeko.stube.http]] and [[dev.zeko.stube.server]].  Hosts embedding stube
+  in their own Ring app reach for [[dev.zeko.stube.embed]] and
+  [[dev.zeko.stube.adapter.ring]].
 
   ──────────────────────────────────────────────────────────────────────
   At a glance
@@ -43,7 +45,7 @@
   ──────────────────────────────────────────────────────────────────────
   Everything in this namespace is intended to remain stable across
   framework versions.  Host-framework integration also has a stable
-  surface in [[dev.zeko.stube.kernel]] / [[dev.zeko.stube.adapter.ring]].
+  surface in [[dev.zeko.stube.embed]] / [[dev.zeko.stube.adapter.ring]].
   Other namespaces are internal until the framework reaches 1.0."
   ;; Shadow `clojure.core/await`; see [[dev.zeko.stube.flow]] for the rationale.
   (:refer-clojure :exclude [await])
@@ -289,7 +291,7 @@
 (defn context
   "Return adapter/application context injected into this conversation.
 
-  Embedders pass `:context-fn` to `dev.zeko.stube.kernel/make-kernel`;
+  Embedders pass `:context-fn` to `dev.zeko.stube.embed/make-kernel`;
   handlers and lifecycle hooks can then call `(s/context self)` to reach
   request-scoped dependencies such as a database handle."
   [self]

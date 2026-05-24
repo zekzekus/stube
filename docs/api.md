@@ -10,7 +10,7 @@ while the rest of the project evolves. Aliased as `s` by convention:
 
 Anything outside `dev.zeko.stube.core` is **internal** and may move
 without notice, except the embedder surface documented in
-[`dev.zeko.stube.kernel`](#embedding-in-a-host-ring-app). If you find
+[`dev.zeko.stube.embed`](#embedding-in-a-host-ring-app). If you find
 yourself reaching into another namespace to do something normal, file
 an issue — the API is meant to grow to cover that, not for callers to
 grow workarounds.
@@ -480,13 +480,13 @@ Inspect or forcibly end a live conversation.
 
 ## Embedding in a host Ring app
 
-This surface lives in `dev.zeko.stube.kernel` and
+This surface lives in `dev.zeko.stube.embed` and
 `dev.zeko.stube.adapter.ring` rather than `dev.zeko.stube.core`, because
 it is for host-framework integration rather than component authorship.
 
 ```clojure
 (require '[dev.zeko.stube.adapter.ring :as stube-ring]
-         '[dev.zeko.stube.kernel :as stube])
+         '[dev.zeko.stube.embed :as stube])
 
 (def k
   (stube/make-kernel

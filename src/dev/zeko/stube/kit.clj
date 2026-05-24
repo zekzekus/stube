@@ -15,11 +15,11 @@
   on Integrant, so apps that don't use kit-clj pay zero cost — they
   simply never `require` this namespace.
 
-  See [[dev.zeko.stube.kernel/make-kernel]] for the full option set
+  See [[dev.zeko.stube.embed/make-kernel]] for the full option set
   accepted by `:stube/kernel`."
   (:require [integrant.core              :as ig]
             [dev.zeko.stube.adapter.ring :as stube-ring]
-            [dev.zeko.stube.kernel       :as stube]))
+            [dev.zeko.stube.embed        :as stube]))
 
 (defmethod ig/init-key :stube/kernel
   [_ opts]

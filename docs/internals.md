@@ -253,7 +253,7 @@ http.clj  event-handler
   │ pull signals from the request body (JSON)
   │ pull structured payload from the _stube_payload query param (EDN)
   │ check session authorization
-  │ kernel/dispatch! k cid {:instance-id iid :event :inc :payload p :signals s}
+  │ embed/dispatch! k cid {:instance-id iid :event :inc :payload p :signals s}
   ▼
 runtime.clj  dispatch!  →  apply-conv!  →  swap-conv!
   │ bind render/*cid*, kernel/*current-kernel*,
@@ -524,7 +524,7 @@ slice-0 implementation had to discover the hard way; see `v2_1.md`
 
 `shell/head-tags` exposes the same head nodes for embedders, with
 `:base-path`, `:route-style`, `:ui-css?`, and `:halos?` already applied;
-`kernel/head-tags` is the public wrapper. After that one line of HTML,
+`embed/head-tags` is the public wrapper. After that one line of HTML,
 every UI patch in the user's session arrives via the SSE stream.
 
 ---

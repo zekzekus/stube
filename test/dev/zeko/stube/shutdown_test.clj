@@ -2,6 +2,7 @@
   "Graceful shutdown (S-6): halt! runs :stop hooks, drains SSE, flushes
   the store, and freezes new mints."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [dev.zeko.stube.embed     :as embed]
             [dev.zeko.stube.http      :as http]
             [dev.zeko.stube.kernel    :as kernel]
             [dev.zeko.stube.registry  :as registry]
@@ -52,13 +53,13 @@
 (deftest halt-runs-stop-hooks-on-live-instances
   (reset! !stop-flags {})
   (register-flag-component!)
-  (let [k   (kernel/make-kernel)
-        cid (kernel/mint-conversation! k :t/with-stop {} {})]
-    (kernel/run-effects! k cid (kernel/boot :t/with-stop))
-    (let [iid (-> k (kernel/conversation cid) :conv/stack peek)]
+  (let [k   (embed/make-kernel)
+        cid (embed/mint-conversation! k :t/with-stop {} {})]
+    (embed/run-effects! k cid (kernel/boot :t/with-stop))
+    (let [iid (-> k (embed/conversation cid) :conv/stack peek)]
       (is (some? iid))
       (is (nil? (get @!stop-flags iid)) "no :stop hook fired before halt!")
-      (kernel/halt! k)
+      (embed/halt! k)
       (is (= :stopped (get @!stop-flags iid))
           "halt! ran :stop on every live instance"))))
 
@@ -67,46 +68,46 @@
   ;; of conversation state, so we don't need a real Datastar channel.
   ;; Capture the push directly via `with-redefs` on the runtime symbol
   ;; that halt! reaches for.
-  (let [k       (kernel/make-kernel)
-        cid     (kernel/mint-conversation! k :t/anything {} {})
+  (let [k       (embed/make-kernel)
+        cid     (embed/mint-conversation! k :t/anything {} {})
         sse-gen (reify Object)
         pushed  (atom [])]
     (with-redefs [runtime/push-fragments!
                   (fn [_gen frags]
                     (doseq [{:fragment/keys [kind]} frags]
                       (swap! pushed conj kind)))]
-      (kernel/register-sse! k cid sse-gen)
-      (kernel/halt! k))
+      (embed/register-sse! k cid sse-gen)
+      (embed/halt! k))
     (is (some #{:close} @pushed)
         "halt! flushed a :close fragment to every registered SSE stream")))
 
 (deftest halt-flushes-store-with-pending-conversations
   (register-flag-component!)
   (let [{:keys [saved store]} (recording-store)
-        k   (kernel/make-kernel {:store store})
-        cid (kernel/mint-conversation! k :t/with-stop {} {})]
-    (kernel/run-effects! k cid (kernel/boot :t/with-stop))
+        k   (embed/make-kernel {:store store})
+        cid (embed/mint-conversation! k :t/with-stop {} {})]
+    (embed/run-effects! k cid (kernel/boot :t/with-stop))
     (let [saves-before (set @saved)]
-      (kernel/halt! k)
+      (embed/halt! k)
       (testing "every live conversation received a final save! before halt! returned"
         (is (contains? (set @saved) cid))
         (is (>= (count @saved) (count saves-before)))))))
 
 (deftest halt-is-idempotent
-  (let [k (kernel/make-kernel)]
-    (kernel/halt! k)
-    (is (kernel/shutting-down? k))
-    (is (nil? (kernel/halt! k)) "second halt! is a no-op")))
+  (let [k (embed/make-kernel)]
+    (embed/halt! k)
+    (is (embed/shutting-down? k))
+    (is (nil? (embed/halt! k)) "second halt! is a no-op")))
 
 (deftest halt-blocks-new-shell-mints-with-503
   (registry/register!
     {:component/id     :t/blocked
      :component/render (fn [self] [:div {:id (:instance/id self)}])})
-  (let [k       (kernel/make-kernel)
+  (let [k       (embed/make-kernel)
         handler (http/shell-handler k :t/blocked)]
     (testing "before halt the shell mints normally"
       (is (= 200 (:status (handler {:headers {}})))))
-    (kernel/halt! k)
+    (embed/halt! k)
     (let [resp (handler {:headers {}})]
       (testing "after halt the same handler refuses with 503"
         (is (= 503 (:status resp)))

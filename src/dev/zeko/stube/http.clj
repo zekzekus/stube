@@ -22,6 +22,7 @@
             [starfederation.datastar.clojure.adapter.http-kit  :as hk]
             [dev.zeko.stube.conversation                       :as conv]
             [dev.zeko.stube.fragments                          :as f]
+            [dev.zeko.stube.embed                              :as embed]
             [dev.zeko.stube.halos.http                         :as halos-http]
             [dev.zeko.stube.kernel                             :as kernel]
             [dev.zeko.stube.render                             :as render]
@@ -149,9 +150,9 @@
   forget the conversation."
   [k cid]
   (let [frags (stale-fragments)]
-    (when-let [sse-gen (kernel/sse k cid)]
+    (when-let [sse-gen (embed/sse k cid)]
       (f/push! sse-gen frags))
-    (kernel/end-conversation! k cid)
+    (embed/end-conversation! k cid)
     {:status  410
      :headers {"Content-Type" "text/plain; charset=utf-8"
                "Cache-Control" "no-store"}
@@ -219,28 +220,28 @@
    (shell-handler k flow-id {}))
   ([k flow-id {:keys [init-args-fn] :or {init-args-fn (constantly {})}}]
    (fn [req]
-     (if (kernel/shutting-down? k)
+     (if (embed/shutting-down? k)
        {:status  503
         :headers {"Content-Type" "text/plain; charset=utf-8"
                   "Cache-Control" "no-store"
                   "Retry-After"   "5"}
         :body    "stube is shutting down; try again in a moment."}
-       (let [[_sid set-cookie] (kernel/ensure-session k req)
+       (let [[_sid set-cookie] (embed/ensure-session k req)
              init-args (init-args-fn req)
-             cid       (kernel/mint-conversation! k flow-id init-args req)
-             dev?      (kernel/halos? k)
+             cid       (embed/mint-conversation! k flow-id init-args req)
+             dev?      (embed/halos? k)
              pre-on?   (and dev? (halos-http/requested? req))]
          (when pre-on?
-           (kernel/enable-halos! k cid))
+           (embed/enable-halos! k cid))
          {:status  200
           :headers (cond-> {"Content-Type" "text/html; charset=utf-8"
                             "Cache-Control" "no-store"}
                      set-cookie (assoc "Set-Cookie" set-cookie))
           :body    (shell/html cid {:dev? dev?
-                                    :ui-css? (kernel/ui-css? k)
-                                    :base-path (kernel/base-path k)
-                                    :route-style (kernel/route-style k)
-                                    :root-selector (kernel/root-selector k)})})))))
+                                    :ui-css? (embed/ui-css? k)
+                                    :base-path (embed/base-path k)
+                                    :route-style (embed/route-style k)
+                                    :root-selector (embed/root-selector k)})})))))
 
 (defn- resume-render
   "Render the current top frame of a conversation that already has
@@ -274,30 +275,30 @@
    (sse-handler (default-kernel) req))
   ([k {:keys [path-params] :as req}]
    (let [cid (:cid path-params)]
-     (if-not (kernel/authorized? k req cid)
+     (if-not (embed/authorized? k req cid)
        (session/forbidden-response)
        (hk/->sse-response req
          {hk/on-open
           (fn [sse-gen]
             (with-mdc {:cid cid}
               (fn []
-                (kernel/register-sse! k cid sse-gen)
+                (embed/register-sse! k cid sse-gen)
                 ;; `pending-root` is a one-shot: it pops the baton.
                 ;; Read it exactly once into a local before branching,
                 ;; or path 2 will fire after path 1 consumed the value.
-                (let [pending (kernel/pending-root k cid)
-                      live    (kernel/conversation k cid)]
+                (let [pending (embed/pending-root k cid)
+                      live    (embed/conversation k cid)]
                   (cond
                     ;; Path 1 — fresh shell visit; instantiate the root flow.
                     (some? pending)
-                    (kernel/apply-conv! k cid
+                    (embed/apply-conv! k cid
                       (fn [c] (kernel/run-effects c (kernel/boot pending))))
 
                     ;; Path 2 — re-attach to a conversation that survives in
                     ;; memory (loaded from the persistence store at startup,
                     ;; or carried across a hot reload of the http layer).
                     (some? live)
-                    (kernel/apply-conv! k cid resume-render)
+                    (embed/apply-conv! k cid resume-render)
 
                     ;; Path 3 — unknown cid; the conversation is gone.
                     :else
@@ -305,7 +306,7 @@
 
           hk/on-close
           (fn [_sse-gen _status]
-            (kernel/unregister-sse! k cid))})))))
+            (embed/unregister-sse! k cid))})))))
 
 (defn back-handler
   "POST `/conv/:cid/back` — emit the [[:back]] effect.  Mirrors
@@ -314,18 +315,18 @@
    (back-handler (default-kernel) req))
   ([k {:keys [path-params] :as req}]
    (let [cid (:cid path-params)
-         live (kernel/conversation k cid)]
+         live (embed/conversation k cid)]
      (cond
        (nil? live)
        (stale-response! k cid)
 
-       (not (kernel/authorized? k req cid))
+       (not (embed/authorized? k req cid))
        (session/forbidden-response)
 
        :else
        (with-mdc {:cid cid}
          (fn []
-           (kernel/run-effects! k cid [[:back]])
+           (embed/run-effects! k cid [[:back]])
            {:status 204}))))))
 
 (defn upload-handler
@@ -338,12 +339,12 @@
    (upload-handler (default-kernel) req))
   ([k {:keys [path-params] :as req}]
    (let [{:keys [cid iid]} path-params
-         live (kernel/conversation k cid)]
+         live (embed/conversation k cid)]
      (cond
        (nil? live)
        (stale-response! k cid)
 
-       (not (kernel/authorized? k req cid))
+       (not (embed/authorized? k req cid))
        (session/forbidden-response)
 
        (:conv/ended? live)
@@ -362,7 +363,7 @@
                            req
                            (multipart/multipart-params-request req))
                  payload (upload-payload req')]
-             (kernel/dispatch! k cid {:instance-id iid
+             (embed/dispatch! k cid {:instance-id iid
                                       :event       :upload-received
                                       :payload     payload
                                       :signals     {}})
@@ -376,12 +377,12 @@
    (event-handler (default-kernel) req))
   ([k {:keys [path-params] :as req}]
    (let [{:keys [cid iid event]} path-params
-         live (kernel/conversation k cid)]
+         live (embed/conversation k cid)]
      (cond
        (nil? live)
        (stale-response! k cid)
 
-       (not (kernel/authorized? k req cid))
+       (not (embed/authorized? k req cid))
        (session/forbidden-response)
 
        (:conv/ended? live)
@@ -401,5 +402,5 @@
                           :event       (keyword event)
                           :payload     (read-event-payload req)
                           :signals     signals}]
-             (kernel/dispatch! k cid ev)
+             (embed/dispatch! k cid ev)
              {:status 204})))))))

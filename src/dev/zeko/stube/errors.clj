@@ -8,7 +8,7 @@
   user sees what went wrong and can keep interacting with the page.
 
   The optional `:on-error` hook configured on
-  [[dev.zeko.stube.kernel/make-kernel]] is invoked with `(conv
+  [[dev.zeko.stube.embed/make-kernel]] is invoked with `(conv
   throwable)` and may return its own fragment to display instead of
   the default banner.  The throwable handed to the hook is wrapped in
   an `ex-info` carrying `:stube.error/iid` and `:stube.error/phase`

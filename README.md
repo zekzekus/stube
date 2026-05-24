@@ -203,7 +203,7 @@ Then in code:
 
 The version will move freely while the API settles. Component authors
 should stay in `dev.zeko.stube.core`. Host frameworks may also use the
-embedder surface in `dev.zeko.stube.kernel` and
+embedder surface in `dev.zeko.stube.embed` and
 `dev.zeko.stube.adapter.ring`; other namespaces are internal.
 
 ### Datastar SDK pinning
@@ -220,11 +220,11 @@ painful to track down. If you need a newer SDK, upgrade stube.
 ## Embedding in an existing Ring app
 
 For host apps that already own their HTTP stack, use the stable
-embedder surface in `dev.zeko.stube.kernel` plus the Ring adapter:
+embedder surface in `dev.zeko.stube.embed` plus the Ring adapter:
 
 ```clojure
 (require '[dev.zeko.stube.adapter.ring :as stube-ring]
-         '[dev.zeko.stube.kernel :as stube])
+         '[dev.zeko.stube.embed :as stube])
 
 (def stube-kernel
   (stube/make-kernel

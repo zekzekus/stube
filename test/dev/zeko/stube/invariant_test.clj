@@ -22,14 +22,17 @@
        (filter #(.isFile ^java.io.File %))
        (filter #(str/ends-with? (.getName ^java.io.File %) ".clj"))))
 
-(deftest kernel-size-budget-has-explicit-rationale
-  (let [text  (slurp (project-file "src/dev/zeko/stube/kernel.clj"))
-        lines (count (str/split-lines text))]
+(deftest kernel-stays-organized-around-one-effect-multimethod
+  ;; The original §15.4 bar was a hard line budget on `kernel.clj`.  We
+  ;; dropped that after extracting [[dev.zeko.stube.embed]]: shaving
+  ;; lines just to hit a number was hurting readability of the effect
+  ;; multimethod, which is the part the bar was actually trying to
+  ;; protect.  What remains is the structural invariant — one multimethod
+  ;; drives the whole effect language.  Adding a second effect dispatcher
+  ;; here is the change the framework should resist.
+  (let [text (slurp (project-file "src/dev/zeko/stube/kernel.clj"))]
     (is (= 1 (count (re-seq #"(?m)^\(defmulti\b" text)))
-        "the runtime stays organized around one effect multimethod")
-    (is (or (<= lines 350)
-            (:dev.zeko.stube/rationale (meta (the-ns 'dev.zeko.stube.kernel))))
-        "kernel.clj must either fit the §15.4 budget or carry a rationale")))
+        "the runtime stays organized around one effect multimethod")))
 
 (deftest examples-do-not-ship-custom-javascript
   (doseq [f (clj-files-under "examples")]

@@ -9,7 +9,7 @@
             [reitit.ring                    :as ring]
             [dev.zeko.stube.adapter.ring    :as stube-ring]
             [dev.zeko.stube.core            :as s]
-            [dev.zeko.stube.kernel          :as stube]))
+            [dev.zeko.stube.embed           :as stube]))
 
 (s/defcomponent :embedded/counter
   :init   (fn [_] {:n 0})

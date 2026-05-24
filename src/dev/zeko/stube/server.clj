@@ -2,11 +2,12 @@
   "Standalone http-kit lifecycle around the embeddable stube runtime.
 
   The mutable conversation/SSE/timer state lives on a kernel value from
-  `dev.zeko.stube.kernel/make-kernel`.  This namespace keeps the original
+  `dev.zeko.stube.embed/make-kernel`.  This namespace keeps the original
   greenfield API (`mount!`, `start!`, `stop!`) as a convenience shell."
   (:require [clojure.pprint              :as pprint]
             [org.httpkit.server          :as http-kit]
             [dev.zeko.stube.adapter.ring :as ring-adapter]
+            [dev.zeko.stube.embed        :as embed]
             [dev.zeko.stube.fragments    :as f]
             [dev.zeko.stube.halos        :as halos]
             [dev.zeko.stube.kernel       :as kernel]
@@ -24,11 +25,11 @@
 
 (defn- new-kernel [{:keys [store ui-css? halos?]
                     :or {ui-css? true halos? false}}]
-  (kernel/make-kernel {:store       (or store (store/in-memory-store))
-                       :route-style :legacy
-                       :base-path   ""
-                       :ui-css?     ui-css?
-                       :halos?      halos?}))
+  (embed/make-kernel {:store       (or store (store/in-memory-store))
+                      :route-style :legacy
+                      :base-path   ""
+                      :ui-css?     ui-css?
+                      :halos?      halos?}))
 
 (defn default-kernel
   "The kernel instance used by the standalone server API."
@@ -41,7 +42,7 @@
 (defn current-store
   "The store currently in use by the standalone kernel."
   []
-  (kernel/current-store (default-kernel)))
+  (embed/current-store (default-kernel)))
 
 ;; ---------------------------------------------------------------------------
 ;; Conversation helpers (legacy API wrappers)
@@ -52,32 +53,32 @@
   ([flow-id]
    (create-conversation! flow-id nil))
   ([flow-id owner-token]
-   (kernel/create-conversation! (default-kernel) flow-id owner-token)))
+   (embed/create-conversation! (default-kernel) flow-id owner-token)))
 
 (defn pending-flow
   "Pop and return the pending root for `cid`, if any."
   [cid]
-  (kernel/pending-root (default-kernel) cid))
+  (embed/pending-root (default-kernel) cid))
 
 (defn conversation
   "Snapshot of the named conversation, or nil."
   [cid]
-  (kernel/conversation (default-kernel) cid))
+  (embed/conversation (default-kernel) cid))
 
 (defn active-conversations
   "Return a snapshot of all active conversations keyed by cid."
   []
-  (kernel/active-conversations (default-kernel)))
+  (embed/active-conversations (default-kernel)))
 
 (defn swap-conv!
   "Atomically apply `(f conv) → [conv' fragments]` to `cid`."
   [cid f]
-  (kernel/swap-conv! (default-kernel) cid f))
+  (embed/swap-conv! (default-kernel) cid f))
 
 (defn end-conversation!
   "Drop a conversation, its SSE binding, async state, and persisted copy."
   [cid]
-  (kernel/end-conversation! (default-kernel) cid))
+  (embed/end-conversation! (default-kernel) cid))
 
 (defn end!
   "Public admin wrapper around [[end-conversation!]]."
@@ -87,25 +88,25 @@
 (defn reap!
   "End conversations whose `:conv/touched` is older than `ttl`."
   [ttl]
-  (kernel/reap! (default-kernel) ttl))
+  (embed/reap! (default-kernel) ttl))
 
 (defn with-kernel-bindings
   "Run `f` with render cid and async hooks for the standalone kernel."
   [cid f]
-  (kernel/with-kernel-bindings (default-kernel) cid f))
+  (embed/with-kernel-bindings (default-kernel) cid f))
 
 ;; ---------------------------------------------------------------------------
 ;; SSE and dispatch helpers
 ;; ---------------------------------------------------------------------------
 
 (defn register-sse! [cid sse-gen]
-  (kernel/register-sse! (default-kernel) cid sse-gen))
+  (embed/register-sse! (default-kernel) cid sse-gen))
 
 (defn unregister-sse! [cid]
-  (kernel/unregister-sse! (default-kernel) cid))
+  (embed/unregister-sse! (default-kernel) cid))
 
 (defn sse [cid]
-  (kernel/sse (default-kernel) cid))
+  (embed/sse (default-kernel) cid))
 
 (def ^{:doc "Push kernel fragments to an open Datastar SSE generator."}
   push-fragments! f/push!)
@@ -114,32 +115,32 @@
   "Apply `(f conv) → [conv' fragments]`, push fragments, and end the
   conversation if the kernel marked it ended."
   [cid f]
-  (kernel/apply-conv! (default-kernel) cid f))
+  (embed/apply-conv! (default-kernel) cid f))
 
 (defn run-effects!
   "Fold `effects` into conversation `cid` and push any fragments."
   [cid effects]
-  (kernel/run-effects! (default-kernel) cid effects))
+  (embed/run-effects! (default-kernel) cid effects))
 
 (defn dispatch!
   "Dispatch one event into conversation `cid`."
   [cid event]
-  (kernel/dispatch! (default-kernel) cid event))
+  (embed/dispatch! (default-kernel) cid event))
 
 (defn schedule-event! [event]
-  (kernel/schedule-event! (default-kernel) event))
+  (embed/schedule-event! (default-kernel) event))
 
 (defn subscribe! [sub]
-  (kernel/subscribe! (default-kernel) sub))
+  (embed/subscribe! (default-kernel) sub))
 
 (defn unsubscribe! [sub]
-  (kernel/unsubscribe! (default-kernel) sub))
+  (embed/unsubscribe! (default-kernel) sub))
 
 (defn subscriptions []
-  (kernel/subscriptions (default-kernel)))
+  (embed/subscriptions (default-kernel)))
 
 (defn publish! [topic msg]
-  (kernel/publish! (or kernel/*current-kernel* (default-kernel)) topic msg))
+  (embed/publish! (or kernel/*current-kernel* (default-kernel)) topic msg))
 
 ;; ---------------------------------------------------------------------------
 ;; Mounts and dev tooling
@@ -187,18 +188,18 @@
 (defn ui-css?
   "True when the stock stube stylesheet should be linked from shells."
   []
-  (kernel/ui-css? (default-kernel)))
+  (embed/ui-css? (default-kernel)))
 
 (defn halos?
   "True when the standalone server is willing to serve dev halos."
   []
-  (kernel/halos? (default-kernel)))
+  (embed/halos? (default-kernel)))
 
 (defn enable-halos! [cid]
-  (kernel/enable-halos! (default-kernel) cid))
+  (embed/enable-halos! (default-kernel) cid))
 
 (defn enable-halos-and-redraw! [cid]
-  (kernel/enable-halos-and-redraw! (default-kernel) cid))
+  (embed/enable-halos-and-redraw! (default-kernel) cid))
 
 ;; ---------------------------------------------------------------------------
 ;; Lifecycle
@@ -248,11 +249,11 @@
    (when @!server
      (stop!))
    (when-let [old @!kernel]
-     (kernel/halt! old))
+     (embed/halt! old))
    (let [k (new-kernel {:store store :ui-css? ui-css? :halos? halos?})]
      (reset! !kernel k)
-     (when (and store (seq (kernel/active-conversations k)))
-       (println (str "stube: restored " (count (kernel/active-conversations k))
+     (when (and store (seq (embed/active-conversations k)))
+       (println (str "stube: restored " (count (embed/active-conversations k))
                      " conversations from store"))))
    (let [stop-fn (http-kit/run-server (ring-handler)
                                       {:port                 port
@@ -272,7 +273,7 @@
   []
   (stop-reaper!)
   (when-let [k @!kernel]
-    (kernel/halt! k))
+    (embed/halt! k))
   (when-let [stop-fn @!server]
     (stop-fn)
     (reset! !server nil)))
@@ -286,7 +287,7 @@
   []
   (stop!)
   (when-let [k @!kernel]
-    (kernel/halt! k))
+    (embed/halt! k))
   (reset! !kernel (new-kernel {}))
   (reset! !mounts (sorted-map))
   nil)
