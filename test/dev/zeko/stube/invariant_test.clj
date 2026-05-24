@@ -161,3 +161,52 @@
       (is (str/starts-with? line "(s/defcomponent")
           (str "defcomponent should be top-level in " (.getPath f)
                ":" (inc line-no))))))
+
+(def ^:private internal-namespace-aliases
+  ;; Namespaces examples must not reach into directly.  The component
+  ;; author surface is `dev.zeko.stube.core`; host embedders use
+  ;; `dev.zeko.stube.embed` plus `dev.zeko.stube.adapter.ring`.
+  ;; Everything else is internal: hitting it from an example signals
+  ;; either a missing public API (file an issue) or an over-coupled
+  ;; example (rewrite it against the public surface).
+  ["dev.zeko.stube.kernel"
+   "dev.zeko.stube.server"
+   "dev.zeko.stube.conversation"
+   "dev.zeko.stube.runtime"
+   "dev.zeko.stube.render"
+   "dev.zeko.stube.frame"
+   "dev.zeko.stube.fragments"
+   "dev.zeko.stube.http"
+   "dev.zeko.stube.lifecycle"
+   "dev.zeko.stube.effects"
+   "dev.zeko.stube.registry"])
+
+(def ^:private internal-namespace-allowlist
+  ;; Files allowed to import a documented host-embedder namespace.
+  ;; `embedded_ring.clj` is the canonical Ring-embedding example —
+  ;; it demonstrates a host driving `dev.zeko.stube.embed` directly
+  ;; and we want that to keep working.  Nothing else in `examples/`
+  ;; should need this list.
+  #{"examples/dev/zeko/stube/examples/embedded_ring.clj"})
+
+(defn- example-imports-internal-ns? [^java.io.File f ^String ns-prefix]
+  ;; Match either `dev.zeko.stube.kernel` or `dev.zeko.stube.kernel/...`
+  ;; — alias forms (`:as kernel`) and qualified references both qualify
+  ;; as "reaching into" the namespace.  A bare keyword like
+  ;; `:dev.zeko.stube/kernel` is not a real reference; we anchor on the
+  ;; full namespace string.
+  (let [text     (slurp f)
+        pattern  (java.util.regex.Pattern/compile
+                   (str "\\Q" ns-prefix "\\E(?![A-Za-z0-9_.-])"))]
+    (re-find pattern text)))
+
+(deftest examples-only-reach-the-public-surface
+  (doseq [f (clj-files-under "examples")
+          :let [path (str/replace (.getPath f) #"^\./" "")]
+          :when (not (contains? internal-namespace-allowlist path))
+          ns-prefix internal-namespace-aliases]
+    (is (not (example-imports-internal-ns? f ns-prefix))
+        (str path " reaches into internal namespace " ns-prefix
+             " — examples should stick to dev.zeko.stube.core"
+             " (component authors) or dev.zeko.stube.embed +"
+             " dev.zeko.stube.adapter.ring (host embedders)"))))

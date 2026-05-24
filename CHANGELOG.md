@@ -5,6 +5,23 @@ development entry.
 
 ## Unreleased
 
+- Generative kernel test. New `kernel_property_test` uses test.check
+  to walk random event sequences through `kernel/dispatch` against a
+  stub registry, asserting after every step that (a) no throw,
+  (b) `pr-str`/`read-string` round-trip yields an equal conversation,
+  (c) every `:elements`/`:error` fragment that names an iid selector
+  refers to an instance that exists post-dispatch, and (d) the call
+  stack and `:instance/children` only reference live instances.
+  The test surfaced a real leak: `:call-in-slot`'s
+  `:instance/previous` chain is orphaned when the parent frame is
+  replaced or ended before the slot child answers. Out of scope here;
+  named and bounded by a comment in the test so it does not get
+  forgotten.
+- Tightened invariant test: examples may not reach into internal
+  namespaces (`kernel`, `server`, `conversation`, `runtime`,
+  `render`, `frame`, `fragments`, `http`, `lifecycle`, `effects`,
+  `registry`). `embedded_ring.clj` stays the documented exception
+  for `dev.zeko.stube.embed` as the host-embedder surface.
 - Documentation: cross-process pub/sub is now called out as
   single-JVM-by-design in `docs/internals.md`, with a sketched
   `Publisher` protocol for the eventual seam if a real bus is ever
