@@ -5,6 +5,15 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.1.1
+
+Road-to-1.0 sweep. See `todo.md` for the items deliberately deferred
+past this release (composition spikes, popstate, extra HTTP routes,
+the `:call-in-slot` previous-chain leak surfaced by the new property
+test).
+
 - Generative kernel test. New `kernel_property_test` uses test.check
   to walk random event sequences through `kernel/dispatch` against a
   stub registry, asserting after every step that (a) no throw,
@@ -67,6 +76,8 @@ development entry.
   docs have been updated. The §15.4 line-count invariant has been
   replaced by a structural one: the runtime stays organised around a
   single effect multimethod.
+## 0.1.0
+
 - API polish pass before 1.0:
   - `s/back` is now a zero-arity function `(s/back)` returning the
     `[:back]` effect, matching every other effect constructor. Call

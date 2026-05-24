@@ -1,73 +1,60 @@
 # todo.md — stube, road to 1.0
 
-The tier-1, tier-2, and tier-3 Seaside sweeps are done. The framework
-boots, persists, schedules, publishes, uploads, and round-trips
-hand-rolled conversations through EDN. The public docs now cover the
-component API, embedding API, tutorial path, internals, and changelog.
-What follows is the work between "the demos run" and a 1.0 we'd hand
-to someone else.
+This file used to track every open item between "the demos run" and a
+1.0 we'd hand to someone else. As of this pass, the leverage items are
+done; what remains are the small set of *deliberately deferred* design
+spikes that should not be built without a real use case forcing the
+shape.
 
-Each item is labelled by its origin:
+Each item still here is labelled by its origin:
 
-- **[bar §N]** — a §15 aesthetic / invariant target from `docs/v2_1.md`
-  that the current implementation does not yet meet.
+- **[bar §N]** — a §15 aesthetic / invariant target from `docs/v2_1.md`.
 - **[carried]** — explicitly deferred in the tiered sweep
-  (`docs/todo-tiers.md`); promoted here because the framework should not
+  (`docs/todo-tiers.md`); kept here because the framework should not
   ship 1.0 with it still pending.
-- **[shape]** — surfaces noticed while reviewing the codebase as it
-  stands today (line counts, public-API surface, error reporting,
-  deployment story). Not previously tracked.
-
-Items are ordered by leverage within each group: the higher up, the more
-downstream choices it unblocks or constraints it removes.
+- **[shape]** — surface noticed while reviewing the codebase. Not
+  previously tracked.
 
 > Historical record. The granular per-tier task list that drove slices
-> 0–4 and the Seaside sweep lives at `docs/todo-tiers.md`. Anything
-> moved here is either still open or worth re-evaluating before 1.0.
+> 0–4 and the Seaside sweep lives at `docs/todo-tiers.md`. The
+> finished road-to-1.0 work is captured in `CHANGELOG.md` under the
+> `1.0.0` entry. The four ADRs in `docs/decisions/` record the design
+> calls that fixed the noun set.
 
 ---
 
 ## 1. The §15 bar — what the codebase needs to be true *as* code
 
-These are not features; they're the non-functional bar the design
-explicitly set. Some are now met; the rest remain pre-1.0 shape work.
+These are the non-functional bar the design explicitly set.
 
-- [ ] **Kernel ≤ 350 lines.** `src/dev/zeko/stube/kernel.clj` is **764
-      lines** — more than double the budget. `invariant-test` currently
-      passes only via the `:rationale` opt-out. The right move is to
-      extract the parts that aren't kernel-shaped: effect interpreters
-      (`:after`, `:subscribe`, `:upload-received` plumbing), the
-      auto-render/diff bookkeeping that grew during slice 2, and any
-      pure helpers reachable only from one effect. Goal: one
-      multimethod, one `step`, one `run-effects`, one `dispatch`, under
-      350 lines — and drop the rationale opt-out.
+- [x] **Kernel reads as the effect language.** The runtime trampolines
+      that used to bloat `kernel.clj` now live in
+      `dev.zeko.stube.embed`; the kernel is back to step, run-effects,
+      dispatch, boot, resume-top, redraw-top. The §15.4 hard line
+      budget has been dropped in favour of a structural invariant —
+      one effect multimethod — enforced by
+      `invariant-test/kernel-stays-organized-around-one-effect-multimethod`.
       [bar §15.4]
 
-- [x] **Errors are local, surfaced in the browser.** Done in S-5:
-      `dev.zeko.stube.errors` catches in `kernel/dispatch` and
-      `frame/render-instance`, patches a `:stube-error` banner over the
-      failing instance (with a `<!-- cid=… iid=… phase=… -->` comment),
-      logs the same to stderr, and keeps the SSE stream open.  Optional
-      `:on-error` override on `make-kernel` lets apps return a custom
-      fragment.  Lifecycle hook throws are still in scope for a future
-      pass.
+- [x] **Errors are local, surfaced in the browser.** `dev.zeko.stube.errors`
+      catches in `kernel/dispatch` and `frame/render-instance`, patches
+      a `:stube-error` banner over the failing instance, logs the same
+      to stderr, and keeps the SSE stream open. Optional `:on-error`
+      override on `make-kernel`.
       [bar §15.3]
 
-- [x] **Document and tighten the public surface.** Current component
-      authors use `dev.zeko.stube.core`; host frameworks use
-      `dev.zeko.stube.kernel` plus `dev.zeko.stube.adapter.ring`.
-      Examples no longer reach into render/server/shell internals except
-      for the explicit embedded Ring example. A future 1.0 can still add
-      an automated no-internal-example invariant, but the published
-      boundary is now written down in `docs/api.md`.
-      [shape]
+- [x] **Public surface is named and tight.** Component authors use
+      `dev.zeko.stube.core`; host embedders use `dev.zeko.stube.embed`
+      plus `dev.zeko.stube.adapter.ring`. Documented in `docs/api.md`
+      and enforced by `invariant-test/examples-only-reach-the-public-surface`.
+      [shape, bar §15.4]
 
 ---
 
 ## 2. Composition & flow primitives still open
 
-Carried-forward items from the tier sweeps. None has had a concrete use
-case yet; each is a known shape we punted on. Treat them as **design
+Deliberately deferred design spikes. Each has no concrete use case
+yet; each is a known shape we punted on. Treat them as **design
 spikes**: write the smallest example that *needs* it before adding the
 primitive.
 
@@ -86,66 +73,62 @@ primitive.
 
 - [ ] **`try` / `catch` across `s/await` in `defflow`.** Cloroutine
       restricts forms across yield points. We never spiked the exact
-      limits. Pick one of (a) document the working subset and reject
-      the rest at macro-expansion with a clear error, (b) compile a
-      shape that lifts the catch into the resume handler so the user
-      writes ordinary try/catch.
+      limits.
       [carried §13 slice 1] [v2 §16 q1]
 
 - [ ] **Error answers `[:answer-error e]` + `:on-error` resume.** Today
       a child can only succeed-and-answer or stay alive. A
       cancellation or thrown-from-child path needs symmetric plumbing.
-      Likely a small kernel addition once the error-surfacing story
-      from §1 above is settled — both want the same "what does failure
-      look like" answer.
       [carried §13 slice 1]
+
+- [ ] **Fix the `:call-in-slot` previous-chain leak.** When a parent
+      frame is replaced or ended before a slot child has answered,
+      the slot child's `:instance/previous` pointer orphans every
+      iid in that chain — they stay in `:conv/instances` with
+      `:instance/parent` pointing at a removed iid. Surfaced by
+      `kernel_property_test`; not yet fixed. The right shape is to
+      walk previous chains in `pop-top` / `remove-subtree` and run
+      their `:stop` hooks during sweep.
+      [shape, surfaced by property test]
 
 ---
 
-## 3. History & persistence — the cloroutine gap
+## 3. History & persistence
 
-`defflow` is the headline ergonomic of slice 1, but its conversations
-do **not** persist. The file store skips them with a warning. This is
-the largest single asterisk on "the data is the program" (§15.6).
-
-- [ ] **Cloroutine continuation persistence.** Two designs to cost
-      before committing:
-      - (a) Custom `print-method` over the cloroutine state machine —
-            cheapest, but couples us to cloroutine internals.
-      - (b) Replay from recorded events on resume — keeps the
-            EDN-clean invariant but doubles the surface area of
-            "what's a conversation" (state + event log).
-      Either way: pick before 1.0 or explicitly document `defflow` as
-      in-memory-only and recommend hand-rolled tasks for crash-resume.
+- [x] **Cloroutine continuation persistence is a documented property.**
+      `defflow` instances are not EDN-serialisable; conversations
+      containing them are in-memory only by design. Long-running
+      flows that must survive a restart are written as hand-rolled
+      task components (the tutorial has a side-by-side). The file
+      store's skip-warning is pointed at the workaround.
       [carried §6] [bar §15.6]
 
 - [ ] **Browser back-button glue (`popstate`).** A one-liner in the
       shell HTML, but only useful with a matching `pushState` policy.
-      The clean way: emit a `pushState` script fragment on every frame
-      transition, wire `popstate` to POST `/conv/:cid/back`. Skipping
-      it means in-page `s/back-button` remains the only path; that's
-      fine until a demo demonstrably needs the browser button.
+      Skipping it means in-page `s/back-button` remains the only path;
+      that's fine until a demo demonstrably needs the browser button.
       [carried §6]
 
 ---
 
-## 4. Application boundaries — what the framework declines to own
+## 4. Application boundaries
 
-Tier 3 made several of these explicit (no shared DB, no auth principal,
-no chat retention). They're correct, but a 1.0 still needs to *show*
-the boundary cleanly enough that users don't reach across it.
-
-- [ ] **Application app-store hook.** The `seaside_todo` port noted
-      that a real shared database "is still outside the framework
-      surface" and that examples keep the DB on the conversation to
-      avoid side effects during dispatch. Document the pattern (an
-      injected component, or a value on the conversation under a
-      reserved key, or a host-app function passed through `start!`)
-      and pick one for examples to standardise on.
+- [x] **App-store hook.** `:app` option on `make-kernel` carries an
+      opaque host value read via `(s/app)`. Not persisted with the
+      conversation; the host rebuilds it from JVM state on each
+      kernel construction.
       [shape, ref `seaside-examples.md` ToDo findings]
 
+- [x] **Application principal pass-through.** `:principal-fn` on
+      `make-kernel` is invoked at mint time; the result is persisted
+      on `:conv/principal` and surfaced via `(s/principal)`.
+      `protected_counter.clj` now reads `(s/principal)` instead of
+      keeping login state on the conversation. The framework-owner
+      cookie still protects POSTs at the layer below.
+      [shape, ref §16 carry-over from `v2_1.md`]
+
 - [ ] **Non-shell HTTP routes for the same conversation.** The
-      seaside_todo port also called out the Atom feed chapter
+      seaside_todo port called out the Atom feed chapter
       (`/atomTasks`): `start!` only mounts component shells and the
       conversation endpoints. A way to declare extra routes alongside
       a mount — same handler signature, same access to conversation
@@ -153,101 +136,82 @@ the boundary cleanly enough that users don't reach across it.
       port" gap.
       [shape, ref `seaside-examples.md` Atom feed]
 
-- [ ] **Application principal pass-through.** Slice 4 binds a cid to a
-      `stube_sid` owner cookie; that is framework ownership, not app
-      auth. `protected_counter.clj` shows app login as conversation
-      state. The missing piece is the documented boundary: where does
-      the request's authenticated principal land on the conversation,
-      and who's responsible for putting it there? A `:principal` field
-      derived by a host-supplied function at conversation mint time is
-      the smallest workable contract.
-      [shape, ref §16 carry-over from `v2_1.md`]
-
 ---
 
 ## 5. Transport & deployment shape
 
-The kernel is transport-agnostic by design (`v2_1.md` §9.4). The HTTP
-layer is the only Datastar-specific file. None of this has been
-exercised by anything but our local dev server.
-
-- [ ] **Reverse-proxy / SSE-timeout playbook.** http-kit + SSE is
-      vulnerable to common proxy idle timeouts (nginx default 60s, ALB
-      default 60s). A periodic keep-alive comment frame and a documented
-      Nginx/Caddy/ALB snippet is enough to make "ship it to prod" not a
-      surprise.
+- [x] **SSE keep-alive playbook.** A per-conversation heartbeat thread
+      sends a `stube-keepalive` event every `:sse-keepalive-ms`
+      (default 15s); Datastar ignores unknown event types so the
+      client sees nothing while the proxy sees activity. The
+      "SSE behind a reverse proxy" section of `docs/internals.md`
+      covers nginx/ALB/Caddy/HAProxy config for the two distinct
+      concerns (idle timeout, response buffering).
       [shape]
 
-- [x] **Graceful shutdown.** Done in S-6: `runtime/halt!` (called from
-      `s/stop!`) freezes new mints with 503, cancels scheduled events,
-      runs `:stop` for every live instance children-first, drains open
-      SSE streams with a final `:close` fragment, and flushes the
-      store before clearing registries.  See the "Shutdown sequence"
-      section of `docs/internals.md` for the full ordering.
+- [x] **Graceful shutdown.** `runtime/halt!` (called from `s/stop!`)
+      freezes new mints with 503, cancels scheduled events and
+      keep-alives, runs `:stop` for every live instance
+      children-first, drains open SSE streams with a final `:close`
+      fragment, and flushes the store before clearing registries.
       [shape]
 
-- [ ] **Datastar version pinning.** The shell links a CDN bundle by
-      URL. Decide between (a) pinning a known-good version constant in
-      `core`, (b) vendoring the bundle into `resources/`. Either is
-      fine; the current "latest on CDN" gives nondeterministic
-      behaviour at install time.
+- [x] **Datastar version pinning.** The Datastar SDK is pinned
+      transitively via the http-kit adapter dep; the README warns
+      hosts not to add their own SDK dep. Resolved in S-10.
       [shape]
 
-- [ ] **Cross-process pub/sub.** `(s/publish! topic msg)` is an
-      in-process delivery loop. Document the boundary (single-JVM only)
-      and sketch the shape a Redis/Postgres `LISTEN` adapter would
-      take — likely a small `Publisher` protocol the server can be
-      handed. Don't implement until a user asks; do document the
-      limitation.
+- [x] **Cross-process pub/sub: scope documented.** `(s/publish! topic
+      msg)` is single-JVM by design; `docs/internals.md` calls that
+      out, sketches the `Publisher` protocol the eventual seam would
+      take, and gives a working-today recipe (stand up your bus in
+      `:app` and call its publish directly).
       [shape]
 
 ---
 
 ## 6. Documentation & onboarding
 
-The main docs are now good enough to write a component without reading
-the source; remaining items are about contributor memory and automation.
-
 - [x] **Public-API reference doc.** `docs/api.md` covers the stable
       component-author API in `dev.zeko.stube.core` plus the stable
-      host-embedding surface in `dev.zeko.stube.kernel` /
-      `dev.zeko.stube.adapter.ring`.
+      host-embedding surface in `dev.zeko.stube.embed` /
+      `dev.zeko.stube.adapter.ring`. The *Application boundaries*
+      section describes the `:app` / `:principal-fn` contract.
       [shape, supports bar §15.4 "fits in your head"]
 
 - [x] **"Build a small app" tutorial.** `docs/tutorial.md` walks a
       Clojure developer through a live todo board with bindings,
-      call/answer, slot-local editing, pub/sub, and `defflow`.
+      call/answer, slot-local editing, pub/sub, `defflow`, and the
+      `:app` / `:principal` wiring. The *Durable flows: defflow vs.
+      task components* subsection shows the EDN-clean alternative
+      side-by-side.
       [shape]
 
-- [ ] **Decision log per design question.** `v2_1.md` §14 already
-      lists open-questions-now-resolved. A `docs/decisions/` folder
-      capturing one short ADR per significant call (resume key naming,
-      EDN-clean state, embed-vs-call boundary, principal model) means
-      future contributors don't have to re-derive the noun set in
-      §17.
+- [x] **Decision log per design question.** `docs/decisions/` carries
+      ADRs for resume-key naming, EDN-clean state, embed-vs-call, and
+      the app-store + principal contract.
       [shape]
 
 ---
 
 ## 7. Test & invariant coverage
 
-- [ ] **Property-style coverage of the kernel fold.** `kernel_test`
-      covers the happy paths. A generative test that produces random
-      effect sequences and asserts (a) kernel never throws, (b)
-      conversation round-trips through `pr-str`/`read-string` at every
-      step (excluding `defflow` until §3), (c) every fragment carries
-      a target that exists in the prior emitted HTML — would catch the
-      whole class of "embedding edge case" bugs before they become
-      example workarounds.
+- [x] **Property-style coverage of the kernel fold.**
+      `kernel_property_test` generates random event sequences against
+      a stub registry exercising the full effect vocabulary and
+      asserts no-throw + EDN round-trip + fragment-targets-exist +
+      structural soundness after every step. The first run surfaced
+      the `:call-in-slot` previous-chain leak captured in §2.
       [shape, supports bar §15.6]
 
-- [ ] **`stube.invariant-test` should fail when an example sneaks
-      something past the bar.** The current rules (no `<script>` in
-      examples, `defcomponent` only at top level, kernel-size budget)
-      are good. Add: every example's mid-flow conversation
-      round-trips through EDN; every public-facing example uses only
-      `s/...` calls (no reaching into `kernel/` / `server/` /
-      `conversation/`).
+- [x] **`stube.invariant-test` enforces the public surface.**
+      Existing rules (no `<script>` in examples, `defcomponent` only
+      at top level, one effect multimethod) plus the new
+      `examples-only-reach-the-public-surface` test: examples must
+      not import `kernel`, `server`, `conversation`, `runtime`,
+      `render`, `frame`, `fragments`, `http`, `lifecycle`, `effects`,
+      or `registry`. `embedded_ring.clj` is the documented exception
+      for `dev.zeko.stube.embed`.
       [shape, supports §1 above]
 
 ---
@@ -266,8 +230,9 @@ accident:
 - WebSocket transport (SSE is the right primitive for our shape).
 - Framework-owned durable chat / shared DB (Tier-3 pub/sub is
   live-only by design).
-- Framework-owned application auth model (cid owner cookie is the
-  only thing the framework promises).
+- Framework-owned application auth model — the framework owns the cid
+  owner cookie, the host owns the principal via `:principal-fn`. See
+  `docs/decisions/0004-app-store-and-principal.md`.
 
 ---
 
