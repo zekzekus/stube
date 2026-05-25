@@ -97,6 +97,19 @@
 
 (defn answer-value [eff] (nth eff 1))
 
+(defn answer-error
+  "Pop this frame and route the exception through the parent's
+  `:on-error-<key>` resume handler instead of `:on-<key>`.
+
+  If the parent declared only `:on-<key>`, the kernel falls back to it
+  with a wrapped value `[:error ex]` and logs a one-time deprecation
+  warning per component.  If neither is declared, the parent surfaces a
+  default error banner just like an intra-component throw."
+  [ex]
+  [:answer-error ex])
+
+(defn answer-error-value [eff] (nth eff 1))
+
 (defn replace
   "Pop this frame and push another in its place (Seaside `become:`).
   The replacement inherits the original parent linkage and resume key."

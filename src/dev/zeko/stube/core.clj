@@ -208,6 +208,16 @@
   resume key.  See [[dev.zeko.stube.effects/answer]]."}
   answer effects/answer)
 
+(def ^{:doc "Pop this frame and route the exception through the parent's
+  `:on-error-<key>` resume handler instead of `:on-<key>`.
+
+  If the parent declares only `:on-<key>`, the kernel falls back to
+  it with a wrapped value `[:error ex]` and logs a one-time
+  deprecation warning per component.  If neither is declared, the
+  parent surfaces a default error banner just like an intra-component
+  throw.  See [[dev.zeko.stube.effects/answer-error]]."}
+  answer-error effects/answer-error)
+
 (def ^{:doc "Emit an extra DOM patch without changing the stack.
   See [[dev.zeko.stube.effects/patch]]."}
   patch effects/patch)

@@ -20,6 +20,7 @@
             [dev.zeko.stube.examples.clock]
             [dev.zeko.stube.examples.columns]
             [dev.zeko.stube.examples.dialogs]
+            [dev.zeko.stube.examples.error-answer]
             [dev.zeko.stube.examples.error-frame]
             [dev.zeko.stube.examples.file-upload]
             [dev.zeko.stube.examples.guess]
@@ -87,6 +88,8 @@
     :blurb "S-3: `s/preserve` keeps third-party DOM children alive across parent re-renders."}
    {:path "/error-frame"    :title "In-page error frame"       :group "Tier 3"
     :blurb "S-5: a throwing handler turns into a localized banner instead of dropping the SSE stream."}
+   {:path "/error-answer"   :title "Child-side error routing"  :group "Tier 3"
+    :blurb "S-14: a child emits `(s/answer-error ex)`; parent's `:on-error-<key>` handles it without re-mounting the form."}
    {:path "/columns"        :title "Keyed columns"             :group "Tier 3"
     :blurb "S-7: `s/keyed-children` adds/removes/replaces a column with one fragment per change."}
    {:path "/seaside-todo"   :title "Seaside book ToDo"         :group "Book app"

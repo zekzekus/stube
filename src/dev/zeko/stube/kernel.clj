@@ -70,7 +70,8 @@
   subscribe or schedule timers.  `:stop` runs just before a frame/subtree
   is removed; `:wakeup` runs when a persisted or history-restored frame
   becomes live again."
-  (:require [dev.zeko.stube.conversation :as conv]
+  (:require [clojure.string              :as str]
+            [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.dev          :as dev]
             [dev.zeko.stube.effects      :as e]
             [dev.zeko.stube.errors       :as errors]
@@ -283,80 +284,153 @@
       (let [[c f] (frame/render-slot-overlay conv'' parent-id old-iid iid)]
         [c (conj (vec fr) f)]))))
 
+(defn- error-resume-key
+  "Derive the parent's failure-side resume key from the success-side key:
+  `:on-foo` → `:on-error-foo`, `:on/foo` → `:on-error/foo`."
+  [resume-key]
+  (when resume-key
+    (let [n (name resume-key)
+          n' (if (str/starts-with? n "on-")
+               (str "on-error-" (subs n 3))
+               (str "on-error-" n))]
+      (if-let [ns (namespace resume-key)]
+        (keyword ns n')
+        (keyword n')))))
+
+(defonce ^:private !answer-error-warned
+  ;; Logs the deprecation message at most once per [parent-cdef-id, resume-key]
+  ;; pair so apps that fail-fail-fail-fail don't flood stderr.
+  (atom #{}))
+
+(defn- warn-fallback-once! [parent-id parent-type resume-key]
+  (let [k [parent-type resume-key]]
+    (when-not (contains? @!answer-error-warned k)
+      (swap! !answer-error-warned conj k)
+      (binding [*out* *err*]
+        (println (str "stube answer-error fallback"
+                      " parent=" parent-id
+                      " type=" parent-type
+                      " resume=" resume-key
+                      " — parent declares " resume-key
+                      " but not " (error-resume-key resume-key)
+                      "; calling " resume-key " with [:error ex]"))))))
+
 (defn- resume-parent
   "Deliver `value` to `parent-id` under `resume-key`, then render the
   parent if the resume effects did not already produce elements.
 
+  When `error?` is truthy, `value` is the exception emitted via
+  `(s/answer-error ex)`.  The kernel prefers the parent's
+  `:on-error-<key>` resume handler, falls back to `:on-<key>` with a
+  wrapped `[:error ex]` value plus a one-time deprecation warning,
+  and finally falls back to the default error-frame banner on the
+  parent.
+
   Both stack calls and slot-local calls share this continuation path;
   only the way the answering child is removed differs."
-  [conv parent-id resume-key value]
-  (cond
-    ;; Answering the root means the conversation is done.  We translate
-    ;; this into an `:end` so behaviour is consistent.
-    (nil? parent-id)
-    (step conv (e/end value))
+  ([conv parent-id resume-key value]
+   (resume-parent conv parent-id resume-key value false))
+  ([conv parent-id resume-key value error?]
+   (cond
+     ;; Answering the root means the conversation is done.  We translate
+     ;; this into an `:end` so behaviour is consistent.  Errors at the
+     ;; root have nowhere to go; surface them as the final value, same
+     ;; shape as the wrapped-error fallback.
+     (nil? parent-id)
+     (step conv (e/end (if error? [:error value] value)))
 
-    ;; Bare child answer with no resume key — nothing to deliver to the
-    ;; parent.  Just re-render the parent so the user sees something.
-    (nil? resume-key)
-    (let [[c' f] (render-frame conv parent-id)]
-      [c' [f]])
+     ;; Bare child answer with no resume key — nothing to deliver to the
+     ;; parent.  An error here has nowhere structured to go; emit a
+     ;; banner on the parent so the failure is visible.
+     (nil? resume-key)
+     (if error?
+       [conv [(errors/build-fragment conv parent-id value :answer-error)]]
+       (let [[c' f] (render-frame conv parent-id)]
+         [c' [f]]))
 
-    :else
-    (let [parent    (conv/instance conv parent-id)
-          cdef      (registry/lookup! (:instance/type parent))
-          resume-fn (or (get cdef resume-key)
-                        (throw (ex-info (str "Parent has no resume fn for " resume-key)
-                                        {:parent     parent-id
-                                         :resume-key resume-key})))
-          [parent' fx]   (lc/coerce-return parent
-                                           (resume-fn parent value))
-          _              (dev/validate! cdef parent' resume-key)
-          parent'        (conv/preserve-meta parent parent')
-          conv'          (conv/put-instance conv parent')
-          [conv'' more]  (e/with-origin parent-id
-                           (run-effects conv' fx))
-          ;; If the resume produced no further element fragments,
-          ;; re-render the parent so its state changes are visible.
-          [conv-final extra]
-          (if (or (rendered-output? more)
-                  (nil? (conv/instance conv'' parent-id)))
-            [conv'' []]
-            (let [[c' f] (render-frame conv'' parent-id)]
-              [c' [f]]))]
-      [conv-final (into (vec extra) more)])))
+     :else
+     (let [parent     (conv/instance conv parent-id)
+           cdef       (registry/lookup! (:instance/type parent))
+           err-key    (when error? (error-resume-key resume-key))
+           ;; Three-tier lookup for the failure case:
+           ;;   1. parent declares :on-error-<key> → call with raw ex
+           ;;   2. parent declares :on-<key>       → call with [:error ex] + warn
+           ;;   3. parent declares neither         → error-frame banner
+           [resume-fn delivered]
+           (cond
+             error?
+             (cond
+               (get cdef err-key)
+               [(get cdef err-key) value]
 
-(defn- answer-from-stack [conv value]
-  (let [leaving-id      (conv/top-id conv)
-        leaving         (conv/top-instance conv)
-        resume-key      (:instance/resume leaving)
-        ;; The whole frame is being destroyed — pull in previous-chained
-        ;; slot occupants too so their `:stop` fires and they get swept
-        ;; from `:conv/instances` by pop-top below.
-        stop-iids       (conv/subtree-ids conv leaving-id)
-        [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
-        [conv' _popped] (conv/pop-top conv-stopped)
-        parent-id       (conv/top-id conv')
-        [conv'' frags]  (resume-parent conv' parent-id resume-key value)]
-    [conv'' (into (vec stop-frags) frags)]))
+               (get cdef resume-key)
+               (do (warn-fallback-once! parent-id (:instance/type parent) resume-key)
+                   [(get cdef resume-key) [:error value]])
 
-(defn- answer-from-slot [conv leaving value]
-  (let [leaving-id (:instance/id leaving)
-        parent-id  (:instance/parent leaving)
-        slot       (:instance/slot leaving)]
-    (when-not slot
-      (throw (ex-info "Embedded :answer is only supported for [:call-in-slot ...] children"
-                      {:instance-id leaving-id
-                       :parent      parent-id})))
-    (let [resume-key (:instance/resume leaving)
-          previous   (:instance/previous leaving)
-          stop-iids  (conv/descendant-ids conv leaving-id)
-          [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
-          conv'      (-> conv-stopped
-                         (conv/remove-subtree leaving-id)
-                         (conv/set-child-slot parent-id slot previous))
-          [conv'' frags] (resume-parent conv' parent-id resume-key value)]
-      [conv'' (into (vec stop-frags) frags)])))
+               :else
+               [nil nil])
+
+             :else
+             [(or (get cdef resume-key)
+                  (throw (ex-info (str "Parent has no resume fn for " resume-key)
+                                  {:parent     parent-id
+                                   :resume-key resume-key})))
+              value])]
+       (if (nil? resume-fn)
+         ;; Tier 3: error-frame banner on the parent.
+         [conv [(errors/build-fragment conv parent-id value :answer-error)]]
+         (let [[parent' fx]   (lc/coerce-return parent
+                                                (resume-fn parent delivered))
+               _              (dev/validate! cdef parent' (or err-key resume-key))
+               parent'        (conv/preserve-meta parent parent')
+               conv'          (conv/put-instance conv parent')
+               [conv'' more]  (e/with-origin parent-id
+                                (run-effects conv' fx))
+               ;; If the resume produced no further element fragments,
+               ;; re-render the parent so its state changes are visible.
+               [conv-final extra]
+               (if (or (rendered-output? more)
+                       (nil? (conv/instance conv'' parent-id)))
+                 [conv'' []]
+                 (let [[c' f] (render-frame conv'' parent-id)]
+                   [c' [f]]))]
+           [conv-final (into (vec extra) more)]))))))
+
+(defn- answer-from-stack
+  ([conv value] (answer-from-stack conv value false))
+  ([conv value error?]
+   (let [leaving-id      (conv/top-id conv)
+         leaving         (conv/top-instance conv)
+         resume-key      (:instance/resume leaving)
+         ;; The whole frame is being destroyed — pull in previous-chained
+         ;; slot occupants too so their `:stop` fires and they get swept
+         ;; from `:conv/instances` by pop-top below.
+         stop-iids       (conv/subtree-ids conv leaving-id)
+         [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
+         [conv' _popped] (conv/pop-top conv-stopped)
+         parent-id       (conv/top-id conv')
+         [conv'' frags]  (resume-parent conv' parent-id resume-key value error?)]
+     [conv'' (into (vec stop-frags) frags)])))
+
+(defn- answer-from-slot
+  ([conv leaving value] (answer-from-slot conv leaving value false))
+  ([conv leaving value error?]
+   (let [leaving-id (:instance/id leaving)
+         parent-id  (:instance/parent leaving)
+         slot       (:instance/slot leaving)]
+     (when-not slot
+       (throw (ex-info "Embedded :answer is only supported for [:call-in-slot ...] children"
+                       {:instance-id leaving-id
+                        :parent      parent-id})))
+     (let [resume-key (:instance/resume leaving)
+           previous   (:instance/previous leaving)
+           stop-iids  (conv/descendant-ids conv leaving-id)
+           [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
+           conv'      (-> conv-stopped
+                          (conv/remove-subtree leaving-id)
+                          (conv/set-child-slot parent-id slot previous))
+           [conv'' frags] (resume-parent conv' parent-id resume-key value error?)]
+       [conv'' (into (vec stop-frags) frags)]))))
 
 (defmethod step :answer
   [conv eff]
@@ -372,6 +446,21 @@
 
       :else
       (answer-from-slot conv leaving value))))
+
+(defmethod step :answer-error
+  [conv eff]
+  (let [ex        (e/answer-error-value eff)
+        origin-id (effect-origin conv)
+        leaving   (conv/instance conv origin-id)]
+    (cond
+      (nil? leaving)
+      [conv []]
+
+      (= origin-id (conv/top-id conv))
+      (answer-from-stack conv ex true)
+
+      :else
+      (answer-from-slot conv leaving ex true))))
 
 (defmethod step :replace
   [conv eff]

@@ -61,3 +61,13 @@
         eff   (s/io thunk)]
     (is (= :io (first eff)))
     (is (identical? thunk (e/io-thunk eff)))))
+
+;; ---------------------------------------------------------------------------
+;; S-14: answer-error
+;; ---------------------------------------------------------------------------
+
+(deftest answer-error-wire-shape
+  (let [ex  (ex-info "boom" {:why :test})
+        eff (s/answer-error ex)]
+    (is (= [:answer-error ex] eff))
+    (is (identical? ex (e/answer-error-value eff)))))

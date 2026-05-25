@@ -64,17 +64,13 @@ framework cruft.
       state at runtime."
       [carried §2]
 
-- [ ] **`[:answer-error e]` + `:on-error` resume.** The error-frame
-      system from S-5 catches `:render` / `:handle` throws and surfaces
-      a banner in place of the failing instance — that handles
-      *intra-component* failure. What's missing is the symmetric
-      child→parent failure path: a way for a child to terminate
-      abnormally and route the cause through the parent's component
-      map under an `:on-error` resume key, mirroring how `:answer`
-      routes a successful value through the named resume key. Useful
-      for cancellation and for "the user closed the modal" — both
-      currently force a sentinel-value convention on `:answer`.
-      [carried §13 slice 1]
+- [x] **`[:answer-error e]` + `:on-error` resume.** Shipped under S-14
+      (issue #25) for the 0.1.3 / round-2 kasten-migration sweep.
+      `(s/answer-error ex)` pops the child frame and routes the
+      exception through the parent's `:on-error-<key>` resume; the
+      kernel falls back to `:on-<key>` with `[:error ex]` (+ one
+      deprecation log line) and, failing that, to the default error
+      banner. See `docs/decisions/0005-answer-error-and-resume.md`.
 
 ---
 

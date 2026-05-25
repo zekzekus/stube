@@ -5,6 +5,15 @@ development entry.
 
 ## Unreleased
 
+- **S-14**: `(s/answer-error ex)` + `:on-error-<key>` resume keys.
+  Symmetric child→parent failure routing — the child catches its
+  exception and emits `(s/answer-error ex)`; the parent declares
+  `:on-error-saved` next to `:on-saved` and receives the exception
+  verbatim. Three-tier fallback: explicit `:on-error-<key>` →
+  `:on-<key>` with `[:error ex]` plus a one-time deprecation
+  warning per cdef → the default error-frame banner. New ADR
+  `0005-answer-error-and-resume.md`; new worked example
+  `error_answer.clj`; `todo.md §2` entry removed.
 - **S-13**: New `docs/api.md` section "Reading dependencies — `app`
   vs `context` vs `principal`" with a comparison table, decision
   tree by question, three common mistakes (notably reading

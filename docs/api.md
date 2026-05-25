@@ -75,6 +75,7 @@ Recognised keys:
 | `:stop` | `(fn [self] …)` | just before the frame/subtree is removed |
 | `:wakeup` | `(fn [self] …)` | when a persisted/history-restored frame becomes live again |
 | `:on-<key>` | `(fn [self answer-value] …)` | when a child `:answer`s under that resume key |
+| `:on-error-<key>` | `(fn [self exception] …)` | when a child `:answer-error`s under that resume key — see [Failure routing from a child](#failure-routing-from-a-child) |
 | `:children` | `{slot embed-spec}` or `(fn [self] …)` | declared once; the kernel instantiates eagerly |
 | `:url` | `(fn [self] url-string-or-[op url]-or-nil)` | pure projection of state to the browser URL — see [URL as a projection of state](#url-as-a-projection-of-state) |
 
@@ -202,6 +203,7 @@ vectors too, but the constructors are clearer.
 | `(s/become id)` `(s/become id args)` `(s/become embed)` | `[:replace embed]` | pop this frame and push another in its place (Seaside `become:`) |
 | `(s/call-in-slot slot id args :on-key)` `(s/call-in-slot slot embed :on-key)` | `[:call-in-slot slot embed :resume k]` | temporarily swap an embedded slot's child; child answers back without taking over the page |
 | `(s/answer value)` | `[:answer v]` | pop this frame; deliver `v` to the parent under its resume key |
+| `(s/answer-error ex)` | `[:answer-error ex]` | pop this frame; deliver `ex` to the parent under its `:on-error-<key>` resume — see [Failure routing from a child](#failure-routing-from-a-child) |
 | `(s/patch hiccup)` | `[:patch h]` | emit an extra DOM patch without changing the stack |
 | `(s/patch-signals m)` | `[:patch-signals m]` | push a Datastar signal patch (writes signal values back to the browser) |
 | `(s/execute-script js)` | `[:execute-script js]` | run literal JS in the browser (last-resort escape hatch) |
@@ -224,6 +226,53 @@ component that calls the prompt can name its own resume.
 **Structured event payloads.** `(s/on self :click :as [:pick item-id])`
 ships the rest of the vector as `:payload`. The handler sees
 `{:event :pick :payload item-id}`.
+
+### Failure routing from a child
+
+When a child needs to report a structured failure to its parent
+without encoding it in the answered value, emit
+`[(s/answer-error ex)]` instead of `[(s/answer …)]`:
+
+```clojure
+(s/defcomponent :feature/edit-form
+  :handle (fn [self {:keys [event]}]
+            (case event
+              :save (try
+                      (db/update! …)
+                      [(s/answer :saved)]
+                      (catch Exception ex
+                        [(s/answer-error ex)])))))
+
+(s/defcomponent :feature/column
+  :on-saved        (fn [self _]  (assoc self :edit-open? false))
+  :on-error-saved  (fn [self ex] (assoc self :banner (ex-message ex))))
+```
+
+The kernel uses a three-tier lookup on the parent:
+
+1. **Parent declares `:on-error-<key>`.** The exception is passed
+   verbatim; the success-side `:on-<key>` does **not** fire. Cleanest
+   case; both branches stay separate.
+2. **Parent declares only `:on-<key>`.** Falls back with the wrapped
+   value `[:error ex]` and logs a one-time deprecation warning per
+   `(parent-cdef, resume-key)` pair. Use this only for incremental
+   adoption — long-term, declare the explicit mirror.
+3. **Parent declares neither.** Surfaces the default error banner
+   (`errors/build-fragment`) on the parent's instance, identical to
+   an intra-component throw. The SSE channel stays open.
+
+Other notes:
+
+- The exception is passed **as-is**. The parent decides whether to
+  call `(.getMessage ex)`, recover, or re-throw upward with another
+  `(s/answer-error ex)`.
+- The error-frame fallback (S-5) catches intra-component throws.
+  `s/answer-error` is the *symmetric* child→parent failure path —
+  use it when the child caught the exception itself and wants the
+  parent to decide what to do.
+- Cancellation and "user said no" do not need `answer-error`. Stick
+  with `s/cancel` and a boolean from `s/confirm` for those cases —
+  they're not exceptional, just one branch of normal flow.
 
 ### `(s/publish! topic msg)`
 
@@ -902,6 +951,7 @@ for the EDN-clean shape.
 [(s/call :child)]              [(s/call :child args :on-key)]
 [(s/become :other)]            [(s/call-in-slot :slot :child args :on-key)]
 [(s/answer v)]                 [(s/end v)]
+[(s/answer-error ex)]          ; parent declares :on-error-<key>
 [(s/patch hiccup)]             [(s/patch-signals m)]
 [(s/history :replace "/x")]    [(s/io #(…))]
 [(s/after 1000 :tick)]
