@@ -396,20 +396,41 @@ payload query parameter for structured events. Most code should prefer
 `on`; reach for `event-url` only when writing a custom Datastar
 expression.
 
-### `(s/preserve self label)` / `(s/on-mount self label expr)`
+### `(s/preserve self label)` / `(s/on-mount self label expr)` / `(s/on-unmount self label expr)`
 
 Use these together for third-party widgets that own their child DOM.
 `preserve` marks the host element with `data-stube-preserve`; stube's
 stock shell bridge lets future morphs merge host attributes while
 skipping the child subtree. `on-mount` emits a Datastar
 `data-init` expression only before this instance has rendered, so the
-widget constructor runs once.
+widget constructor runs once. `on-unmount` attaches a
+`data-stube-on-unmount` expression that fires once when the host
+element is detached from the DOM — the place to call
+`editor.destroy()`, `chart.dispose()`, `removeEventListener`, or any
+other tear-down the widget owns.
 
 ```clojure
 [:div (merge {:class "editor-host"}
-             (s/preserve self :editor)
-             (s/on-mount self :editor "mountEditor(el)"))]
+             (s/preserve   self :editor)
+             (s/on-mount   self :editor "el.cmView = new EditorView({parent:el})")
+             (s/on-unmount self :editor "el.cmView?.destroy()"))]
 ```
+
+**`on-unmount` semantics.**
+
+- Runs **exactly once** for a real removal. The bridge defers via
+  `queueMicrotask` so an Idiomorph detach+reattach during a swap
+  does not fire the expression.
+- The expression must be **synchronous and idempotent**. It must not
+  emit events back to the server — by the time it fires the host
+  conversation may have already moved on, and the SSE channel for
+  this frame is being torn down.
+- `el` is bound to the detaching element, matching `on-mount`'s
+  binding. Exceptions in the expression are logged to `console` and
+  do not block the morph.
+- Pairs naturally with `:keep` if the widget needs to flush state
+  (e.g. CM6 cursor position) to a signal before destruction. The
+  flush lands on the *next* event, not this one.
 
 ### `(s/bind signal)`
 
@@ -964,6 +985,8 @@ for the EDN-clean shape.
 (s/on self :click :as [:pick id])
 (s/on-target parent-iid :click :as [:pick id])
 (s/bind :draft)                (s/local-bind self :text)
+(s/preserve self :widget)      (s/on-mount   self :widget "mount(el)")
+                               (s/on-unmount self :widget "el.cm?.destroy()")
 (s/render-slot self :slot/x)
 (s/keyed-children self :slot/x)
 (s/back-button "Back")

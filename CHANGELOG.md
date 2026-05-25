@@ -5,6 +5,15 @@ development entry.
 
 ## Unreleased
 
+- **S-15**: `s/on-unmount` Hiccup helper for preserved hosts. Mirrors
+  `s/on-mount`: returns a `data-stube-on-unmount` attribute carrying
+  a synchronous JS expression with `el` bound to the host element.
+  `preserve.js` grew a document-wide MutationObserver that fires the
+  expression once when the host genuinely detaches — queueMicrotask
+  defers the check so Idiomorph's detach+reattach swap dance can't
+  double-fire. Logs to `console.error` on throws; never blocks the
+  morph. CodeMirror/Chart.js/`<video>` integrations now have a real
+  teardown path. README and `preserved_widget.clj` updated.
 - **S-14**: `(s/answer-error ex)` + `:on-error-<key>` resume keys.
   Symmetric child→parent failure routing — the child catches its
   exception and emits `(s/answer-error ex)`; the parent declares

@@ -269,6 +269,30 @@
     {}
     {:data-init expr}))
 
+(defn on-unmount
+  "Attach a JS expression that runs once when the host element is
+  detached from the DOM.
+
+  Use this alongside [[preserve]] / [[on-mount]] to dispose third-party
+  widgets cleanly:
+
+      [:div (merge (s/preserve self :editor)
+                   (s/on-mount   self :editor \"el.cmView = new EditorView({parent:el})\")
+                   (s/on-unmount self :editor \"el.cmView?.destroy()\"))]
+
+  The expression runs **once**, **just before** the host detaches,
+  with `el` bound to the element (mirroring [[on-mount]]).  The
+  expression must be synchronous and idempotent; it should not emit
+  events back to the server.  Errors are logged to `console` and do
+  not block the morph.
+
+  Implemented via a single document-wide MutationObserver installed
+  by `stube/preserve.js`."
+  [self label expr]
+  (require-instance-id! "dev.zeko.stube.render/on-unmount" self)
+  (preserve-label label)
+  {:data-stube-on-unmount expr})
+
 (defn back-button
   "Return a small Hiccup button wired to the conversation-level `[:back]`
   effect.

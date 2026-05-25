@@ -1,6 +1,6 @@
 (ns dev.zeko.stube.render-test
   (:require [clojure.string :as str]
-            [clojure.test :refer [deftest is]]
+            [clojure.test :refer [deftest is testing]]
             [dev.zeko.stube.render :as render]))
 
 (deftest html-renders-hiccup
@@ -70,6 +70,33 @@
                               (render/on-mount fresh :editor "mountEditor(el)"))])]
       (is (str/includes? html "data-stube-preserve=\"editor\""))
       (is (str/includes? html "data-init=\"mountEditor(el)\"")))))
+
+(deftest on-unmount-emits-data-stube-on-unmount
+  (let [fresh    {:instance/id "ix-42"}
+        rendered {:instance/id "ix-42" :instance/rendered? true}]
+    (testing "first render and subsequent renders both emit the attribute"
+      ;; Unlike on-mount, the unmount expression must be present on
+      ;; every patch — the morph keeps it attached for the bridge to
+      ;; pick up when the host is later detached.
+      (is (= {:data-stube-on-unmount "editor.destroy()"}
+             (render/on-unmount fresh :editor "editor.destroy()")))
+      (is (= {:data-stube-on-unmount "editor.destroy()"}
+             (render/on-unmount rendered :editor "editor.destroy()"))))
+    (testing "label validation matches preserve/on-mount"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (render/on-unmount fresh "" "noop()"))
+          "empty label rejected"))
+    (testing "self with no :instance/id is rejected"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (render/on-unmount {} :editor "noop()"))))
+    (let [html (render/html
+                 [:div (merge (render/root-attrs fresh)
+                              (render/preserve   fresh :editor)
+                              (render/on-mount   fresh :editor "mount(el)")
+                              (render/on-unmount fresh :editor "el.cmView?.destroy()"))])]
+      (is (str/includes? html "data-stube-on-unmount=\"el.cmView?.destroy()\""))
+      (is (str/includes? html "data-stube-preserve=\"editor\""))
+      (is (str/includes? html "data-init=\"mount(el)\"")))))
 
 (deftest bind-builds-data-bind-attribute
   (is (= {(keyword "data-bind:answer__case.kebab") true}

@@ -123,7 +123,8 @@ often own the DOM under one host element. Mark that host with
 `s/preserve`: stube still lets Datastar merge attributes on the host,
 but leaves the live child nodes alone across future morphs. Pair it
 with `s/on-mount` to run the widget constructor once, when the element
-first appears.
+first appears, and `s/on-unmount` to dispose it cleanly when the host
+detaches.
 
 ```clojure
 [:div (merge {:class "editor-host"
@@ -137,7 +138,8 @@ first appears.
                     extensions: [basicSetup],
                     parent: el
                   })
-                })()"))]
+                })()")
+             (s/on-unmount self :editor "el.cmView?.destroy()"))]
 ```
 
 The stock stube shell loads `/stube/preserve.js` before Datastar, so

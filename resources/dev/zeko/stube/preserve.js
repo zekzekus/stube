@@ -155,4 +155,73 @@
     }
     return originalDispatchEvent(evt);
   };
+
+  // ---------------------------------------------------------------
+  // s/on-unmount — fire `data-stube-on-unmount` exactly once when a
+  // host element detaches from the DOM.
+  //
+  // We use one document-wide MutationObserver. On each removal it
+  // walks the removed subtree, fires any pending unmount expressions,
+  // and tags the element so a subsequent re-insert+remove can't
+  // double-fire (the morph path can briefly detach + reattach a
+  // preserved element during Idiomorph's swap dance; we want exactly
+  // one teardown across the *real* removal).
+  // ---------------------------------------------------------------
+
+  const unmountAttr = "data-stube-on-unmount";
+  const unmountFiredKey = "__stubeUnmountFired";
+
+  const fireUnmountFor = (el) => {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return;
+    if (!el.hasAttribute(unmountAttr)) return;
+    if (el[unmountFiredKey]) return;
+    el[unmountFiredKey] = true;
+    const expr = el.getAttribute(unmountAttr);
+    if (!expr) return;
+    try {
+      // Match on-mount's `el`-bound IIFE shape.
+      new Function("el", expr)(el);
+    } catch (err) {
+      try { console.error("stube on-unmount expression threw:", err); }
+      catch (_e) { /* console may be missing in test envs */ }
+    }
+  };
+
+  const walkAndFire = (root) => {
+    if (!root) return;
+    fireUnmountFor(root);
+    if (typeof root.querySelectorAll === "function") {
+      for (const el of root.querySelectorAll(`[${unmountAttr}]`)) {
+        fireUnmountFor(el);
+      }
+    }
+  };
+
+  const installUnmountObserver = () => {
+    if (!document.body) {
+      // Body not parsed yet — defer.
+      document.addEventListener("DOMContentLoaded", installUnmountObserver, {once: true});
+      return;
+    }
+    const observer = new MutationObserver((records) => {
+      for (const r of records) {
+        if (r.type !== "childList") continue;
+        for (const node of r.removedNodes) {
+          // Allow the morph dance to settle for a microtask before
+          // declaring the node truly gone — Idiomorph may detach and
+          // reattach the same element during a swap.  If the node is
+          // still connected after the microtask, it was a transient
+          // move, not a real removal.
+          queueMicrotask(() => {
+            if (node && node.nodeType === Node.ELEMENT_NODE && !node.isConnected) {
+              walkAndFire(node);
+            }
+          });
+        }
+      }
+    });
+    observer.observe(document.body, {childList: true, subtree: true});
+  };
+
+  installUnmountObserver();
 })();

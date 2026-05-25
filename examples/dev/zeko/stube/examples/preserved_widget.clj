@@ -31,10 +31,17 @@
        " el.dataset.widgetMounted = String(Number(el.dataset.widgetMounted || '0') + 1);"
        "})()"))
 
-(s/defcomponent :demo/preserved-widget
-  :doc "Demonstrates `s/preserve` and `s/on-mount` with a canvas whose drawing state survives parent re-renders."
+(def ^:private canvas-unmount-js
+  ;; The `el` binding mirrors on-mount.  In a real CodeMirror or
+  ;; Monaco integration this is where `editor.destroy()` would go;
+  ;; here we just log to console to demonstrate the lifecycle hook
+  ;; fires exactly once when the parent navigates away.
+  "console.log('stube preserved-widget unmount', el.dataset.widgetMounted)")
 
-  :init (constantly {:renders 0})
+(s/defcomponent :demo/preserved-widget
+  :doc "Demonstrates `s/preserve`, `s/on-mount`, and `s/on-unmount` with a canvas whose drawing state survives parent re-renders and tears down cleanly on removal."
+
+  :init (constantly {:renders 0 :hidden? false})
 
   :render
   (fn [self]
@@ -46,28 +53,38 @@
       "Re-render the parent: the label and host attributes change, while the "
       "drawn canvas stays intact."]
      [:p [:strong "Parent renders: "] (:renders self)]
-     [:button (merge {:type  "button"
-                      :class "stube-button stube-button--primary"}
-                     (s/on self :click :as :rerender))
-      "Re-render parent"]
-     [:div (merge {:class "preserved-canvas-host"
-                   :style "margin-top:1rem; padding:0.75rem; border:1px solid #cbd5e1;
-                           border-radius:0.75rem; background:white;"
-                   :data-parent-renders (:renders self)}
-                  (s/preserve self :canvas)
-                  (s/on-mount self :canvas canvas-mount-js))
-      [:canvas {:width 320
-                :height 160
-                :style "display:block; max-width:100%; border:1px solid #94a3b8;
-                        border-radius:0.5rem;"}]
-      [:p {:style "margin-bottom:0; color:#475569;"}
-       "This child subtree is opaque after mount; the parent render count is "
-       "carried on the host's " [:code "data-parent-renders"] " attribute."]]])
+     [:div {:class "stube-actions"}
+      [:button (merge {:type  "button"
+                       :class "stube-button stube-button--primary"}
+                      (s/on self :click :as :rerender))
+       "Re-render parent"]
+      " "
+      [:button (merge {:type "button"
+                       :class "stube-button"}
+                      (s/on self :click :as :toggle))
+       (if (:hidden? self) "Show canvas" "Hide canvas (fires on-unmount)")]]
+     (when-not (:hidden? self)
+       [:div (merge {:class "preserved-canvas-host"
+                     :style "margin-top:1rem; padding:0.75rem; border:1px solid #cbd5e1;
+                             border-radius:0.75rem; background:white;"
+                     :data-parent-renders (:renders self)}
+                    (s/preserve   self :canvas)
+                    (s/on-mount   self :canvas canvas-mount-js)
+                    (s/on-unmount self :canvas canvas-unmount-js))
+        [:canvas {:width 320
+                  :height 160
+                  :style "display:block; max-width:100%; border:1px solid #94a3b8;
+                          border-radius:0.5rem;"}]
+        [:p {:style "margin-bottom:0; color:#475569;"}
+         "Click Hide canvas and watch the browser console — "
+         [:code "s/on-unmount"]
+         " fires exactly once when the host detaches."]])])
 
   :handle
   (fn [self {:keys [event]}]
     (case event
       :rerender (update self :renders inc)
+      :toggle   (update self :hidden? not)
       self)))
 
 (s/mount! "/preserved-widget" :demo/preserved-widget)

@@ -506,8 +506,11 @@ shorter adapter routes under their `:base-path`: `/sse/:cid`,
 `/back/:cid`, `/event/:cid/:iid/:event`, and `/upload/:cid/:iid`.
 
 Plus `/stube/ui.css` (the stock stylesheet), `/stube/preserve.js` (the
-preserved-subtree bridge), and `/stube/halos.js` (the dev overlay, when
-halos are enabled).
+preserved-subtree bridge — also hosts the `data-stube-on-unmount`
+MutationObserver that fires the host-widget teardown expression on
+real DOM removal, queueMicrotask-deferred so Idiomorph's
+detach+reattach swap dance can't double-fire), and `/stube/halos.js`
+(the dev overlay, when halos are enabled).
 
 The SSE handler has three startup paths:
 
