@@ -11,12 +11,13 @@
   re-calls it with the same args)."
   (:require [dev.zeko.stube.core :as s]))
 
+(defonce ^:private !save-attempts (atom 0))
+
 (defn- maybe-conflict! []
-  ;; deterministic toggle in dev — every other save fails
-  (let [!n (or (resolve 'error-answer/!n)
-               (intern *ns* '!n (atom 0)))]
-    (when (odd? (swap! @!n inc))
-      (throw (ex-info "Slug already taken (mock 409)" {:status 409})))))
+  ;; Deterministic toggle in dev — every other save fails so the user
+  ;; can see both branches without restarting.
+  (when (odd? (swap! !save-attempts inc))
+    (throw (ex-info "Slug already taken (mock 409)" {:status 409}))))
 
 (s/defcomponent :err-answer/edit-form
   :init   (fn [{:keys [draft]}] {:draft (or draft "")})
@@ -60,7 +61,10 @@
      (when (:saved self)
        [:p {:style "color:#272;"} "Saved: " [:code (:saved self)]])
      (if (:open? self)
-       [:p "Form is open below; submit to test."]
+       [:div
+        [:p {:style "color:#555; font-size:0.9rem;"}
+         "Submit to test — every other save throws a mock 409."]
+        (s/render-slot self :slot/form)]
        [:button (merge {:type "button"} (s/on self :click :as :open))
         "Open edit form"])])
 

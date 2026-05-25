@@ -231,7 +231,17 @@
 (s/mount! "/" :demo/example-browser)
 (s/mount! "/example-browser" :demo/example-browser)
 
+(defn- request-user-principal
+  "Read `?user=` off the request as the principal — the protected-counter
+  demo needs this to flip into its signed-in branch when you visit
+  `/protected-counter?user=ada`.  Other examples ignore the value."
+  [request]
+  (some-> request :query-string
+          (->> (re-find #"(?:^|&)user=([^&]+)"))
+          second))
+
 (defn -main [& _args]
-  (s/start! {:port 8080})
+  (s/start! {:port         8080
+             :principal-fn request-user-principal})
   (println "stube examples up — visit http://localhost:8080/ for the example browser")
   @(promise))
