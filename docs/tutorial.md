@@ -617,6 +617,108 @@ sits one layer below the app-level principal.
 
 ---
 
+## 6.5 · Shareable views — URL as durable state
+
+> An optional chapter you can skip if your app's state lives behind a
+> login and shareable URLs aren't a goal.
+
+Conversations are addressed by an opaque cid cookie — great for
+private, stateful sessions; useless for sharing. Two browsers opening
+the same URL each get their own cid, so the page content is whatever
+the URL says, not whatever the *original* conversation happened to be.
+
+The shape that closes this gap has three moving pieces, all already in
+the framework:
+
+1. **`:init-args-fn`** on `s/mount!` parses the GET query string into
+   the root's `:init` args.
+2. **`:emit-on-mount`** (or `:start` if you have other lifecycle
+   ceremony to do) emits any keyed-children / signal setup the URL
+   implies, so the page renders the asked-for state on first paint.
+3. **`:url`** projects the live `:item-ids` (or whatever the durable
+   shape is) back into the address bar as the user mutates state.
+
+Here's a worked "reading list" component — open
+`/reading-list?items=clojure,datastar,seaside` and the three columns
+are restored:
+
+```clojure
+(ns reading-list
+  (:require [clojure.string :as str]
+            [dev.zeko.stube.core :as s]))
+
+(defn- url-for [items]
+  (if (empty? items)
+    "/reading-list"
+    (str "/reading-list?items=" (str/join "," items))))
+
+(defn- parse-items [raw]
+  (when (seq raw)
+    (->> (str/split raw #",") (map str/trim) (remove str/blank?) vec)))
+
+(defn- pairs [items]
+  (mapv (fn [id] [id (s/embed :reading/item {:id id})]) items))
+
+(s/defcomponent :reading/desk
+  :init   (fn [{:keys [items]}] {:item-ids (vec (or items []))})
+
+  ;; 3) URL stays in sync as :item-ids changes.
+  :url    (fn [self] (url-for (:item-ids self)))
+
+  ;; 2) Restore-from-URL: emit the keyed-children setup based on the
+  ;;    just-initialised state.  :emit-on-mount is sugar for the
+  ;;    effect-only :start case; declaring both raises at registration.
+  :emit-on-mount
+  (fn [self]
+    (when (seq (:item-ids self))
+      [(s/set-keyed-children :slot/items (pairs (:item-ids self)))]))
+
+  :render (fn [self]
+            [:section (s/root-attrs self)
+             [:h1 "Reading list"]
+             [:div (s/keyed-children self :slot/items)]])
+
+  :handle (fn [self {:keys [event payload]}]
+            (case event
+              :open
+              (let [items' (conj (:item-ids self) payload)]
+                [(assoc self :item-ids items')
+                 [(s/set-keyed-children :slot/items (pairs items'))]])
+              :close
+              (let [items' (vec (remove #{payload} (:item-ids self)))]
+                [(assoc self :item-ids items')
+                 [(s/set-keyed-children :slot/items (pairs items'))]]))))
+
+;; 1) URL → :init args.  No handler ever parses the query string.
+(s/mount! "/reading-list" :reading/desk
+          {:init-args-fn (fn [req]
+                           {:items (or (parse-items (s/query-value req "items")) [])})})
+```
+
+**Why three primitives instead of one** "shareable" knob:
+
+- `:init-args-fn` lives on the *mount*, not the component, because
+  parsing a Ring request is a host concern. The component receives
+  plain Clojure data and stays testable without a request.
+- `:url` is a *projection*, not state. Authoritative state lives on
+  the instance map; the URL just mirrors it. Browser Back / Forward
+  (with `:push`) walks history through the kernel, no special case.
+- `:emit-on-mount` only exists because keyed-children needs an effect
+  to populate the slot before first render. Components without
+  keyed children don't need it — `:init` is enough.
+
+**The cid-cookie trade-off.** Two browsers hitting the same URL each
+get a fresh cid; each conversation reconstitutes from the URL
+independently. They don't see each other's edits — which is the
+correct behaviour for "share a view," wrong if you wanted "collaborate
+on the same desk." For real-time collaboration, lift the state into
+the app store (see chapter 6) and subscribe per cid.
+
+Worked example: `examples/dev/zeko/stube/examples/reading_list.clj`.
+A higher-fidelity demo is `examples/dev/zeko/stube/examples/kasten/`.
+
+---
+
 ## 7 · Where to go from here
 
 You now have a real Clojure app, server‑rendered, live‑updating,

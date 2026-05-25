@@ -5,6 +5,14 @@ development entry.
 
 ## Unreleased
 
+- **S-12**: Shareable-URL bootstrap recipe and `:emit-on-mount` sugar.
+  Declaring `:emit-on-mount (fn [self] effects)` lifts to
+  `:component/start` at registration; declaring both is a register-time
+  error. New worked example `reading_list.clj` demonstrates the
+  three-piece pattern (`:init-args-fn` → `:emit-on-mount` →
+  `:url`) end-to-end. New tutorial chapter "Shareable views — URL as
+  durable state" walks through the same flow. `docs/api.md`
+  cross-refs from `mount!` and `keyed-children`.
 - **S-11**: Root-component `:url` key for declarative URL sync. Returns
   `nil`, a string, or `[:replace|:push url]`; the kernel diffs against
   `:conv/last-url` after every dispatch and auto-emits a `[:history …]`

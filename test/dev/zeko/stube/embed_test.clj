@@ -395,3 +395,38 @@
                                          ((:component/render b) self)])}))]
     (is (= [:section.banner [:header "Hi"] [:p "inner"]]
            ((:component/render deco) {})))))
+
+;; ---------------------------------------------------------------------------
+;; S-12: init args + :emit-on-mount produce keyed children before first render
+;; ---------------------------------------------------------------------------
+
+(deftest emit-on-mount-restores-keyed-children-from-init-args
+  (registry/register!
+    {:component/id     :s12/item
+     :component/init   (fn [{:keys [id]}] {:id id})
+     :component/render (fn [s] [:article {:id (:instance/id s)} (:id s)])})
+  (registry/register!
+    {:component/id     :s12/desk
+     :component/init   (fn [{:keys [items]}] {:item-ids (vec (or items []))})
+     :emit-on-mount    (fn [self]
+                         (when (seq (:item-ids self))
+                           [(s/set-keyed-children
+                              :slot/items
+                              (mapv (fn [id] [id (s/embed :s12/item {:id id})])
+                                    (:item-ids self)))]))
+     :component/render (fn [self]
+                         [:section {:id (:instance/id self)}
+                          (s/keyed-children self :slot/items)])})
+  (let [[c _frags] (kernel/run-effects
+                     (conv/new-conversation)
+                     [(s/call (conv/embed :s12/desk
+                                          {:items ["alpha" "beta" "gamma"]}))])
+        root       (conv/top-instance c)
+        keyed      (-> root :instance/keyed-slots :slot/items :order)]
+    (is (= ["alpha" "beta" "gamma"] (vec keyed))
+        "keyed-children order matches the URL-derived init args")
+    (is (= 3 (count (for [[_ slot-state] (:instance/keyed-slots root)
+                          [_ entry]      (:children slot-state)
+                          :when          (:iid entry)]
+                      entry)))
+        "all three child instances were created during :start")))

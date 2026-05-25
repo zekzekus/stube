@@ -69,6 +69,7 @@ Recognised keys:
 | `:render` | `(fn [self] hiccup)` | whenever a frame needs re-rendering |
 | `:handle` | `(fn [self {:keys [event payload signals]}] …)` | on every dispatched event |
 | `:start` | `(fn [self] …)` | once, right after instantiation |
+| `:emit-on-mount` | `(fn [self] effects)` | sugar over `:start` for the effect-only case; collides with `:start` at registration |
 | `:stop` | `(fn [self] …)` | just before the frame/subtree is removed |
 | `:wakeup` | `(fn [self] …)` | when a persisted/history-restored frame becomes live again |
 | `:on-<key>` | `(fn [self answer-value] …)` | when a child `:answer`s under that resume key |
@@ -422,6 +423,13 @@ one child fragment, a removed key removes that child subtree, changed
 embed args re-initialise the child in place while preserving its root
 iid, and a pure reorder emits one outer patch for the container.
 
+**Restore-from-URL** lives at the intersection of keyed-children and
+`:init-args-fn`. Because the slot doesn't exist until a
+`:set-keyed-children` effect fires, components that re-create columns
+from a query string emit the setup from `:emit-on-mount` (or `:start`)
+based on the just-initialised ids. See [Shareable views — URL as
+durable state](tutorial.md#65--shareable-views--url-as-durable-state).
+
 ### `(s/context self)`
 
 Return the application context injected by an embeddable kernel's
@@ -514,6 +522,11 @@ root component:
   {:init-args-fn (fn [req]
                    {:n (parse-long (or (s/query-value req "n") "0"))})})
 ```
+
+For restore-from-URL into a keyed-children slot, pair `:init-args-fn`
+with `:emit-on-mount` / `:start` so the slot exists on first render —
+see [URL as a projection of state](#url-as-a-projection-of-state) and
+the [Shareable views tutorial](tutorial.md#65--shareable-views--url-as-durable-state).
 
 `unmount!` removes a previously-mounted path. It does **not** end live
 conversations rooted there — those keep running until the SSE channel

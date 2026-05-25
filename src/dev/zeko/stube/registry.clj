@@ -52,6 +52,21 @@
           cdef
           colocated-keys))
 
+(defn- lift-emit-on-mount
+  "Lift `:emit-on-mount` to `:component/start` (sugar for the
+  effect-only `:start` case).  Declaring both is a registration-time
+  error so the collision can't go unnoticed."
+  [cdef]
+  (if-not (contains? cdef :emit-on-mount)
+    cdef
+    (do
+      (when (contains? cdef :component/start)
+        (throw (ex-info ":emit-on-mount and :start may not be declared on the same component"
+                        {:component/id (:component/id cdef)})))
+      (-> cdef
+          (assoc :component/start (:emit-on-mount cdef))
+          (dissoc :emit-on-mount)))))
+
 ;; Only `:component/id` is strictly required.  All lifecycle keys
 ;; (`:component/init`, `:component/render`, `:component/handle`,
 ;; `:component/keep`) are optional so that "task" components that exist
@@ -82,7 +97,7 @@
   (`defcomponent` macro, `register-component!` function, or
   `decorate!`)."
   [cdef]
-  (let [cdef (-> cdef validate! lift-colocated)]
+  (let [cdef (-> cdef validate! lift-colocated lift-emit-on-mount)]
     (swap! !components assoc (:component/id cdef) cdef)
     cdef))
 

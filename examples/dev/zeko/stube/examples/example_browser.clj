@@ -28,6 +28,7 @@
             [dev.zeko.stube.examples.paginated-list]
             [dev.zeko.stube.examples.preserved-widget]
             [dev.zeko.stube.examples.protected-counter]
+            [dev.zeko.stube.examples.reading-list]
             [dev.zeko.stube.examples.seaside-todo]
             [dev.zeko.stube.examples.shared-counter]
             [dev.zeko.stube.examples.table-report]
@@ -79,7 +80,9 @@
    {:path "/protected-counter" :title "Protected counter"      :group "Tier 3"
     :blurb "WASessionProtectedCounter: app login composed with cid owner cookies."}
    {:path "/url-counter"    :title "URL-state counter"         :group "Tier 2"
-    :blurb "S-2: `s/history` syncs the counter value into the address bar without a reload."}
+    :blurb "S-11: declarative `:url` projects state into the address bar with no per-handler ceremony."}
+   {:path "/reading-list"   :title "Reading list (shareable URL)" :group "Tier 2"
+    :blurb "S-12: restore keyed columns from `?items=` via `:emit-on-mount`; the URL stays in sync as columns open/close."}
    {:path "/preserved-widget" :title "Preserved widget"        :group "Tier 3"
     :blurb "S-3: `s/preserve` keeps third-party DOM children alive across parent re-renders."}
    {:path "/error-frame"    :title "In-page error frame"       :group "Tier 3"

@@ -45,3 +45,37 @@
 (deftest lookup!-throws-on-unknown
   (is (thrown? clojure.lang.ExceptionInfo
                (registry/lookup! :nope/missing))))
+
+;; ---------------------------------------------------------------------------
+;; S-12: :emit-on-mount lifts to :component/start
+;; ---------------------------------------------------------------------------
+
+(deftest emit-on-mount-lifts-to-start
+  (let [start-fn (fn [self] [self []])
+        cdef     (registry/register!
+                   {:component/id :test/eom
+                    :emit-on-mount start-fn})]
+    (is (= start-fn (:component/start cdef))
+        ":emit-on-mount is lifted to :component/start")
+    (is (not (contains? cdef :emit-on-mount))
+        "original :emit-on-mount key is dropped")
+    (is (not (contains? cdef :component/emit-on-mount))
+        ":emit-on-mount is not also lifted to its own :component/* slot")))
+
+(deftest emit-on-mount-conflicts-with-explicit-start
+  (is (thrown-with-msg?
+        clojure.lang.ExceptionInfo
+        #":emit-on-mount and :start"
+        (registry/register!
+          {:component/id :test/conflict
+           :start         (fn [s] [s []])
+           :emit-on-mount (fn [s] [s []])}))
+      "Declaring both :emit-on-mount and :start throws at register-time")
+  (is (thrown-with-msg?
+        clojure.lang.ExceptionInfo
+        #":emit-on-mount and :start"
+        (registry/register!
+          {:component/id    :test/conflict-2
+           :component/start (fn [s] [s []])
+           :emit-on-mount   (fn [s] [s []])}))
+      "Collision detection covers the already-lifted :component/start too"))
