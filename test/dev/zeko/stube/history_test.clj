@@ -133,3 +133,140 @@
     (let [st    (store/in-memory-store)
           saved (store/save! st c1)]
       (is (map? saved) "save! returns the conversation map"))))
+
+;; ---------------------------------------------------------------------------
+;; S-11: declarative :url-fn on the root component
+;; ---------------------------------------------------------------------------
+
+(defn- history-script-with [frags substring]
+  (some (fn [f]
+          (and (= :script (:fragment/kind f))
+               (re-find (re-pattern substring) (:fragment/script f))))
+        frags))
+
+(deftest url-fn-auto-emits-history-on-change
+  (registry/register!
+    {:component/id     :t/url-root
+     :component/init   (fn [{:keys [n]}] {:n (or n 0)})
+     :component/url    (fn [s] (str "/u?n=" (:n s)))
+     :component/render (fn [s] [:div {:id (:instance/id s)} (:n s)])
+     :component/handle (fn [s {:keys [event]}]
+                         (case event
+                           :inc (update s :n inc)
+                           :noop s))})
+  (let [[c0]   (kernel/run-effects (conv/new-conversation) (kernel/boot :t/url-root))
+        iid    (conv/top-id c0)
+        [c1 frags] (kernel/dispatch c0 {:instance-id iid :event :inc :signals {}})]
+    (is (= 1 (:n (conv/instance c1 iid))))
+    (is (= "/u?n=1" (:conv/last-url c1)) ":conv/last-url updated to new URL")
+    (is (history-script-with frags "/u\\?n=1")
+        "auto-emitted history script targets the new URL")))
+
+(deftest url-fn-no-change-no-emit
+  (registry/register!
+    {:component/id     :t/url-stable
+     :component/init   (fn [_] {:n 0 :flag false})
+     :component/url    (fn [s] (str "/stable?n=" (:n s)))
+     :component/render (fn [s] [:div {:id (:instance/id s)} (str (:n s))])
+     :component/handle (fn [s _] (update s :flag not))})
+  (let [[c0]   (kernel/run-effects (conv/new-conversation) (kernel/boot :t/url-stable))
+        iid    (conv/top-id c0)
+        [_c1 frags] (kernel/dispatch c0 {:instance-id iid :event :toggle :signals {}})]
+    (is (not (history-script-with frags "/stable"))
+        "URL unchanged → no history script emitted")))
+
+(deftest url-fn-explicit-history-wins
+  (registry/register!
+    {:component/id     :t/url-explicit
+     :component/init   (fn [_] {:n 0})
+     :component/url    (fn [s] (str "/auto?n=" (:n s)))
+     :component/render (fn [s] [:div {:id (:instance/id s)} (:n s)])
+     :component/handle (fn [s _]
+                         [(update s :n inc)
+                          [(s/history :push "/explicit")]])})
+  (let [[c0]   (kernel/run-effects (conv/new-conversation) (kernel/boot :t/url-explicit))
+        iid    (conv/top-id c0)
+        [c1 frags] (kernel/dispatch c0 {:instance-id iid :event :go :signals {}})
+        scripts (filter #(= :script (:fragment/kind %)) frags)]
+    (is (= 1 (count scripts))
+        "exactly one history script — the explicit one, not the auto-emit")
+    (is (re-find #"/explicit" (:fragment/script (first scripts)))
+        "the explicit URL won")
+    (is (= "/auto?n=1" (:conv/last-url c1))
+        ":conv/last-url tracks the url-fn output regardless of the explicit emit")))
+
+(deftest url-fn-nil-is-noop
+  (registry/register!
+    {:component/id     :t/url-nilable
+     :component/init   (fn [_] {:n 0})
+     :component/url    (fn [_] nil)
+     :component/render (fn [s] [:div {:id (:instance/id s)} (:n s)])
+     :component/handle (fn [s _] (update s :n inc))})
+  (let [[c0]   (kernel/run-effects (conv/new-conversation) (kernel/boot :t/url-nilable))
+        iid    (conv/top-id c0)
+        [c1 frags] (kernel/dispatch c0 {:instance-id iid :event :go :signals {}})]
+    (is (= 1 (:n (conv/instance c1 iid))))
+    (is (not (history-script-with frags "history"))
+        "nil URL → no history emit")))
+
+(deftest url-fn-vector-form-push
+  (registry/register!
+    {:component/id     :t/url-push
+     :component/init   (fn [_] {:n 0})
+     :component/url    (fn [s] [:push (str "/p?n=" (:n s))])
+     :component/render (fn [s] [:div {:id (:instance/id s)} (:n s)])
+     :component/handle (fn [s _] (update s :n inc))})
+  (let [[c0]   (kernel/run-effects (conv/new-conversation) (kernel/boot :t/url-push))
+        iid    (conv/top-id c0)
+        [_c1 frags] (kernel/dispatch c0 {:instance-id iid :event :go :signals {}})]
+    (is (history-script-with frags "pushState")
+        "vector form `[:push url]` produces pushState")))
+
+(deftest url-fn-nested-instance-ignored
+  ;; A child declaring `:url` should not influence the address bar.
+  (registry/register!
+    {:component/id     :t/url-child
+     :component/init   (fn [_] {:n 0})
+     :component/url    (fn [_] "/child-should-be-ignored")
+     :component/render (fn [s] [:span {:id (:instance/id s)} "child"])
+     :component/handle (fn [s _] (update s :n inc))})
+  (registry/register!
+    {:component/id     :t/url-parent
+     :component/init   (fn [_] {})
+     ;; Parent has no :url — so no URL syncing applies at all.
+     :component/render (fn [s] [:div {:id (:instance/id s)}])
+     :component/handle (fn [_ _]
+                         [(s/call :t/url-child)])})
+  (let [[c0]   (kernel/run-effects (conv/new-conversation) (kernel/boot :t/url-parent))
+        root   (conv/top-id c0)
+        [c1 frags] (kernel/dispatch c0 {:instance-id root :event :go :signals {}})]
+    (is (not (history-script-with frags "/child-should-be-ignored"))
+        "child's :url fn is not consulted; only the root frame's is")))
+
+(deftest url-fn-replay-deterministic
+  (registry/register!
+    {:component/id     :t/url-replay
+     :component/init   (fn [{:keys [n]}] {:n (or n 0)})
+     :component/url    (fn [s] (str "/r?n=" (:n s)))
+     :component/render (fn [s] [:div {:id (:instance/id s)} (:n s)])
+     :component/handle (fn [s _] (update s :n inc))})
+  (let [[c1 _] (s/replay :t/url-replay [{:event :inc} {:event :inc} {:event :inc}])
+        [c2 _] (s/replay :t/url-replay [{:event :inc} {:event :inc} {:event :inc}])]
+    (is (= "/r?n=3" (:conv/last-url c1)))
+    (is (= (:conv/last-url c1) (:conv/last-url c2))
+        ":conv/last-url is deterministic across replays")))
+
+(deftest url-fn-invalid-return-throws
+  (registry/register!
+    {:component/id     :t/url-bad
+     :component/init   (fn [_] {:n 0})
+     :component/url    (fn [_] 42)
+     :component/render (fn [s] [:div {:id (:instance/id s)} (:n s)])
+     :component/handle (fn [s _] (update s :n inc))})
+  (let [[c0]   (kernel/run-effects (conv/new-conversation) (kernel/boot :t/url-bad))
+        iid    (conv/top-id c0)]
+    ;; The :handle dispatch wraps in try/catch → the bad return surfaces
+    ;; as an error fragment rather than throwing out of dispatch.
+    (let [[_c1 frags] (kernel/dispatch c0 {:instance-id iid :event :go :signals {}})]
+      (is (some #(= :error (:fragment/kind %)) frags)
+          "an invalid :url return surfaces as an error fragment"))))

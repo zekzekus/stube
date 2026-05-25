@@ -538,6 +538,98 @@
 ;; Dispatch — the kernel's external entry point
 ;; ---------------------------------------------------------------------------
 
+;; ---------------------------------------------------------------------------
+;; Declarative `:url` syncing (S-11)
+;; ---------------------------------------------------------------------------
+;;
+;; A component may declare a `:url` fn alongside `:render` / `:handle`.
+;; Only the **root** frame's `:url` fn is consulted; nested instances'
+;; `:url` declarations are ignored because the address bar is a singleton.
+;;
+;; The fn is called with the same `self` shape that `:render` sees and
+;; must return one of:
+;;
+;;     nil                     — leave the URL alone
+;;     "/path?q=…"             — equivalent to `[:replace "/path?q=…"]`
+;;     [:replace "/path?q=…"]  — calls history.replaceState
+;;     [:push    "/path?q=…"]  — calls history.pushState
+;;
+;; After every `dispatch`, the kernel:
+;;   1. Computes the new URL from the root's `:url` fn.
+;;   2. If it differs from `:conv/last-url` AND the handler did not
+;;      itself emit a `[:history …]` effect, emits one automatically.
+;;   3. Stores the result back into `:conv/last-url` so the next
+;;      dispatch has a baseline.
+;;
+;; First-dispatch seeding without an emit happens via
+;; [[ensure-url-seeded]]: when no `:conv/last-url` exists yet, the
+;; pre-dispatch value is recorded silently — the browser already shows
+;; the URL it loaded via GET.
+
+(defn- coerce-url-result [result]
+  (cond
+    (nil? result)
+    nil
+
+    (string? result)
+    [:replace result]
+
+    (and (vector? result)
+         (= 2 (count result))
+         (#{:replace :push} (first result))
+         (string? (second result)))
+    (vec result)
+
+    :else
+    (throw (ex-info ":url fn must return nil, a string, or [op url]"
+                    {:got result}))))
+
+(defn- root-iid [conv]
+  (first (:conv/stack conv)))
+
+(defn- root-url-spec [conv]
+  (when-let [rid (root-iid conv)]
+    (let [inst (conv/instance conv rid)
+          cdef (registry/lookup (:instance/type inst))]
+      (when-let [url-fn (:component/url cdef)]
+        (coerce-url-result (url-fn inst))))))
+
+(defn- ensure-url-seeded
+  "If the conversation's root has a `:url` fn and `:conv/last-url` is
+  absent, store the pre-dispatch URL silently.  Mirrors the boot path —
+  the browser already shows that URL, so an emit would be redundant."
+  [conv]
+  (if (contains? conv :conv/last-url)
+    conv
+    (if-let [spec (root-url-spec conv)]
+      (assoc conv :conv/last-url (second spec))
+      conv)))
+
+(defn- history-in-fx? [fx]
+  (boolean (some #(e/op? :history %) fx)))
+
+(defn- maybe-emit-url
+  "After dispatch effects fold, compare the post-dispatch root URL
+  against `:conv/last-url`.  Returns `[conv' extra-frags]` — an empty
+  vector if nothing changed or the handler already emitted its own
+  `[:history …]`."
+  [conv fx]
+  (let [spec (root-url-spec conv)]
+    (if (nil? spec)
+      [conv []]
+      (let [[mode url] spec
+            last-url   (:conv/last-url conv)]
+        (cond
+          (= url last-url)
+          [conv []]
+
+          (history-in-fx? fx)
+          [(assoc conv :conv/last-url url) []]
+
+          :else
+          (run-effects (assoc conv :conv/last-url url)
+                       [(e/history mode url)]))))))
+
 (defn- event-summary [{:keys [instance-id event payload signals] :as ev}]
   (cond-> {:instance-id instance-id
            :event       event}
@@ -580,7 +672,12 @@
   (if (nil? (conv/instance conv instance-id))
     [conv []]
     (try
-      (let [;; Compute the merged self from the unmodified `conv` first;
+      (let [;; Seed `:conv/last-url` on first dispatch from the root's
+        ;; `:url` fn (if declared) so subsequent comparisons have a
+        ;; baseline.  No fragments emitted — the browser already shows
+        ;; the URL it loaded via GET.
+        conv       (ensure-url-seeded conv)
+        ;; Compute the merged self from the unmodified `conv` first;
         ;; `merged-self` only consults `:conv/instances`, so it is
         ;; insensitive to whether we have snapshotted yet.  This lets
         ;; us decide whether to snapshot only AFTER seeing what the
@@ -619,8 +716,13 @@
                 (nil? (conv/instance conv''' instance-id)))
           [conv''' []]
           (let [[c' f] (render-frame conv''' instance-id)]
-            [c' [f]]))]
-        [conv-final (into (vec extra) more-frags)])
+            [c' [f]]))
+        ;; S-11: after the dispatch settles, compare the root's `:url`
+        ;; fn output against `:conv/last-url` and auto-emit a `:history`
+        ;; effect if the URL changed.  Suppressed when the handler
+        ;; already emitted its own `[:history …]`.
+        [conv-with-url url-frags] (maybe-emit-url conv-final fx)]
+        [conv-with-url (-> (vec extra) (into more-frags) (into url-frags))])
       (catch Throwable t
         ;; Dev-mode `:component/state` schema failures are programmer
         ;; errors meant to surface loudly with a stack trace, not be

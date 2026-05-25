@@ -40,7 +40,7 @@
   Resume keys (`:on-foo`, etc.) are not on this list — they pass through
   verbatim because the kernel looks them up by exact name."
   [:init :render :handle :keep :doc :state
-   :start :stop :wakeup :children])
+   :start :stop :wakeup :children :url])
 
 (defn- lift-colocated [cdef]
   (reduce (fn [m k]

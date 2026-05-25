@@ -1,5 +1,5 @@
 (ns dev.zeko.stube.examples.url-state-counter
-  "S-2 demo: URL-synced counter with `s/history`.
+  "Declarative URL-state counter using the `:url` component key.
 
   Run from the project root:
 
@@ -12,9 +12,10 @@
   What this exercises
   ──────────────────────────────────────────────────────────────────────
 
-  * `(s/history :push url)` — URL-sync that creates a browser history
-    entry so the browser Back / Forward buttons restore the previous
-    counter value server-side.
+  * `:url` — a pure projection of `self` that the kernel diffs after
+    every dispatch.  When the URL changes, a `:history` effect fires
+    automatically; no per-handler ceremony.  An explicit
+    `(s/history …)` always wins, so handlers can override the default.
   * `:init-args-fn` on `s/mount!` — the GET handler reads `?n=` and
     passes it to `mint-conversation!` as init-args, so visiting
     `/url-counter?n=42` starts the counter at 42.
@@ -27,7 +28,11 @@
   the instance map; the URL is a projection that updates whenever `:n`
   changes.  On first load the host GET handler reads `?n=` once and
   seeds the conversation.  This keeps the kernel pure: no URL parsing
-  in handlers, no bi-directional binding."
+  in handlers, no bi-directional binding.
+
+  The hand-rolled form (emit `(s/history :push …)` from every handler)
+  still works — `examples/dev/zeko/stube/examples/url_state_counter_manual.clj`
+  preserves it for comparison."
   (:require [dev.zeko.stube.core :as s]))
 
 (defn- counter-url [n]
@@ -38,13 +43,20 @@
 ;; ---------------------------------------------------------------------------
 
 (s/defcomponent :demo/url-counter
-  :doc "A counter that syncs its value into the browser URL on every click."
+  :doc "A counter that declares its URL as a projection of state."
 
   :init
   (fn [{:keys [n]}]
     ;; `n` comes from the GET request's ?n= query param (see mount! below).
     ;; Defaults to 0 if absent or unparseable.
     {:n (or (some-> n str parse-long) 0)})
+
+  ;; `:url` is computed after every dispatch.  When it differs from the
+  ;; last value, the kernel emits a `:history` effect for us.  `:push`
+  ;; (vs. the default `:replace`) records a real browser history entry
+  ;; per click so Back / Forward walk the counter history.
+  :url
+  (fn [self] [:push (counter-url (:n self))])
 
   :render
   (fn [self]
@@ -73,20 +85,18 @@
                       (s/on self :click :as :inc))
        "+"]]
      [:p {:style "color:#888; font-size:0.8rem; margin-top:1rem;"}
-      "Each click uses "
-      [:code "(s/history :push …)"]
-      " so the browser Back / Forward buttons navigate the history."]])
+      "No explicit "
+      [:code "(s/history …)"]
+      " calls in the handler — "
+      [:code ":url"]
+      " projects state into the address bar."]])
 
   :handle
   (fn [self {:keys [event]}]
-    (let [n' (case event
-               :inc (inc (:n self))
-               :dec (dec (:n self))
-               (:n self))]
-      [(assoc self :n n')
-       ;; `:push` adds a browser history entry for each click, so the
-       ;; native Back / Forward buttons walk counter history.
-       [(s/history :push (counter-url n'))]])))
+    (case event
+      :inc (update self :n inc)
+      :dec (update self :n dec)
+      self)))
 
 ;; ---------------------------------------------------------------------------
 ;; Wiring

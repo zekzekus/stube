@@ -73,6 +73,7 @@ Recognised keys:
 | `:wakeup` | `(fn [self] …)` | when a persisted/history-restored frame becomes live again |
 | `:on-<key>` | `(fn [self answer-value] …)` | when a child `:answer`s under that resume key |
 | `:children` | `{slot embed-spec}` or `(fn [self] …)` | declared once; the kernel instantiates eagerly |
+| `:url` | `(fn [self] url-string-or-[op url]-or-nil)` | pure projection of state to the browser URL — see [URL as a projection of state](#url-as-a-projection-of-state) |
 
 **Handler return shapes.** Any of these is fine; the kernel coerces:
 
@@ -236,6 +237,58 @@ The kernel uses these to instantiate children. `s/call`, `s/become`
 and `s/call-in-slot` accept either a component id (+ optional args) or
 an existing embed spec. `:children` declarations, stock UI helpers, and
 `s/await` inside a `defflow` are where embed specs show up most often.
+
+---
+
+## URL as a projection of state
+
+Components whose state belongs in the browser URL can declare it
+directly with a `:url` fn alongside `:render` and `:handle`:
+
+```clojure
+(s/defcomponent :demo/url-counter
+  :init   (fn [{:keys [n]}] {:n (or (some-> n str parse-long) 0)})
+  :url    (fn [self] [:push (str "/counter?n=" (:n self))])
+  :render (fn [self] …)
+  :handle (fn [self {:keys [event]}]
+            (case event
+              :inc (update self :n inc)
+              :dec (update self :n dec))))
+```
+
+After every successful dispatch on the **root** component, the kernel
+calls `(url-fn self)` against the post-dispatch state. If the result
+differs from `:conv/last-url`, it auto-emits a `:history` effect; no
+need to thread `(s/history …)` through every handler. The handler can
+still mutate state freely — the URL is a projection, not authoritative.
+
+**Return shapes**:
+
+```clojure
+nil                       ; leave the URL alone
+"/path?q=…"               ; equivalent to [:replace "/path?q=…"]
+[:replace "/path?q=…"]    ; history.replaceState  (default — in-place mutation)
+[:push    "/path/42"]     ; history.pushState     (Back/Forward should walk this)
+```
+
+**Contract**:
+
+- `:url` must be **pure** of `self`. No side effects, no DB reads —
+  derived data belongs in `:render`.
+- An explicit `(s/history :push url)` emitted by the handler *wins*;
+  the kernel suppresses its own auto-emit when any `[:history …]`
+  effect is in the dispatch's effect vector.
+- Only the **root** frame's `:url` is consulted. Nested instances'
+  `:url` is ignored — the address bar is a singleton.
+- First-load seeding: on the first dispatch, the pre-state value is
+  recorded silently into `:conv/last-url`. The browser already shows
+  the URL it loaded via GET; no redundant history emit.
+- Pairs with `:init-args-fn` on `s/mount!` to read the URL back in
+  on a fresh mount — see [Lifecycle and mounting](#lifecycle-and-mounting).
+
+Worked example: `examples/dev/zeko/stube/examples/url_state_counter.clj`.
+A hand-rolled equivalent for comparison lives next to it as
+`url_state_counter_manual.clj`.
 
 ---
 
@@ -704,6 +757,7 @@ for the EDN-clean shape.
   :start  (fn [self] …)        ; once at instantiation
   :stop   (fn [self] …)        ; just before removal
   :wakeup (fn [self] …)        ; after history/persistence restore
+  :url    (fn [self] "/x?q=…") ; root-only; auto-emits :history on change
   :on-foo (fn [self answer] …) ; resume key
   )
 

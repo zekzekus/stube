@@ -5,7 +5,15 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- **S-11**: Root-component `:url` key for declarative URL sync. Returns
+  `nil`, a string, or `[:replace|:push url]`; the kernel diffs against
+  `:conv/last-url` after every dispatch and auto-emits a `[:history …]`
+  effect on change. Explicit `(s/history …)` from the handler always
+  wins. Only the root frame's `:url` applies. `:init-args-fn` on
+  `mount!` pairs with this to read the URL back in on a fresh mount.
+  `url_state_counter.clj` refactored to use the new form;
+  `url_state_counter_manual.clj` preserves the hand-rolled version for
+  comparison.
 
 ## 0.1.2
 
