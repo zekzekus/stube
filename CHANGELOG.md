@@ -5,6 +5,13 @@ development entry.
 
 ## Unreleased
 
+- **S-13**: New `docs/api.md` section "Reading dependencies — `app`
+  vs `context` vs `principal`" with a comparison table, decision
+  tree by question, three common mistakes (notably reading
+  `(s/context self)` from `:init`), and a worked migration moving
+  the DB choice from `:app` to `:context-fn`. Cross-refs from the
+  existing `s/app` / `s/context` / `s/principal` entries, from the
+  `defcomponent` `:init` row, and from `make-kernel`'s opts list.
 - **S-12**: Shareable-URL bootstrap recipe and `:emit-on-mount` sugar.
   Declaring `:emit-on-mount (fn [self] effects)` lifts to
   `:component/start` at registration; declaring both is a register-time

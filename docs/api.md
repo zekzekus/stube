@@ -23,6 +23,8 @@ The reference is organised by *what you're trying to do*:
   `answer`, `patch`, …
 - [Hiccup helpers](#hiccup-helpers) — `root-attrs`, `on`,
   `on-target`, `bind`, `render-slot`, `keyed-children`, …
+- [Reading dependencies](#reading-dependencies--app-vs-context-vs-principal)
+  — when to pick `s/app`, `s/context`, or `s/principal`
 - [Stock UI components](#stock-ui-components) — `confirm`, `prompt`,
   `choose`, `info`
 - [Lifecycle and mounting](#lifecycle-and-mounting) — `mount!`,
@@ -64,7 +66,7 @@ Recognised keys:
 | key | shape | when it runs |
 |---|---|---|
 | `:doc` | string | static; queryable via `s/help` |
-| `:init` | `(fn [args] state-map)` | once at instantiation |
+| `:init` | `(fn [args] state-map)` | once at instantiation — `args` is the only handle on outside data; for kernel-level dependencies see [Reading dependencies](#reading-dependencies--app-vs-context-vs-principal) |
 | `:keep` | `#{:k1 :k2 …}` | listed Datastar signals are merged onto `self` on every event |
 | `:render` | `(fn [self] hiccup)` | whenever a frame needs re-rendering |
 | `:handle` | `(fn [self {:keys [event payload signals]}] …)` | on every dispatched event |
@@ -435,7 +437,9 @@ durable state](tutorial.md#65--shareable-views--url-as-durable-state).
 Return the application context injected by an embeddable kernel's
 `:context-fn`. Standalone apps get nil unless they build their own
 kernel. Host apps use this to pass dependencies such as DB handles to
-component handlers without globals.
+component handlers without globals. See [Reading
+dependencies](#reading-dependencies--app-vs-context-vs-principal) for
+which primitive to pick.
 
 ### `(s/app)`
 
@@ -445,7 +449,9 @@ the `:app` option. Typically a small map of long-lived dependencies
 conversation state. Returns nil outside a runtime dispatch/render.
 See the *Application boundaries* section under
 [Embedding in a host Ring app](#embedding-in-a-host-ring-app) for the
-contract.
+contract, and [Reading
+dependencies](#reading-dependencies--app-vs-context-vs-principal) for
+when to reach for it instead of `s/context` or `s/principal`.
 
 ### `(s/principal)`
 
@@ -453,7 +459,9 @@ Return the authenticated principal stamped onto the current
 conversation by `:principal-fn` at mint time. Returns nil for
 anonymous conversations. The principal is fixed for the life of the
 conversation — re-mint after login or logout. See the same
-*Application boundaries* section for the rationale.
+*Application boundaries* section for the rationale, and [Reading
+dependencies](#reading-dependencies--app-vs-context-vs-principal) for
+how it compares to `s/app` / `s/context`.
 
 ### `(s/back-button label)` / `(s/back-button label attrs)`
 
@@ -477,6 +485,120 @@ iframe target it posts into:
 The HTTP layer turns the multipart POST into a regular
 `:upload-received` event dispatched to `self`; the parsed payload
 arrives under `:payload`.
+
+---
+
+## Reading dependencies — `app` vs `context` vs `principal`
+
+Three primitives, three lifecycles. Pick by where the value comes from
+and how long it should live.
+
+| primitive | source | lifecycle | EDN-serialised on the conversation? | available in `:init`? |
+|---|---|---|---|---|
+| `(s/app)` | `make-kernel :app` | kernel-lifetime | no | yes |
+| `(s/context self)` | `:context-fn req` | per-conversation (captured at mint, fixed for life of the conversation) | yes (whatever `:context-fn` returned) | **no** — `self` doesn't exist yet during `:init` |
+| `(s/principal)` | `:principal-fn req` (at mint) | conversation-lifetime | yes | yes (via the runtime; no `self` needed) |
+
+### Pick by question
+
+- *Is the value a long-lived JVM resource — a DB handle, a mail
+  function, the system clock, an HTTP client?* → put it on `:app`
+  via `make-kernel`. Read with `(s/app)`. It lives for as long as
+  the kernel does and never touches the wire.
+- *Does it change per conversation — a tenant id read from a
+  subdomain, a feature-flag set parsed from headers, a request
+  attribute the kernel should remember for the rest of the
+  session?* → return it from `:context-fn`. Read with
+  `(s/context self)` once `self` exists. It gets EDN-serialised
+  onto the conversation, so it must be `pr-str` /
+  `read-string`-clean.
+- *Is the value the user identity, fixed for the conversation and
+  swapped only by re-minting?* → return it from `:principal-fn`.
+  Read with `(s/principal)`. Stored under `:conv/principal`; also
+  EDN-clean.
+
+`:app` is for *the host*. `:context-fn` is for *this conversation*.
+`:principal-fn` is for *who is on the other end*.
+
+### Common mistakes
+
+- **Reading `(s/context self)` from `:init`.** Doesn't work — `:init`
+  receives `args`, not `self`. The conversation's `:conv/context` is
+  not in scope yet. Two answers:
+  - If the value belongs to the kernel (a DB handle, etc.), read it
+    with `(s/app)` from `:init`. `*current-app*` is bound during
+    instantiation.
+  - If it's per-conversation context, parse it from the request in
+    `:init-args-fn` on `mount!` and pass it as `args` to `:init`:
+
+    ```clojure
+    (s/mount! "/dash" :app/dashboard
+      {:init-args-fn (fn [req] {:tenant (s/query-value req "tenant")})})
+    ```
+
+    Don't try to thread `:conv/context` into `:init` itself — that's
+    what `:init-args-fn` is for.
+- **Putting a DB connection (or anything stateful and EDN-unclean)
+  in `:context-fn`'s return or in `:principal-fn`'s return.**
+  Both are persisted on the conversation and round-tripped through
+  the store; an opaque JDBC connection crashes the file store.
+  Put the connection on `:app`; `:context-fn` and `:principal-fn`
+  return values must be plain data.
+- **Reading `(s/app)` outside a dispatch — e.g. in a top-level
+  helper function or a test that never booted a kernel.** Returns
+  `nil`. For tests, either run via `s/replay` against a registered
+  flow and bind `dev.zeko.stube.kernel/*current-app*` yourself, or
+  pass the dependency in as a function argument.
+
+### A worked migration
+
+Suppose a component reads the database through `:app` everywhere:
+
+```clojure
+(s/defcomponent :notes/list
+  :init   (fn [{:keys [filter-tag]}]
+            (let [{:keys [db]} (s/app)]
+              {:rows       (db/query db {:tag filter-tag})
+               :filter-tag filter-tag}))
+  :render (fn [self]
+            [:ul (s/root-attrs self)
+             (for [row (:rows self)] [:li (:title row)])]))
+```
+
+Switch the DB choice to per-conversation (multi-tenant: each
+conversation talks to a different shard, picked by host header):
+
+```clojure
+;; In the host's :context-fn:
+(fn [request]
+  {:db-key (tenant-of (get-in request [:headers "host"]))})
+
+;; The component now reads the shard from context once self exists.
+;; :init can't see context, so it carries the key in via init args:
+(s/mount! "/notes" :notes/list
+  {:init-args-fn (fn [req] {:db-key (tenant-of (-> req :headers (get "host")))})})
+
+(s/defcomponent :notes/list
+  :init   (fn [{:keys [db-key filter-tag]}]
+            ;; :app still holds the connection pool, looked up by key.
+            (let [pools (:db-pools (s/app))]
+              {:rows       (db/query (get pools db-key) {:tag filter-tag})
+               :filter-tag filter-tag
+               :db-key     db-key}))
+  :handle (fn [self {:keys [event payload]}]
+            ;; In handlers, self is in scope — context is readable directly:
+            (let [{:keys [db-key]} self
+                  pool             (get (:db-pools (s/app)) db-key)]
+              …)))
+```
+
+Two takeaways: keep the *connection* on `:app`; let the *choice*
+(`db-key`) flow through `:context-fn` + `:init-args-fn` and onto
+`self`. Component code becomes serialisable without dragging the
+JDBC pool through the file store.
+
+For the architectural reasoning behind this split, see
+[`docs/decisions/0004-app-store-and-principal.md`](decisions/0004-app-store-and-principal.md).
 
 ---
 
@@ -604,7 +726,9 @@ Stable functions:
 `:base-path`, `:session-id-fn`, `:on-conv-mint`, `:on-error`,
 `:ui-css?`, `:halos?`, `:route-style`, and `:root-selector`. Values
 returned by `:context-fn` are available to handlers and lifecycle
-hooks with `(s/context self)`.
+hooks with `(s/context self)`. For when to pick which primitive,
+see [Reading
+dependencies](#reading-dependencies--app-vs-context-vs-principal).
 
 `stube-ring/ring-routes` also accepts `{:mounts {"/path" :root/id}}`
 or `{:mounts {"/path" {:flow-id :root/id :opts {:init-args-fn f}}}}`
