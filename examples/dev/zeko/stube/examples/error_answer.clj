@@ -42,7 +42,15 @@
                 (maybe-conflict!)
                 [(s/answer {:saved-title (:draft self)})]
                 (catch Exception ex
-                  [(s/answer-error ex)]))
+                  ;; Tuck the in-flight draft into ex-data so the parent
+                  ;; can re-mount the form with the user's typing intact.
+                  ;; (answer-error pops this frame; the column owns
+                  ;; restoring it.)
+                  [(s/answer-error
+                     (ex-info (ex-message ex)
+                              (assoc (or (ex-data ex) {})
+                                     :draft (:draft self))
+                              ex))]))
       :cancel [(s/answer :cancelled)]
       self)))
 
@@ -83,9 +91,11 @@
 
   :on-error-saved
   (fn [self ex]
-    ;; Keep :open? true so the form is re-presented for retry.
-    (assoc self
-           :open? true
-           :banner (str "Save failed: " (ex-message ex)))))
+    ;; The form has already been popped by answer-error; restore it
+    ;; with the user's draft so they can fix the conflict and retry.
+    [(assoc self :open? true
+                 :banner (str "Save failed: " (ex-message ex)))
+     [(s/call-in-slot :slot/form :err-answer/edit-form
+                      {:draft (:draft (ex-data ex))} :on-saved)]]))
 
 (s/mount! "/error-answer" :err-answer/column)
