@@ -32,6 +32,11 @@ development entry.
     target signature. clj-kondo learns the form via
     `:lint-as clj-kondo.lint-as/def-catch-all` so dependent
     namespaces still resolve `s/...` names.
+  - **R1-11** (#39): new `core_test/every-public-name-has-doc-and-arglists`
+    sweeps `ns-publics` of `dev.zeko.stube.core` and fails if any
+    non-`:no-doc` var loses its docstring, or any function var
+    loses `:arglists`. Locks the R1-04 invariant against
+    regression.
 
 ## 0.1.5
 
