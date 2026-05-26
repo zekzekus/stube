@@ -433,3 +433,16 @@
     (cond-> event
       (nil? (:instance-id event)) (assoc :instance-id (top-id conv))
       (nil? (:signals event))     (assoc :signals {}))))
+
+(defn snapshot-for-dispatch
+  "Apply the per-dispatch `snapshot` + `touch` + `:conv/last-event`
+  update, with the `[:back]` carve-out: handlers that walk history
+  backwards must NOT have their own pre-state pushed onto that
+  history first.  If it were, `:back` would just pop the snapshot we
+  just took and \"restore\" the same state, leaving the user stuck.
+  Every other dispatch behaves as before."
+  [conv event-summary back?]
+  (cond-> conv
+    (not back?) snapshot
+    true        touch
+    true        (assoc :conv/last-event event-summary)))

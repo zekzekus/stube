@@ -779,17 +779,8 @@
                                                    :payload payload
                                                    :signals signals}))
         _          (dev/validate! cdef self' :handle)
-        ;; A handler that walks history backwards (`[:back]`) must NOT
-        ;; have its own pre-state pushed onto that history first — if
-        ;; it did, `:back` would just pop the snapshot we'd just taken
-        ;; and "restore" the same state, leaving the user stuck.  So
-        ;; we look at the produced effects and skip the snapshot in
-        ;; that case.  Every other dispatch behaves as before.
         back?      (some #(e/op? :back %) fx)
-        conv*      (cond-> conv
-                     (not back?) conv/snapshot
-                     true        conv/touch
-                     true        (assoc :conv/last-event (event-summary ev)))
+        conv*      (conv/snapshot-for-dispatch conv (event-summary ev) back?)
         ;; Protect instance metadata against an accidentally clobbering
         ;; handler.
         self'      (conv/preserve-meta (conv/instance conv* instance-id) self')

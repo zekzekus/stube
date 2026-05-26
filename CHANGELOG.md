@@ -42,6 +42,12 @@ development entry.
     `conversation/replay-event`. Both callers (`core/replay` and
     `runtime/replay-with`) now share the event-shape normalisation
     rule.
+  - **R1-18** (#46): extracted `conversation/snapshot-for-dispatch`
+    from inside `kernel/dispatch`. The `[:back]` carve-out (a
+    handler walking history backwards must not have its own
+    pre-state pushed onto that history first) now lives next to
+    the conversation data it shapes; `kernel/dispatch` reads
+    the snapshot decision in one line instead of ten.
 
 ## 0.1.5
 
