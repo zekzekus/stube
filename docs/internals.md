@@ -74,6 +74,10 @@ Three observations:
    (the `make-kernel`-and-friends block) lazily forwards into
    `runtime.clj` via `requiring-resolve` so the pure fold can stay
    load-order-independent while hosts get a single import surface.
+   The pure/impure split is codified in
+   `test/dev/zeko/stube/load_direction_test.clj`, which fails if any
+   pure namespace transitively `:require`s the runtime, server, http,
+   or adapter namespaces.
 2. **`render.clj` is at the wire boundary but knows nothing about
    Datastar.** It produces HTML strings and Datastar *attribute*
    names; the SSE event types are all in `fragments.clj`.

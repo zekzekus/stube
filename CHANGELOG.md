@@ -73,6 +73,13 @@ development entry.
     it is bound, where it is read, and what `nil` means. Also
     fixes the stale `render/*conv*` docstring (`frame/render-frame`
     is the binder, not the kernel).
+  - **R1-12** (#40): new `load_direction_test` codifies the
+    pure/impure split. Walks `ns-aliases` transitively from each
+    pure namespace (`conversation`, `effects`, `fragments`,
+    `kernel`, `frame`, `lifecycle`, `registry`, `render`, plus
+    the `dev`/`errors`/`keyed` helpers they pull) and fails if
+    any reach `runtime`, `server`, `http`, the adapters, or the
+    kit glue.
 
 ## 0.1.5
 
