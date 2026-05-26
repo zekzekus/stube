@@ -99,6 +99,10 @@
             ;; futures, publish calls, subscribe atoms) more than once,
             ;; causing fan-out amplification.
             :!cid-locks      (atom {})
+            ;; Per-kernel dedup for the answer-error fallback warning;
+            ;; see `kernel/warn-fallback-once!`.  Scoped here so two
+            ;; embedded kernels each emit their own one-time message.
+            :!answer-error-warned (atom #{})
             :!shutting-down? (atom false)))))
 
 (defn current-store [k] (:store k))
@@ -617,5 +621,6 @@
     (reset! (:!pending-roots k) {})
     (reset! (:!subscriptions k) {})
     (reset! (:!cid-locks k) {})
+    (reset! (:!answer-error-warned k) #{})
     (reset! (:!conversations k) {}))
   nil)

@@ -174,6 +174,37 @@
     (is (= :error (first v)) "wrapped tag is :error")
     (is (= "boom" (ex-message (second v))) "exception is preserved")))
 
+(deftest answer-error-warn-tracker-is-per-kernel
+  ;; Two kernels exercising the same parent-type/resume-key fallback
+  ;; each emit their own one-time warning; the dedup set is scoped
+  ;; to `:!answer-error-warned` on the kernel value, not a JVM-wide
+  ;; atom.
+  (let [k1   {:!answer-error-warned (atom #{})}
+        k2   {:!answer-error-warned (atom #{})}
+        warn (fn [k]
+               (with-out-str
+                 (binding [*err*                  *out*
+                           kernel/*current-kernel* k]
+                   (#'kernel/warn-fallback-once! "ix-p" :t/parent :on-done))))]
+    (is (str/includes? (warn k1) "answer-error fallback")
+        "first warning on k1 is emitted")
+    (is (= "" (warn k1))
+        "second warning on the same pair stays quiet for k1")
+    (is (str/includes? (warn k2) "answer-error fallback")
+        "k2 emits its own warning even though k1 already saw the pair")
+    (is (= #{[:t/parent :on-done]} @(:!answer-error-warned k1)))
+    (is (= #{[:t/parent :on-done]} @(:!answer-error-warned k2)))))
+
+(deftest answer-error-warn-is-no-op-without-kernel
+  ;; Pure kernel-less paths (s/replay, unit tests that drive
+  ;; kernel/dispatch directly) get no warning at all — the dedup
+  ;; state lives on the kernel, and there is no fallback global
+  ;; tracker.  This is the kernel-less branch noted in #41.
+  (is (= ""
+         (with-out-str
+           (binding [*err* *out*]
+             (#'kernel/warn-fallback-once! "ix-p" :t/parent :on-done))))))
+
 (deftest answer-error-with-no-matching-resume-falls-back-to-banner
   (registry/register!
     {:component/id     :t/bare-child

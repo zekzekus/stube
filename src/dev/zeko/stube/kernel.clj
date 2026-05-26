@@ -297,23 +297,31 @@
         (keyword ns n')
         (keyword n')))))
 
-(defonce ^:private !answer-error-warned
-  ;; Logs the deprecation message at most once per [parent-cdef-id, resume-key]
-  ;; pair so apps that fail-fail-fail-fail don't flood stderr.
-  (atom #{}))
+(defn- warn-fallback-once!
+  "Log the deprecation message at most once per [parent-type, resume-key]
+  pair, so an app that fails repeatedly does not flood stderr.
 
-(defn- warn-fallback-once! [parent-id parent-type resume-key]
-  (let [k [parent-type resume-key]]
-    (when-not (contains? @!answer-error-warned k)
-      (swap! !answer-error-warned conj k)
-      (binding [*out* *err*]
-        (println (str "stube answer-error fallback"
-                      " parent=" parent-id
-                      " type=" parent-type
-                      " resume=" resume-key
-                      " — parent declares " resume-key
-                      " but not " (error-resume-key resume-key)
-                      "; calling " resume-key " with [:error ex]"))))))
+  Dedup state lives on the active kernel under `:!answer-error-warned`
+  so two kernels in one JVM (e.g. two embedded hosts, or test setups
+  that exercise the fallback path under fresh registries) each get
+  their own one-time warning.  In kernel-less paths (pure replay, unit
+  tests run through `s/dispatch` without a runtime) the dedup state is
+  unavailable; the warning is a runtime nicety, not a correctness
+  signal, so we skip it rather than fall back to a process-global
+  set."
+  [parent-id parent-type resume-key]
+  (when-let [warned (some-> *current-kernel* :!answer-error-warned)]
+    (let [k [parent-type resume-key]]
+      (when-not (contains? @warned k)
+        (swap! warned conj k)
+        (binding [*out* *err*]
+          (println (str "stube answer-error fallback"
+                        " parent=" parent-id
+                        " type=" parent-type
+                        " resume=" resume-key
+                        " — parent declares " resume-key
+                        " but not " (error-resume-key resume-key)
+                        "; calling " resume-key " with [:error ex]")))))))
 
 (defn- resume-parent
   "Deliver `value` to `parent-id` under `resume-key`, then render the

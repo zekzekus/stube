@@ -61,6 +61,12 @@ development entry.
     (Option A from the issue). The wire shape stays a vector and
     the kernel multimethod is unchanged; the per-effect
     allocation overhead in `call`/`call-in-slot` goes away.
+  - **R1-13** (#41): moved the `answer-error` fallback warning's
+    once-per-pair dedup from a JVM-global atom in `kernel.clj`
+    onto the kernel value (`:!answer-error-warned`, reset on
+    `halt!`). Two embedded kernels in the same JVM now each emit
+    their own one-time message. Kernel-less paths (pure
+    `s/dispatch` / `s/replay`) skip the warning entirely.
 
 ## 0.1.5
 
