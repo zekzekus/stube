@@ -48,6 +48,13 @@ development entry.
     pre-state pushed onto that history first) now lives next to
     the conversation data it shapes; `kernel/dispatch` reads
     the snapshot decision in one line instead of ten.
+  - **R1-17** (#45): `registry/register!` now throws `ex-info`
+    when a `defcomponent` form declares both `:foo` and
+    `:component/foo` for any lifecycle key (silent lift used to
+    overwrite the long-form value). The registry ns docstring and
+    `docs/api.md` document why lifecycle keys are a closed set
+    while resume keys (`:on-foo`, `:on-error-foo`) pass through
+    verbatim.
 
 ## 0.1.5
 

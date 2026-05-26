@@ -78,6 +78,14 @@ Recognised keys:
 | `:children` | `{slot embed-spec}` or `(fn [self] …)` | declared once; the kernel instantiates eagerly |
 | `:url` | `(fn [self] url-string-or-[op url]-or-nil)` | pure projection of state to the browser URL — see [URL as a projection of state](#url-as-a-projection-of-state) |
 
+**Colocated keys are a closed set.** `:init`, `:render`, `:handle`,
+`:keep`, `:doc`, `:state`, `:start`, `:stop`, `:wakeup`, `:children`
+and `:url` are lifted to `:component/<name>` at registration. Resume
+keys (`:on-foo`, `:on-error-foo`, …) are open — authors invent them
+per call site, and the kernel looks them up by exact name with no
+namespacing. Declaring both `:foo` and `:component/foo` for a
+lifecycle key raises an `ex-info` at register time.
+
 **Handler return shapes.** Any of these is fine; the kernel coerces:
 
 ```clojure

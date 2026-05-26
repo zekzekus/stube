@@ -26,9 +26,21 @@
   `:component/<name>` homes by [[register!]] so every cdef the kernel
   reads has a single uniform namespace.
 
+  Two kinds of keys, two rules.  *Lifecycle* keys (`:init`, `:render`,
+  `:handle`, etc.) are a closed set: the framework owns them, and the
+  kernel only consults their `:component/<name>` form, so the
+  bare-form/lifted-form pair must agree.  *Resume* keys (`:on-foo`,
+  `:on-error-foo`) are open: component authors invent new ones per
+  call site, and the kernel looks them up by exact name, so they pass
+  through verbatim with no namespacing.  Adding a new colocated key
+  is a framework-author change — extend `colocated-keys` and the
+  AGENTS/docs entries together; user-author code never reaches for
+  this.
+
   The registry maps `:component/id` to the component map.  It is held in a
   single atom so component definitions can be evaluated at namespace load
-  time the same way `defmulti` defmethods are.")
+  time the same way `defmulti` defmethods are."
+  (:require [clojure.string :as str]))
 
 ;; A single global registry.  Re-defining a component (e.g. during REPL
 ;; iteration) replaces the previous entry by id.
@@ -41,6 +53,29 @@
   verbatim because the kernel looks them up by exact name."
   [:init :render :handle :keep :doc :state
    :start :stop :wakeup :children :url])
+
+(defn- detect-colocated-collisions
+  "Throw if `cdef` declares both `:foo` and `:component/foo` for any
+  lifecycle key — silently lifting one over the other would surprise
+  whoever wrote the second form."
+  [cdef]
+  (when-let [collisions (seq
+                          (for [k colocated-keys
+                                :let [lifted (keyword "component" (name k))]
+                                :when (and (contains? cdef k)
+                                           (contains? cdef lifted))]
+                            [k lifted]))]
+    (throw (ex-info
+             (str "Component " (:component/id cdef)
+                  " declares both colocated and namespaced forms of "
+                  (str/join ", "
+                            (map (fn [[k lifted]]
+                                   (str k " and " lifted))
+                                 collisions))
+                  ".  Pick one form per key.")
+             {:component/id (:component/id cdef)
+              :collisions   (vec collisions)})))
+  cdef)
 
 (defn- lift-colocated [cdef]
   (reduce (fn [m k]
@@ -82,7 +117,7 @@
   (`defcomponent` macro, `register-component!` function, or
   `decorate!`)."
   [cdef]
-  (let [cdef (-> cdef validate! lift-colocated)]
+  (let [cdef (-> cdef validate! detect-colocated-collisions lift-colocated)]
     (swap! !components assoc (:component/id cdef) cdef)
     cdef))
 

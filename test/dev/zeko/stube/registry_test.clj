@@ -45,3 +45,29 @@
 (deftest lookup!-throws-on-unknown
   (is (thrown? clojure.lang.ExceptionInfo
                (registry/lookup! :nope/missing))))
+
+(deftest rejects-colocated-collisions
+  (testing ":render + :component/render in one cdef raises ex-info"
+    (let [cdef {:component/id     :test/colliding
+                :render           (constantly [:div])
+                :component/render (constantly [:span])}]
+      (is (thrown-with-msg?
+            clojure.lang.ExceptionInfo
+            #":render and :component/render"
+            (registry/register! cdef)))))
+  (testing "lifecycle keys generally — sampling a spread"
+    (doseq [k [:init :handle :keep :start :url]]
+      (let [lifted (keyword "component" (name k))
+            cdef   {:component/id :test/colliding-k
+                    k             :a
+                    lifted        :b}]
+        (is (thrown? clojure.lang.ExceptionInfo
+                     (registry/register! cdef))
+            (str "collision between " k " and " lifted)))))
+  (testing "resume keys pass through; no collision"
+    ;; :on-foo and :on-error-foo aren't lifted — both forms are legal
+    ;; and live alongside each other on the same cdef.
+    (is (some? (registry/register!
+                 {:component/id   :test/resume-ok
+                  :on-foo         (constantly nil)
+                  :on-error-foo   (constantly nil)})))))
