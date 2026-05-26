@@ -59,6 +59,12 @@ fi
 echo "→ running tests"
 clojure -X:test
 
+# Browser smoke suite gated to release time (and ad-hoc `make e2e`) so
+# `make test` stays Clojure-only and fast.  The Playwright Chromium
+# launch + per-test contexts add ~30s on a warm cache.
+echo "→ running e2e (browser smoke) suite"
+clojure -M:e2e
+
 echo "→ bumping version to $VERSION"
 # Capture-group form so the existing whitespace between `version` and
 # the string literal is preserved verbatim (build.clj uses several

@@ -5,7 +5,33 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- **Playwright-based e2e smoke suite.** New `:e2e` deps alias and
+  `make e2e` target run a browser-driven sanity pass over the live
+  examples catalogue. Twenty tests pin one stube primitive each:
+  morph-by-id, `s/keyed-children`, `:call-in-slot`, `:url` projection,
+  `s/decorate`, `s/preserve`, `:principal-fn` gating, error-frame /
+  `s/answer-error`, `defflow`/`s/await`/wizard-back, dialogs,
+  recursive renderers, structured event payloads, table sort,
+  pagination, inactive-child preservation. The suite is gated to
+  `make e2e` and `make release`; `make test` stays Clojure-only and
+  fast. See `test-e2e/dev/zeko/stube/e2e/` for the harness.
+- **`mint-conversation!` bugfix.** A fresh shell visit minted a
+  session id for `Set-Cookie`, then ignored it and minted a *second*
+  id inside `mint-conversation!`. The conversation ended up owned by
+  the second id while the browser was told to send the first — every
+  subsequent SSE GET hit the cross-session check and returned 403.
+  Manual browser sessions papered over this by reusing a cookie from
+  an earlier tab, but a fully fresh BrowserContext (or any new
+  install) was broken. `shell-handler` now threads its sid through to
+  a new 5-arity `mint-conversation!`. Pinned by
+  `shell-set-cookie-matches-conv-owner-token` in `http_test`.
+- **`examples/reading_list.clj` Close button.** The per-card Close
+  button used `(s/on self :click :as [:close id])`, where `self` is
+  the item — but `:reading/item` has no `:handle`, so the click was a
+  no-op and the desk's `:close` resume never ran. Switched to
+  `s/on-target` against `(:instance/parent self)` so the click POSTs
+  to the desk that owns the handler. The e2e test for URL-driven
+  restore + close now exercises the full round-trip.
 
 ## 0.1.6
 
