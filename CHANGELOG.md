@@ -110,6 +110,12 @@ development entry.
     ~20 wrapper fns that nothing outside the namespace needed
     are gone; the two consumer test files (`server_test`,
     `http_test`) switch to `rt/foo (server/default-kernel) …`.
+  - **R1-07** (#35): new ADR
+    `docs/decisions/0006-embed-as-direct-runtime-facade.md`
+    records the decision behind R1-05 and R1-06. The original
+    `requiring-resolve` choice was never written down; this
+    ADR is the first written form, and the index table also
+    picks up the missing 0005 entry along the way.
 
 ## 0.1.5
 
