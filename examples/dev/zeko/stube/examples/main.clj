@@ -18,7 +18,18 @@
 ;; Entry point
 ;; ---------------------------------------------------------------------------
 
+(defn- request-user-principal
+  "Read `?user=` off the request as the demo's principal.  The
+  protected-counter example needs a principal-fn on the kernel to flip
+  into its signed-in branch when you visit
+  `/protected-counter?user=ada`; other demos ignore the value."
+  [request]
+  (some-> request :query-string
+          (->> (re-find #"(?:^|&)user=([^&]+)"))
+          second))
+
 (defn -main [& _args]
-  (s/start! {:port 8080})
+  (s/start! {:port         8080
+             :principal-fn request-user-principal})
   (println "stube examples up — visit http://localhost:8080/ for the example browser")
   @(promise))
