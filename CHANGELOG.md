@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.1.4
+
 - Deployment error forced this release to keep changelog consistent
 
 ## 0.1.3
