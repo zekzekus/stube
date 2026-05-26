@@ -19,6 +19,11 @@ development entry.
     can't see through `runtime/cid-lock` — gets an
     `#_:clj-kondo/ignore` with a one-line explanation; the rest
     are real cleanups.
+  - **R1-03** (#31): added a `make lint` target and made
+    `make test` depend on it. `clj-kondo` exits non-zero on any
+    warning, so the standard pre-PR check now catches lint
+    regressions before tests even run. `AGENTS.md` documents the
+    workflow and the `#_:clj-kondo/ignore` escape hatch.
 
 ## 0.1.5
 

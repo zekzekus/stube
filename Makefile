@@ -4,17 +4,25 @@
 # (`nix develop`).  `make release VERSION=x.y.z` is the only one that
 # touches Clojars / git; everything else is local.
 
-.PHONY: help test clean jar install release
+.PHONY: help lint test clean jar install release
 
 help:
 	@echo "Targets:"
-	@echo "  make test                       run the full Clojure test suite"
+	@echo "  make lint                       run clj-kondo across src/ and test/"
+	@echo "  make test                       lint, then run the full Clojure test suite"
 	@echo "  make jar                        build target/stube-<v>.jar"
 	@echo "  make install                    install jar into ~/.m2"
 	@echo "  make clean                      remove target/"
 	@echo "  make release VERSION=x.y.z      bump, test, deploy to Clojars, tag, push"
 
-test:
+# `clj-kondo` returns exit code 2 on warnings and 3 on errors, so any
+# accumulated lint regressions fail this target (and, transitively, `test`).
+# Suppress an unactionable warning by adding `#_:clj-kondo/ignore` with a
+# one-line comment explaining why kondo is wrong; never silence it globally.
+lint:
+	clj-kondo --lint src test
+
+test: lint
 	clojure -X:test
 
 clean:

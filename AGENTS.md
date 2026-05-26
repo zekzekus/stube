@@ -44,6 +44,12 @@ The editor uses **Parinfer**, which infers parenthesis structure from indentatio
 - When inserting a new require or let binding, count the spaces of the surrounding lines and match exactly — do not eyeball it.
 - After editing any Clojure file, scan the changed lines with `jj diff` and verify that every modified form's indentation is consistent with its neighbours before committing.
 
+## Linting
+
+- `make lint` runs `clj-kondo --lint src test` and gates `make test` on a clean exit.
+- The standard pre-PR check is `make test` (which runs lint first).
+- If `clj-kondo` flags something that is genuinely a false positive, add a `#_:clj-kondo/ignore` reader-conditional in front of the offending form with a one-line comment explaining what the linter is missing. Never tweak `.clj-kondo/config.edn` to silence a category globally.
+
 ## General Working Style
 
 - Keep changes small and focused; don't refactor adjacent code unprompted.
