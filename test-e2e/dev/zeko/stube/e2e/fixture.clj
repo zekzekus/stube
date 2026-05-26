@@ -32,9 +32,19 @@
 
 (defonce ^:private !state (atom nil))
 
+(defn- request-user-principal
+  "Mirrors `examples.main`: reads `?user=` off the request, so the
+  protected-counter example can flip into its signed-in branch when
+  the test hits `/protected-counter?user=ada`."
+  [request]
+  (some-> request :query-string
+          (->> (re-find #"(?:^|&)user=([^&]+)"))
+          second))
+
 (defn- start! []
-  (s/start! {:port port :ui-css? true})
-  (println "e2e mounts:" (sort (keys (s/mounts))))
+  (s/start! {:port         port
+             :ui-css?      true
+             :principal-fn request-user-principal})
   (let [pw      (Playwright/create)
         opts    (-> (BrowserType$LaunchOptions.)
                     (.setHeadless (not= "1" (System/getenv "STUBE_E2E_HEADED"))))
@@ -88,7 +98,7 @@
                (reify java.util.function.Consumer
                  (accept [_ resp]
                    (let [u (.url resp)]
-                     (when (or (re-find #"datastar|/sse/|preserve|multicounter|url-counter" u)
+                     (when (or (re-find #"datastar|/sse/|preserve" u)
                                (>= (.status resp) 400))
                        (swap! log-atom update :responses (fnil conj [])
                               {:url u :status (.status resp)
@@ -102,6 +112,15 @@
                             :method  (.method req)
                             :cookie  (.headerValue req "cookie")}))))))
 
+(def default-timeout-ms
+  "Per-Playwright-call timeout.  Stube morphs are fast; if an assertion
+  hasn't matched in 8s the selector is almost certainly wrong, not
+  slow.  Long timeouts only mask test bugs and balloon the suite.
+
+  Public because the `with-page` macro emits a reference to it from
+  every caller namespace."
+  8000)
+
 (defmacro with-page
   "Open a fresh BrowserContext (isolated cookies → fresh stube_sid),
   navigate to `path`, wait for the first SSE patch to land, bind the
@@ -111,13 +130,15 @@
   initial HTML arrives over SSE after Datastar's `@get(/sse/:cid)` runs.
   We wait for `#root` to gain any child element before proceeding.
 
-  `page-sym/log` is exposed as a sibling binding holding the telemetry
-  atom; `dump-page` reads it on test failure."
+  On any exception inside `body`, we dump URL/title/body excerpt +
+  browser telemetry before re-throwing — so failing tests show what
+  the page actually looked like, not just the missing-element trace."
   [[page-sym path] & body]
   (let [log-sym (symbol (str page-sym "-log"))]
     `(let [ctx#      (.newContext (browser))
            ~page-sym (.newPage ctx#)
            ~log-sym  (atom {})]
+       (.setDefaultTimeout ctx# default-timeout-ms)
        (attach-listeners! ~page-sym ~log-sym)
        (try
          (let [resp# (.navigate ~page-sym (str base-url ~path))
@@ -135,7 +156,12 @@
              (println "cookies:    " (.cookies (.context ~page-sym)))
              (println "telemetry:  " (pr-str @~log-sym))
              (throw t#)))
-         ~@body
+         (try
+           ~@body
+           (catch Throwable t#
+             (println (str "── test failed on " ~path " ──"))
+             (dev.zeko.stube.e2e.fixture/dump-page ~page-sym)
+             (throw t#)))
          (finally (.close ^BrowserContext ctx#))))))
 
 (defn dump-page

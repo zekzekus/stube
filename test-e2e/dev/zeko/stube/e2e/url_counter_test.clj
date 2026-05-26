@@ -14,19 +14,15 @@
 
 (deftest init-args-seed-and-url-tracks-state
   (with-page [page "/url-counter?n=5"]
-    (try
-      (testing "init-args-fn seeded :n from the query string"
-        (fx/wait-text page "h2" "URL-state counter")
-        (is (str/includes? (.content page) ">5<")
-            "display should render the seeded value before any click"))
+    (testing "init-args-fn seeded :n from the query string"
+      (fx/wait-text page "h2" "URL-state counter")
+      (is (str/includes? (.content page) ">5<")
+          "display should render the seeded value before any click"))
 
-      (testing "+ updates the DOM *and* the URL — no explicit history call"
-        (-> page (.locator "button:has-text(\"+\")") .click)
-        (-> (com.microsoft.playwright.assertions.PlaywrightAssertions/assertThat
-              (.locator page "section[id^='ix'] span:has-text(\"6\")"))
-            (.isVisible))
-        (is (str/ends-with? (.url page) "?n=6")
-            "URL should reflect the new :n via the :url projection"))
-      (catch Throwable t
-        (fx/dump-page page)
-        (throw t)))))
+    (testing "+ updates the DOM *and* the URL — no explicit history call"
+      (-> page (.locator "button:has-text(\"+\")") .click)
+      (-> (com.microsoft.playwright.assertions.PlaywrightAssertions/assertThat
+            (.locator page "section[id^='ix'] span:has-text(\"6\")"))
+          (.isVisible))
+      (is (str/ends-with? (.url page) "?n=6")
+          "URL should reflect the new :n via the :url projection"))))

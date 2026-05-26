@@ -62,7 +62,14 @@
                                             :style "min-width:14rem; padding:1rem;"})
                [:h3 {:style "margin-top:0;"} (or (:title a) (:id self))]
                [:p (or (:body a) "(no body)")]
-               [:button (merge {:type "button"} (s/on self :click :as [:close (:id self)]))
+               ;; Route the click to the desk (parent), not to the item
+               ;; itself.  The desk owns `:item-ids` and the `:close`
+               ;; handler that removes the id and re-pairs the keyed
+               ;; slot — the item has no `:handle`, so a self-routed
+               ;; click would be a no-op.
+               [:button (merge {:type "button"}
+                               (s/on-target (:instance/parent self)
+                                            :click :as [:close (:id self)]))
                 "Close"]])))
 
 ;; ---------------------------------------------------------------------------
