@@ -35,6 +35,19 @@
   (require 'dev.zeko.stube.examples.main)
   :loaded)
 
+(defn- request-user-principal
+  "Read `?user=` off the request as the demo's principal — needed for
+  `/protected-counter?user=ada` to flip into its signed-in branch.
+  Mirrors `dev.zeko.stube.examples.main` so REPL `(go)` matches what
+  `clojure -M:examples` does."
+  [request]
+  (some-> request :query-string
+          (->> (re-find #"(?:^|&)user=([^&]+)"))
+          second))
+
+(def ^:private examples-start-defaults
+  {:principal-fn request-user-principal})
+
 (defn go
   "Load the examples and start the server. Idempotent — calling it
   twice does not double-mount.
@@ -55,7 +68,7 @@
                                       {:got port-or-opts})))
          port (or (:port opts) *port*)]
      (load-examples)
-     (s/start! (merge {:port port} opts))
+     (s/start! (merge examples-start-defaults {:port port} opts))
      (println (str "stube examples up — http://localhost:" port "/"
                    (when (:halos? opts) "  (halos enabled; add ?halos=1)")))
      :started)))
