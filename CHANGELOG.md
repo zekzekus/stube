@@ -5,7 +5,15 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- **R1 — refactor round 1** (road to 1.0): cleanup, docs, and a
+  shape refresh around the embed / runtime / server seam. No
+  user-visible behaviour change; the public surface stays where
+  it was. See #28 for the umbrella plan.
+  - **R1-01** (#29): removed the dead `dev.zeko.stube.routes`
+    namespace and the stray test that exercised its private fn.
+    The standalone server has long since used
+    `dev.zeko.stube.adapter.ring/ring-handler`; the internals
+    module map drops the line too.
 
 ## 0.1.5
 

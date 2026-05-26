@@ -59,7 +59,6 @@ src/dev/zeko/stube/
   http.clj          ← ring handlers (shell, SSE, event, back, upload)
   adapter/ring.clj  ← Reitit route data / Ring handler for embedded kernels
   kit.clj           ← optional Integrant adapter
-  routes.clj        ← reitit-ring wiring
   shell.clj         ← the empty HTML page Datastar bootstraps from
   server.clj        ← standalone http-kit lifecycle around a default kernel
   errors.clj        ← local error banner fragments + :on-error hook
