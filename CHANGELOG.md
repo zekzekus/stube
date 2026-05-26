@@ -7,6 +7,10 @@ development entry.
 
 (No changes yet.)
 
+## 0.1.3
+
+(No changes yet.)
+
 ## Unreleased
 
 - **Road to 1.0** (breaking, pre-1.0): trimmed pre-1.0 surface in
