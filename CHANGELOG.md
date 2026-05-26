@@ -80,6 +80,12 @@ development entry.
     the `dev`/`errors`/`keyed` helpers they pull) and fails if
     any reach `runtime`, `server`, `http`, the adapters, or the
     kit glue.
+  - **R1-15** (#43): replaced the U+2500 BOX DRAWINGS LIGHT
+    HORIZONTAL character used as a section underline in several
+    ns docstrings with plain ASCII hyphens. Renders the same in
+    monospace terminals but no longer breaks in editors that
+    don't auto-detect UTF-8 or in GitHub's plaintext diff view.
+    `AGENTS.md` documents the convention.
 
 ## 0.1.5
 

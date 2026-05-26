@@ -8,7 +8,7 @@
   re-rendering the whole parent.
 
   Surface
-  ───────
+  -------
 
   - **Effect** `(s/set-keyed-children slot pairs)` where `pairs` is
     `[[stable-key embed-spec] ...]` in display order.  Triggers the
@@ -28,7 +28,7 @@
                                    :embed {…}}}}}
 
   Diff rules
-  ──────────
+  ----------
 
   - Key in new but not old           → mint, `:start`, emit `:append`
                                        at the right position

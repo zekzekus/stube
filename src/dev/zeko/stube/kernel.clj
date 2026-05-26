@@ -8,7 +8,7 @@
   value plus the fragments to emit.
 
   Reading guide
-  ─────────────
+  -------------
 
   Everything in this namespace operates on plain values.  A handler
   returns `[self' effects]`; `run-effects` folds those effects into the
@@ -23,7 +23,7 @@
   `dispatch` and a hand-built conversation value, with no server running.
 
   Effect vocabulary
-  ─────────────────
+  -----------------
 
       [:call <embed> :resume <k>]   push a child frame; on `:answer` the
                                     parent's `:k` function is invoked
@@ -56,7 +56,7 @@
   All effects produce zero or more fragments and an updated conversation.
 
   Component lifecycle keys
-  ────────────────────────
+  ------------------------
   Beyond the keys read directly by `:render` / `:handle`, a component
   may include:
 

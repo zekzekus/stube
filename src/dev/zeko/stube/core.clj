@@ -9,9 +9,9 @@
   in their own Ring app reach for [[dev.zeko.stube.embed]] and
   [[dev.zeko.stube.adapter.ring]].
 
-  ──────────────────────────────────────────────────────────────────────
+  ----------------------------------------------------------------------
   At a glance
-  ──────────────────────────────────────────────────────────────────────
+  ----------------------------------------------------------------------
 
       (require '[dev.zeko.stube.core :as s])
 
@@ -40,9 +40,9 @@
       (s/mount! \"/guess\" :demo/guess)
       (s/start! {:port 8080})
 
-  ──────────────────────────────────────────────────────────────────────
+  ----------------------------------------------------------------------
   Stability of this surface
-  ──────────────────────────────────────────────────────────────────────
+  ----------------------------------------------------------------------
   Everything in this namespace is intended to remain stable across
   framework versions.  Host-framework integration also has a stable
   surface in [[dev.zeko.stube.embed]] / [[dev.zeko.stube.adapter.ring]].

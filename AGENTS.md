@@ -44,6 +44,10 @@ The editor uses **Parinfer**, which infers parenthesis structure from indentatio
 - When inserting a new require or let binding, count the spaces of the surrounding lines and match exactly — do not eyeball it.
 - After editing any Clojure file, scan the changed lines with `jj diff` and verify that every modified form's indentation is consistent with its neighbours before committing.
 
+## Documentation conventions
+
+- Namespace docstrings use **ASCII hyphens** (`-`) for section underlines, not the box-drawing character (`─`). The box-drawing form rendered nicely in some terminals but broke in editors that don't auto-detect UTF-8 and in GitHub's plaintext diff view. Stick to ASCII when adding or editing a docstring section break.
+
 ## Linting
 
 - `make lint` runs `clj-kondo --lint src test` and gates `make test` on a clean exit.

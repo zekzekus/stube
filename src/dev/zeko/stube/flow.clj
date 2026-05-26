@@ -31,9 +31,9 @@
   [0001-resume-key-naming](../../../../docs/decisions/0001-resume-key-naming.md)),
   but whose source reads as ordinary Clojure.
 
-  ──────────────────────────────────────────────────────────────────────
+  ----------------------------------------------------------------------
   Restrictions inherited from cloroutine
-  ──────────────────────────────────────────────────────────────────────
+  ----------------------------------------------------------------------
 
   * `await` cannot appear inside a nested `fn`, lazy seq, custom type
     method, or anywhere else the surrounding form might escape the

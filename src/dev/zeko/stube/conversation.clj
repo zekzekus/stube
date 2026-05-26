@@ -5,9 +5,9 @@
   session against one mounted flow.  It is a plain map; persistence,
   history, and concurrency are all handled by working with these values.
 
-  ──────────────────────────────────────────────────────────────────────
+  ----------------------------------------------------------------------
   Shape
-  ──────────────────────────────────────────────────────────────────────
+  ----------------------------------------------------------------------
 
       {:conv/id        \"cv-019\"
        :conv/instances {\"ix-7e2\" {…instance map…} …}

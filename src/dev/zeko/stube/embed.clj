@@ -9,7 +9,7 @@
   load time.
 
   Reading guide
-  ─────────────
+  -------------
 
   A host typically uses three or four functions:
 
