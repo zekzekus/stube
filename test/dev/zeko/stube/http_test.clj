@@ -4,6 +4,7 @@
             [dev.zeko.stube.fragments :as fragments]
             [dev.zeko.stube.http :as http]
             [dev.zeko.stube.registry :as registry]
+            [dev.zeko.stube.runtime :as rt]
             [dev.zeko.stube.server :as server]))
 
 (use-fixtures :each (fn [t]
@@ -25,7 +26,7 @@
     (is (re-find #"stale" (:body resp)))))
 
 (deftest stale-instance-event-in-live-conversation-is-noop
-  (let [cid  (server/create-conversation! :test/root)
+  (let [cid  (rt/create-conversation! (server/default-kernel) :test/root nil)
         resp (http/event-handler {:path-params {:cid cid
                                                 :iid "ix-missing"
                                                 :event "go"}})]
@@ -46,11 +47,11 @@
   (registry/register!
     {:component/id :test/noop
      :component/handle (fn [s _] [s []])})
-  (let [cid (server/create-conversation! :test/root "owner")
+  (let [cid (rt/create-conversation! (server/default-kernel) :test/root "owner")
         inst {:instance/id "ix-1"
               :instance/type :test/noop
               :instance/children {}}]
-    (server/swap-conv!
+    (rt/swap-conv! (server/default-kernel)
       cid
       (fn [c]
         [(-> c
@@ -65,14 +66,14 @@
                           :headers {"cookie" "stube_sid=owner"}}))))))
 
 (deftest wrong-session-cannot-stale-end-conversation
-  (let [cid (server/create-conversation! :test/root "owner")]
+  (let [cid (rt/create-conversation! (server/default-kernel) :test/root "owner")]
     (is (= 403 (:status (http/event-handler
                          {:path-params {:cid cid :iid "ix-missing" :event "go"}
                           :headers {"cookie" "stube_sid=wrong"}}))))
     (is (some? (server/conversation cid)))))
 
 (deftest stale-upload-instance-in-live-conversation-is-noop
-  (let [cid  (server/create-conversation! :test/root)
+  (let [cid  (rt/create-conversation! (server/default-kernel) :test/root nil)
         resp (http/upload-handler {:path-params {:cid cid :iid "ix-missing"}})]
     (is (= 204 (:status resp)))
     (is (some? (server/conversation cid)))))
@@ -85,12 +86,12 @@
                          (case event
                            :upload-received [(assoc s :seen payload) []]
                            [s []]))})
-  (let [cid  (server/create-conversation! :test/upload "owner")
+  (let [cid  (rt/create-conversation! (server/default-kernel) :test/upload "owner")
         iid  "ix-upload"
         tmp  (doto (java.io.File/createTempFile "stube-upload" ".txt")
                (spit "hello upload"))]
     (try
-      (server/swap-conv!
+      (rt/swap-conv! (server/default-kernel)
         cid
         (fn [c]
           [(-> c

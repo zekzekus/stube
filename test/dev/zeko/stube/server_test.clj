@@ -1,9 +1,10 @@
 (ns dev.zeko.stube.server-test
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is use-fixtures]]
-            [dev.zeko.stube.core :as s]
+            [dev.zeko.stube.core     :as s]
             [dev.zeko.stube.registry :as registry]
-            [dev.zeko.stube.server :as server])
+            [dev.zeko.stube.runtime  :as rt]
+            [dev.zeko.stube.server   :as server])
   (:import (java.time Duration Instant)))
 
 (use-fixtures :each (fn [t]
@@ -22,7 +23,8 @@
         :else false))))
 
 (defn- install-instance! [cid inst]
-  (server/swap-conv!
+  (rt/swap-conv!
+    (server/default-kernel)
     cid
     (fn [c]
       [(-> c
@@ -31,28 +33,30 @@
        []])))
 
 (deftest active-conversations-and-end
-  (let [cid (server/create-conversation! :test/root)]
+  (let [cid (rt/create-conversation! (server/default-kernel) :test/root nil)]
     (is (contains? (server/active-conversations) cid))
     (server/end! cid)
     (is (not (contains? (server/active-conversations) cid)))))
 
 (deftest reap-removes-expired-conversations
-  (let [old-cid   (server/create-conversation! :test/old)
-        fresh-cid (server/create-conversation! :test/fresh)
+  (let [k         (server/default-kernel)
+        old-cid   (rt/create-conversation! k :test/old nil)
+        fresh-cid (rt/create-conversation! k :test/fresh nil)
         old-time  (.minus (Instant/now) (Duration/ofHours 2))]
-    (server/swap-conv! old-cid (fn [c] [(assoc c :conv/touched old-time) []]))
-    (is (= [old-cid] (server/reap! (Duration/ofHours 1))))
+    (rt/swap-conv! k old-cid (fn [c] [(assoc c :conv/touched old-time) []]))
+    (is (= [old-cid] (rt/reap! k (Duration/ofHours 1))))
     (is (nil? (server/conversation old-cid)))
     (is (some? (server/conversation fresh-cid)))))
 
 (deftest inspect-pretty-prints-live-conversation-summary
-  (let [cid  (server/create-conversation! :test/root)
+  (let [k    (server/default-kernel)
+        cid  (rt/create-conversation! k :test/root nil)
         inst {:instance/id "ix-1"
               :instance/type :test/root
               :instance/children {}
               :answer "ok"}]
-    (server/swap-conv!
-      cid
+    (rt/swap-conv!
+      k cid
       (fn [c]
         [(-> c
              (assoc :conv/instances {"ix-1" inst})
@@ -76,14 +80,15 @@
                          (case event
                            :tick [(update s :n inc) []]
                            [s []]))})
-  (let [cid (server/create-conversation! :test/timer)
+  (let [k   (server/default-kernel)
+        cid (rt/create-conversation! k :test/timer nil)
         iid "ix-timer"]
     (install-instance! cid {:instance/id iid
                             :instance/type :test/timer
                             :instance/children {}
                             :instance/rendered? true
                             :n 0})
-    (server/schedule-event! {:cid cid :instance-id iid :delay-ms 10 :event :tick})
+    (rt/schedule-event! k {:cid cid :instance-id iid :delay-ms 10 :event :tick})
     (is (eventually #(= 1 (:n (get-in (server/conversation cid)
                                       [:conv/instances iid])))))))
 
@@ -95,17 +100,18 @@
                          (case event
                            :published [(assoc s :seen payload) []]
                            [s []]))})
-  (let [cid (server/create-conversation! :test/subscriber)
+  (let [k   (server/default-kernel)
+        cid (rt/create-conversation! k :test/subscriber nil)
         iid "ix-sub"]
     (install-instance! cid {:instance/id iid
                             :instance/type :test/subscriber
                             :instance/children {}
                             :instance/rendered? true
                             :seen nil})
-    (server/subscribe! {:cid cid :instance-id iid :topic :test/topic :event :published})
+    (rt/subscribe! k {:cid cid :instance-id iid :topic :test/topic :event :published})
     (is (= 1 (server/publish! :test/topic {:msg "hello"})))
     (is (eventually #(= {:msg "hello"}
                         (:seen (get-in (server/conversation cid)
                                        [:conv/instances iid]))))))
   (server/reset-state!)
-  (is (empty? (server/subscriptions))))
+  (is (empty? (rt/subscriptions (server/default-kernel)))))

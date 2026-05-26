@@ -102,6 +102,14 @@ development entry.
     ~25 `^:no-doc` plumbing fns it used to expose for adapters
     have moved back to `runtime`; `http`, `halos/http`,
     `adapter/ring`, and `server` `:require` runtime directly.
+  - **R1-06** (#34): narrowed `dev.zeko.stube.server` to
+    lifecycle (`start!`, `stop!`, `mount!`, `unmount!`, `mounts`,
+    `reset-state!`, the reaper) plus a small default-kernel
+    convenience surface (`default-kernel`, `conversation`,
+    `active-conversations`, `end!`, `inspect`, `publish!`). The
+    ~20 wrapper fns that nothing outside the namespace needed
+    are gone; the two consumer test files (`server_test`,
+    `http_test`) switch to `rt/foo (server/default-kernel) …`.
 
 ## 0.1.5
 

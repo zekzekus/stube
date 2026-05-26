@@ -1,11 +1,22 @@
 (ns dev.zeko.stube.server
-  "Standalone http-kit lifecycle around the embeddable stube runtime.
+  "Standalone http-kit lifecycle around a default stube kernel.
 
-  The mutable conversation/SSE/timer state lives on a kernel value from
-  `dev.zeko.stube.runtime/make-kernel` (the public facade for the same
-  is `dev.zeko.stube.embed/make-kernel`).  This namespace keeps the
-  original greenfield API (`mount!`, `start!`, `stop!`) as a
-  convenience shell."
+  Two concerns live here:
+
+  * The lifecycle: `start!`, `stop!`, `mount!`, `unmount!`, plus the
+    per-conversation reaper that runs alongside the listener.
+  * The default-kernel convenience surface: `default-kernel`,
+    `conversation`, `active-conversations`, `end!`, `publish!`,
+    `inspect`.  These all delegate to `dev.zeko.stube.runtime` with
+    the process-global kernel value.
+
+  Adapters and tests that already have a kernel in hand should call
+  [[dev.zeko.stube.runtime]] directly — this namespace is for the
+  greenfield `(s/start!)` + `(s/mount!)` workflow.
+
+  The mutable conversation/SSE/timer state lives on the kernel value
+  returned by [[dev.zeko.stube.embed/make-kernel]] (a thin public
+  facade over [[dev.zeko.stube.runtime/make-kernel]])."
   (:require [clojure.pprint              :as pprint]
             [org.httpkit.server          :as http-kit]
             [dev.zeko.stube.adapter.ring :as ring-adapter]
@@ -28,11 +39,11 @@
 (defn- new-kernel [{:keys [store ui-css? halos? app principal-fn]
                     :or {ui-css? true halos? false}}]
   (rt/make-kernel {:store        (or store (store/in-memory-store))
-                      :base-path    ""
-                      :ui-css?      ui-css?
-                      :halos?       halos?
-                      :app          app
-                      :principal-fn principal-fn}))
+                   :base-path    ""
+                   :ui-css?      ui-css?
+                   :halos?       halos?
+                   :app          app
+                   :principal-fn principal-fn}))
 
 (defn default-kernel
   "The kernel instance used by the standalone server API."
@@ -42,29 +53,18 @@
         (reset! !kernel k)
         k)))
 
-(defn current-store
-  "The store currently in use by the standalone kernel."
-  []
-  (rt/current-store (default-kernel)))
-
 ;; ---------------------------------------------------------------------------
-;; Conversation helpers (legacy API wrappers)
+;; Default-kernel convenience surface
 ;; ---------------------------------------------------------------------------
-
-(defn create-conversation!
-  "Mint a fresh conversation for `flow-id` and return its cid."
-  ([flow-id]
-   (create-conversation! flow-id nil))
-  ([flow-id owner-token]
-   (rt/create-conversation! (default-kernel) flow-id owner-token)))
-
-(defn pending-flow
-  "Pop and return the pending root for `cid`, if any."
-  [cid]
-  (rt/pending-root (default-kernel) cid))
+;;
+;; Each function delegates to `dev.zeko.stube.runtime` with the
+;; standalone default kernel.  Hosts that hold their own kernel value
+;; should call runtime directly; these exist so the
+;; `(s/start!)` + `(s/mount!)` style flow doesn't have to thread the
+;; kernel through every call site.
 
 (defn conversation
-  "Snapshot of the named conversation, or nil."
+  "Snapshot of the named conversation in the standalone kernel, or nil."
   [cid]
   (rt/conversation (default-kernel) cid))
 
@@ -73,77 +73,20 @@
   []
   (rt/active-conversations (default-kernel)))
 
-(defn swap-conv!
-  "Atomically apply `(f conv) → [conv' fragments]` to `cid`."
-  [cid f]
-  (rt/swap-conv! (default-kernel) cid f))
-
-(defn end-conversation!
+(defn end!
   "Drop a conversation, its SSE binding, async state, and persisted copy."
   [cid]
   (rt/end-conversation! (default-kernel) cid))
 
-(defn end!
-  "Public admin wrapper around [[end-conversation!]]."
-  [cid]
-  (end-conversation! cid))
-
-(defn reap!
-  "End conversations whose `:conv/touched` is older than `ttl`."
-  [ttl]
-  (rt/reap! (default-kernel) ttl))
-
-(defn with-kernel-bindings
-  "Run `f` with render cid and async hooks for the standalone kernel."
-  [cid f]
-  (rt/with-kernel-bindings (default-kernel) cid f))
-
-;; ---------------------------------------------------------------------------
-;; SSE and dispatch helpers
-;; ---------------------------------------------------------------------------
-
-(defn register-sse! [cid sse-gen]
-  (rt/register-sse! (default-kernel) cid sse-gen))
-
-(defn unregister-sse! [cid]
-  (rt/unregister-sse! (default-kernel) cid))
-
-(defn sse [cid]
-  (rt/sse (default-kernel) cid))
+(defn publish!
+  "Publish `msg` to every live instance subscribed to `topic`.  From
+  inside a component dispatch this targets the active runtime kernel;
+  outside a dispatch it falls back to the standalone default kernel."
+  [topic msg]
+  (rt/publish! (or kernel/*current-kernel* (default-kernel)) topic msg))
 
 (def ^{:doc "Push kernel fragments to an open Datastar SSE generator."}
   push-fragments! f/push!)
-
-(defn apply-conv!
-  "Apply `(f conv) → [conv' fragments]`, push fragments, and end the
-  conversation if the kernel marked it ended."
-  [cid f]
-  (rt/apply-conv! (default-kernel) cid f))
-
-(defn run-effects!
-  "Fold `effects` into conversation `cid` and push any fragments."
-  [cid effects]
-  (rt/run-effects! (default-kernel) cid effects))
-
-(defn dispatch!
-  "Dispatch one event into conversation `cid`."
-  [cid event]
-  (rt/dispatch! (default-kernel) cid event))
-
-(defn schedule-event! [event]
-  (rt/schedule-event! (default-kernel) event))
-
-(defn subscribe! [sub]
-  (rt/subscribe! (default-kernel) sub))
-
-(defn unsubscribe! [sub]
-  (rt/unsubscribe! (default-kernel) sub))
-
-(defn subscriptions []
-  (rt/subscriptions (default-kernel)))
-
-(defn publish! [topic msg]
-  (rt/publish! (or kernel/*current-kernel* (default-kernel)) topic msg))
 
 ;; ---------------------------------------------------------------------------
 ;; Mounts and dev tooling
@@ -188,22 +131,6 @@
       (pprint/pprint summary)
       summary)))
 
-(defn ui-css?
-  "True when the stock stube stylesheet should be linked from shells."
-  []
-  (rt/ui-css? (default-kernel)))
-
-(defn halos?
-  "True when the standalone server is willing to serve dev halos."
-  []
-  (rt/halos? (default-kernel)))
-
-(defn enable-halos! [cid]
-  (rt/enable-halos! (default-kernel) cid))
-
-(defn enable-halos-and-redraw! [cid]
-  (rt/enable-halos-and-redraw! (default-kernel) cid))
-
 ;; ---------------------------------------------------------------------------
 ;; Lifecycle
 ;; ---------------------------------------------------------------------------
@@ -234,7 +161,7 @@
         (loop []
           (when-not (deref stop interval-ms false)
             (try
-              (reap! ttl)
+              (rt/reap! (default-kernel) ttl)
               (catch Throwable t
                 (binding [*out* *err*]
                   (println "dev.zeko.stube.server: reaper threw —" (ex-message t)))))
