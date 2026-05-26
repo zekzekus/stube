@@ -68,6 +68,21 @@
             [dev.zeko.stube.ui           :as ui]))
 
 ;; ---------------------------------------------------------------------------
+;; Re-export plumbing
+;; ---------------------------------------------------------------------------
+
+(defmacro ^:private defalias
+  "Define `sym` as a value alias of `target-sym`, carrying `doc` and
+  (when the target is a function) the target's `:arglists`.  Plain
+  `(def ^{:doc \"...\"} foo target/foo)` drops `:arglists` and so loses
+  the signature from `(doc s/foo)` / CIDER eldoc; this macro keeps it."
+  [sym target-sym doc]
+  (let [arglists (:arglists (meta (resolve target-sym)))]
+    `(def ~(with-meta sym (cond-> {:doc doc}
+                            arglists (assoc :arglists (list 'quote arglists))))
+       ~target-sym)))
+
+;; ---------------------------------------------------------------------------
 ;; Component definition
 ;; ---------------------------------------------------------------------------
 
@@ -204,34 +219,35 @@
   ([slot component-id-or-embed args resume]
    (effects/call-in-slot slot (->embed-with-args component-id-or-embed args) resume)))
 
-(def ^{:doc "Pop this frame; deliver `value` to the parent under its
-  resume key.  See [[dev.zeko.stube.effects/answer]]."}
-  answer effects/answer)
+(defalias answer effects/answer
+  "Pop this frame; deliver `value` to the parent under its resume key.
+  See [[dev.zeko.stube.effects/answer]].")
 
-(def ^{:doc "Pop this frame and route the exception through the parent's
+(defalias answer-error effects/answer-error
+  "Pop this frame and route the exception through the parent's
   `:on-error-<key>` resume handler instead of `:on-<key>`.
 
   If the parent declares only `:on-<key>`, the kernel falls back to
   it with a wrapped value `[:error ex]` and logs a one-time
   deprecation warning per component.  If neither is declared, the
   parent surfaces a default error banner just like an intra-component
-  throw.  See [[dev.zeko.stube.effects/answer-error]]."}
-  answer-error effects/answer-error)
+  throw.  See [[dev.zeko.stube.effects/answer-error]].")
 
-(def ^{:doc "Emit an extra DOM patch without changing the stack.
-  See [[dev.zeko.stube.effects/patch]]."}
-  patch effects/patch)
+(defalias patch effects/patch
+  "Emit an extra DOM patch without changing the stack.
+  See [[dev.zeko.stube.effects/patch]].")
 
-(def ^{:doc "Push a Datastar signal patch (writes signal values back
-  to the browser).  See [[dev.zeko.stube.effects/patch-signals]]."}
-  patch-signals effects/patch-signals)
+(defalias patch-signals effects/patch-signals
+  "Push a Datastar signal patch (writes signal values back to the
+  browser).  See [[dev.zeko.stube.effects/patch-signals]].")
 
-(def ^{:doc "Run literal JS in the browser.  Last-resort escape hatch;
-  prefer Datastar attributes for most needs.  See
-  [[dev.zeko.stube.effects/execute-script]]."}
-  execute-script effects/execute-script)
+(defalias execute-script effects/execute-script
+  "Run literal JS in the browser.  Last-resort escape hatch; prefer
+  Datastar attributes for most needs.  See
+  [[dev.zeko.stube.effects/execute-script]].")
 
-(def ^{:doc "Sync the browser URL without a page reload.
+(defalias history effects/history
+  "Sync the browser URL without a page reload.
 
       (s/history :replace \"/notes?id=42\")
       (s/history :push    \"/notes/42\")
@@ -241,45 +257,47 @@
   (e.g. filter changes) and `:push` for navigations the user should
   be able to Back-button out of.
 
-  See [[dev.zeko.stube.effects/history]]."}
-  history effects/history)
+  See [[dev.zeko.stube.effects/history]].")
 
-(def ^{:doc "Ask the active runtime to run `(thunk)` off the request
-  thread, fire-and-forget.  Pure `dispatch`/`replay` leave this effect
-  inert unless a runtime hook is bound.  See [[dev.zeko.stube.effects/io]]."}
-  io effects/io)
+(defalias io effects/io
+  "Ask the active runtime to run `(thunk)` off the request thread,
+  fire-and-forget.  Pure `dispatch`/`replay` leave this effect inert
+  unless a runtime hook is bound.  See [[dev.zeko.stube.effects/io]].")
 
-(def ^{:doc "Terminate the conversation with a final value.  After
-  this the SSE channel closes and the conversation is forgotten.
-  See [[dev.zeko.stube.effects/end]]."}
-  end effects/end)
+(defalias end effects/end
+  "Terminate the conversation with a final value.  After this the SSE
+  channel closes and the conversation is forgotten.  See
+  [[dev.zeko.stube.effects/end]].")
 
 ;; ---------------------------------------------------------------------------
 ;; Compositional helpers
 ;; ---------------------------------------------------------------------------
 
-(def ^{:doc "See [[dev.zeko.stube.conversation/embed]]."}
-  embed conv/embed)
+(defalias embed conv/embed
+  "See [[dev.zeko.stube.conversation/embed]].")
 
-(def ^{:doc "See [[dev.zeko.stube.render/on]]."}          on          render/on)
-(def ^{:doc "See [[dev.zeko.stube.render/on-target]]."}   on-target   render/on-target)
-(def ^{:doc "See [[dev.zeko.stube.render/event-url]]."}   event-url   render/event-url)
-(def ^{:doc "See [[dev.zeko.stube.render/bind]]."}        bind        render/bind)
-(def ^{:doc "See [[dev.zeko.stube.render/root-attrs]]."}  root-attrs  render/root-attrs)
-(def ^{:doc "See [[dev.zeko.stube.render/preserve]]."}   preserve   render/preserve)
-(def ^{:doc "See [[dev.zeko.stube.render/on-mount]]."}   on-mount   render/on-mount)
-(def ^{:doc "See [[dev.zeko.stube.render/on-unmount]]."} on-unmount render/on-unmount)
-(def ^{:doc "See [[dev.zeko.stube.render/local-signal]]."} local-signal render/local-signal)
-(def ^{:doc "See [[dev.zeko.stube.render/local-bind]]."}   local-bind   render/local-bind)
-(def ^{:doc "See [[dev.zeko.stube.render/back-button]]."}  back-button  render/back-button)
-(def ^{:doc "See [[dev.zeko.stube.render/upload-attrs]]."} upload-attrs render/upload-attrs)
-(def ^{:doc "See [[dev.zeko.stube.render/upload-frame]]."} upload-frame render/upload-frame)
-(def ^{:doc "See [[dev.zeko.stube.render/render-slot]]."} render-slot render/render-slot)
+(defalias on           render/on           "See [[dev.zeko.stube.render/on]].")
+(defalias on-target    render/on-target    "See [[dev.zeko.stube.render/on-target]].")
+(defalias event-url    render/event-url    "See [[dev.zeko.stube.render/event-url]].")
+(defalias bind         render/bind         "See [[dev.zeko.stube.render/bind]].")
+(defalias root-attrs   render/root-attrs   "See [[dev.zeko.stube.render/root-attrs]].")
+(defalias preserve     render/preserve     "See [[dev.zeko.stube.render/preserve]].")
+(defalias on-mount     render/on-mount     "See [[dev.zeko.stube.render/on-mount]].")
+(defalias on-unmount   render/on-unmount   "See [[dev.zeko.stube.render/on-unmount]].")
+;; `render/local-signal` is itself a re-export of `conv/local-signal`, which
+;; doesn't carry `:arglists` on the render var — point at the source so
+;; `defalias` finds the signature.
+(defalias local-signal conv/local-signal   "See [[dev.zeko.stube.conversation/local-signal]].")
+(defalias local-bind   render/local-bind   "See [[dev.zeko.stube.render/local-bind]].")
+(defalias back-button  render/back-button  "See [[dev.zeko.stube.render/back-button]].")
+(defalias upload-attrs render/upload-attrs "See [[dev.zeko.stube.render/upload-attrs]].")
+(defalias upload-frame render/upload-frame "See [[dev.zeko.stube.render/upload-frame]].")
+(defalias render-slot  render/render-slot  "See [[dev.zeko.stube.render/render-slot]].")
 
-(def ^{:doc "Effect: reconcile keyed children for a slot.  See
+(defalias set-keyed-children effects/set-keyed-children
+  "Effect: reconcile keyed children for a slot.  See
   [[dev.zeko.stube.effects/set-keyed-children]] and the diff semantics
-  documented in [[dev.zeko.stube.keyed]]."}
-  set-keyed-children effects/set-keyed-children)
+  documented in [[dev.zeko.stube.keyed]].")
 
 (defn keyed-children
   "Render the keyed-children container for `slot` on `self`.  Returns
@@ -352,8 +370,8 @@
   `(binding [kernel/*current-principal* ~principal-value]
      ~@body))
 
-(def ^{:doc "Sentinel returned by cancellable stock UI components."}
-  cancel ui/cancel)
+(defalias cancel ui/cancel
+  "Sentinel returned by cancellable stock UI components.")
 
 (defn- ensure-ui! []
   (ui/register!))
@@ -436,19 +454,20 @@
   [base-cdef overrides]
   (registry/register! (decorate base-cdef overrides)))
 
-(def ^{:doc "Look up a registered component definition by id (or nil)."}
-  registry-lookup registry/lookup)
+(defalias registry-lookup registry/lookup
+  "Look up a registered component definition by id (or nil).")
 
-(def ^{:doc "Return a registered component's docstring, or nil."}
-  help registry/help)
+(defalias help registry/help
+  "Return a registered component's docstring, or nil.")
 
 ;; ---------------------------------------------------------------------------
 ;; History & persistence (slice 3)
 ;; ---------------------------------------------------------------------------
 
-(def ^{:doc "Construct a `[:back]` effect that walks one step backward
-  through the conversation's `:conv/history`.  Use it from a handler to
-  wire a \"Back\" button, or render `(s/back-button \"Back\")` for the
+(defalias back effects/back
+  "Construct a `[:back]` effect that walks one step backward through
+  the conversation's `:conv/history`.  Use it from a handler to wire
+  a \"Back\" button, or render `(s/back-button \"Back\")` for the
   stock conversation-level button.
 
       [(s/back)]   ; from inside a handler
@@ -458,42 +477,41 @@
   restored top frame.  No-op if the history is empty.
 
   `s/back` is a zero-arity function, matching every other effect
-  constructor (`s/end`, `s/after`, etc.).  Always call it with parens."}
-  back effects/back)
+  constructor (`s/end`, `s/after`, etc.).  Always call it with parens.")
 
-(def ^{:doc "See [[dev.zeko.stube.store/in-memory-store]]."}  in-memory-store store/in-memory-store)
-(def ^{:doc "See [[dev.zeko.stube.store/file-store]]."}        file-store      store/file-store)
+(defalias in-memory-store store/in-memory-store "See [[dev.zeko.stube.store/in-memory-store]].")
+(defalias file-store      store/file-store      "See [[dev.zeko.stube.store/file-store]].")
 
 ;; ---------------------------------------------------------------------------
 ;; Async / publish-subscribe (Tier 3)
 ;; ---------------------------------------------------------------------------
 
-(def ^{:doc "Effect: dispatch `route-event` to the current instance after
+(defalias after effects/after
+  "Effect: dispatch `route-event` to the current instance after
   `delay-ms`.
 
       [self [(s/after 1000 :tick)]]
 
-  If the conversation or instance is gone when the timer fires, the event
-  is dropped.  `route-event` accepts the same keyword/vector shape as
-  `(s/on self :click :as route-event)`."}
-  after effects/after)
+  If the conversation or instance is gone when the timer fires, the
+  event is dropped.  `route-event` accepts the same keyword/vector
+  shape as `(s/on self :click :as route-event)`.")
 
-(def ^{:doc "Effect: subscribe the current instance to `topic`.
+(defalias subscribe effects/subscribe
+  "Effect: subscribe the current instance to `topic`.
 
-  Published messages arrive as `route-event` with the published value in
-  `:payload`.  Re-emit this from `:wakeup` for components that should
-  resubscribe after crash-resume."}
-  subscribe effects/subscribe)
+  Published messages arrive as `route-event` with the published value
+  in `:payload`.  Re-emit this from `:wakeup` for components that
+  should resubscribe after crash-resume.")
 
-(def ^{:doc "Effect: remove this instance's topic subscription(s)."}
-  unsubscribe effects/unsubscribe)
+(defalias unsubscribe effects/unsubscribe
+  "Effect: remove this instance's topic subscription(s).")
 
-(def ^{:doc "Publish `msg` to every live instance subscribed to `topic`.
+(defalias publish! server/publish!
+  "Publish `msg` to every live instance subscribed to `topic`.
   Delivery is asynchronous and cid/iid-scoped; stale subscribers are
-  ignored.  From component code this targets the active runtime kernel;
-  outside a dispatch it targets the standalone server kernel.  Returns
-  the number of subscribers targeted."}
-  publish! server/publish!)
+  ignored.  From component code this targets the active runtime
+  kernel; outside a dispatch it targets the standalone server kernel.
+  Returns the number of subscribers targeted.")
 
 ;; ---------------------------------------------------------------------------
 ;; Linear flows (slice 1)
@@ -515,27 +533,30 @@
 ;; Lifecycle / mounting
 ;; ---------------------------------------------------------------------------
 
-(def ^{:doc "See [[dev.zeko.stube.server/mount!]].  Accepts an optional opts map
-  with `:init-args-fn` to seed component state from GET request params."}
-  mount! server/mount!)
-(def ^{:doc "See [[dev.zeko.stube.server/unmount!]]."}  unmount!   server/unmount!)
-(def ^{:doc "See [[dev.zeko.stube.server/start!]]."}    start!     server/start!)
-(def ^{:doc "See [[dev.zeko.stube.server/stop!]]."}     stop!      server/stop!)
+(defalias mount! server/mount!
+  "See [[dev.zeko.stube.server/mount!]].  Accepts an optional opts map
+  with `:init-args-fn` to seed component state from GET request
+  params.")
 
-(def ^{:doc "Return the decoded value of query-param `param-name` from a Ring request,
-  or nil if absent.  Useful in `:init-args-fn` callbacks:
+(defalias unmount! server/unmount! "See [[dev.zeko.stube.server/unmount!]].")
+(defalias start!   server/start!   "See [[dev.zeko.stube.server/start!]].")
+(defalias stop!    server/stop!    "See [[dev.zeko.stube.server/stop!]].")
+
+(defalias query-value http/query-value
+  "Return the decoded value of query-param `param-name` from a Ring
+  request, or nil if absent.  Useful in `:init-args-fn` callbacks:
 
       (s/mount! \"/counter\" :demo/counter
         {:init-args-fn (fn [req]
                          {:n (parse-long (or (s/query-value req \"n\") \"0\"))})})
 
-  See [[dev.zeko.stube.http/query-value]]."}
-  query-value http/query-value)
-(def ^{:doc "See [[dev.zeko.stube.server/active-conversations]]."}
-  active-conversations server/active-conversations)
-(def ^{:doc "See [[dev.zeko.stube.server/end!]]."}      end!       server/end!)
-(def ^{:doc "See [[dev.zeko.stube.server/mounts]]."}    mounts     server/mounts)
-(def ^{:doc "See [[dev.zeko.stube.server/inspect]]."}   inspect    server/inspect)
+  See [[dev.zeko.stube.http/query-value]].")
+
+(defalias active-conversations server/active-conversations
+  "See [[dev.zeko.stube.server/active-conversations]].")
+(defalias end!    server/end!    "See [[dev.zeko.stube.server/end!]].")
+(defalias mounts  server/mounts  "See [[dev.zeko.stube.server/mounts]].")
+(defalias inspect server/inspect "See [[dev.zeko.stube.server/inspect]].")
 
 ;; ---------------------------------------------------------------------------
 ;; Halos / dev-tooling REPL helpers (slice 0)
@@ -608,10 +629,10 @@
              [c0 (vec boot-frags)]
              events))))
 
-(def ^{:doc "Pure event dispatch — `(dispatch conv event) → [conv' fragments]`.
-  Useful from the REPL or for tests; production code goes through the http
-  layer."}
-  dispatch kernel/dispatch)
+(defalias dispatch kernel/dispatch
+  "Pure event dispatch — `(dispatch conv event) → [conv' fragments]`.
+  Useful from the REPL or for tests; production code goes through the
+  http layer.")
 
-(def ^{:doc "Pure boot effects for a flow — see [[dev.zeko.stube.kernel/boot]]."}
-  boot kernel/boot)
+(defalias boot kernel/boot
+  "Pure boot effects for a flow — see [[dev.zeko.stube.kernel/boot]].")

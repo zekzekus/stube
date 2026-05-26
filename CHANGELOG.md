@@ -24,6 +24,14 @@ development entry.
     warning, so the standard pre-PR check now catches lint
     regressions before tests even run. `AGENTS.md` documents the
     workflow and the `#_:clj-kondo/ignore` escape hatch.
+  - **R1-04** (#32): introduced a private `defalias` macro in
+    `dev.zeko.stube.core` and rewrote every plain
+    `(def ^{:doc "..."} foo target/foo)` re-export with it.
+    `:arglists` now flows through, so `(doc s/answer)`,
+    `(doc s/patch)`, `(doc s/end)` — and CIDER eldoc — show the
+    target signature. clj-kondo learns the form via
+    `:lint-as clj-kondo.lint-as/def-catch-all` so dependent
+    namespaces still resolve `s/...` names.
 
 ## 0.1.5
 

@@ -1,4 +1,10 @@
-{:linters
+{:lint-as
+ ;; `defalias` (core.clj) re-exports a target var while keeping `:doc`
+ ;; and `:arglists`.  Tell kondo to treat the form as a plain def so
+ ;; downstream namespaces can resolve the new vars.
+ {dev.zeko.stube.core/defalias clj-kondo.lint-as/def-catch-all}
+
+ :linters
  {:unresolved-var
   {:exclude [dev.zeko.stube.core/await]}
 
