@@ -42,9 +42,9 @@
   "#root")
 
 (def ^:dynamic *conv*
-  "The conversation being rendered, bound by the kernel for the duration
-  of one `render-frame` call.  [[render-slot]] consults it to look up
-  embedded children by id.
+  "The conversation being rendered, bound by `frame/render-frame` for
+  the duration of one render call.  [[render-slot]] consults it to
+  look up embedded children by id.
 
   Two-way bindings (`s/bind`) and event hooks (`s/on`) only need the
   cid; only slot rendering needs the conversation, hence the separate

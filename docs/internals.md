@@ -422,6 +422,9 @@ falls back to the standalone server's default kernel. Delivery spawns
 one future per subscriber and dispatches each as a normal event with
 `:payload` set to the published message.
 
+The `*…*` vars named above are documented in
+[Dynamic bindings](#dynamic-bindings) below.
+
 ### Single-JVM scope
 
 Pub/sub is **in-process only by design**. A `(s/publish! topic msg)`
@@ -698,6 +701,72 @@ file‑for‑file and are short. Reading the kernel tests
 (`kernel_test.clj`, `flow_test.clj`, `embed_test.clj`,
 `back_test.clj`) is one of the fastest ways to internalise the
 semantics of each effect.
+
+---
+
+## Dynamic bindings
+
+stube uses a small set of `^:dynamic` vars to keep the pure kernel
+decoupled from the runtime while still letting handlers schedule
+events, subscribe, publish, and read app/principal/context. They
+fall into five groups.
+
+### Side-effect hooks (kernel ↔ runtime seam)
+
+Bound by `runtime/with-kernel-bindings` around every kernel
+dispatch.  Read inside the kernel fold so a pure `(s/dispatch …)` /
+`(s/replay …)` can run with the side effects left inert.
+
+| var | bound by | read by | nil means |
+|---|---|---|---|
+| `kernel/*schedule-event!*` | `runtime/with-kernel-bindings` | `effects.step` for `[:after …]` | timer is dropped |
+| `kernel/*subscribe!*` | `runtime/with-kernel-bindings` | `effects.step` for `[:subscribe …]` | subscribe is dropped |
+| `kernel/*unsubscribe!*` | `runtime/with-kernel-bindings` | `effects.step` for `[:unsubscribe …]` | unsubscribe is dropped |
+| `kernel/*run-io!*` | `runtime/with-kernel-bindings` | `effects.step` for `[:io …]` | `:io` effect is inert |
+
+### Kernel / app / principal context
+
+Bound by the runtime so component code can resolve "what kernel am
+I in?", "what app deps did the embedder attach?", and "who is the
+authenticated principal on this conversation?".
+
+| var | bound by | read by | nil means |
+|---|---|---|---|
+| `kernel/*current-kernel*` | `runtime/with-kernel-bindings` | `s/publish!`, `kernel/warn-fallback-once!` | publish targets the standalone default kernel; per-kernel deduped warnings skip |
+| `kernel/*current-app*` | `runtime/with-kernel-bindings`; `core/with-app` (tests) | `s/app` | `(s/app)` returns nil |
+| `kernel/*current-principal*` | `runtime/with-kernel-bindings`; `core/with-principal` (tests) | `s/principal` | anonymous conversation |
+
+### Render context
+
+Bound around hiccup rendering so attribute helpers can build URLs
+and look up embedded children without each `:render` fn passing
+them through.
+
+| var | bound by | read by | nil means |
+|---|---|---|---|
+| `render/*cid*` | `frame/render-frame`, http handlers, halos | `render/event-url`, `render/sse-url`, `render/back-url`, etc. | render is being exercised outside an http context (e.g. tests); URLs use a placeholder |
+| `render/*base-path*` | `runtime/with-kernel-bindings`, `runtime/replay-with` | URL builders in `render.clj` | empty string (standalone default) |
+| `render/*root-selector*` | `runtime/with-kernel-bindings`, `runtime/replay-with` | shell/first-frame render | `#root` |
+| `render/*conv*` | `frame/render-frame` | `render/render-slot` to locate embedded children by id | slot rendering produces a placeholder |
+
+### Effect-origin context
+
+| var | bound by | read by | nil means |
+|---|---|---|---|
+| `effects/*effect-iid*` | `kernel/dispatch` and `lifecycle/*-hook` paths via `effects/with-origin` | slot-local effects that need the actual emitting instance instead of the top frame | effects fall back to top-frame heuristics |
+
+### Error / dev tooling
+
+| var | bound by | read by | nil means |
+|---|---|---|---|
+| `errors/*on-error*` | `runtime/with-kernel-bindings` | `errors/build-fragment` | the host-level reporting hook is not installed; the banner still renders |
+| `dev/*enabled?*` | tests that opt out of schema validation | `dev/validate!` | follow the global `*enabled?*` default (dev-mode schema check is on) |
+
+### Flow internals
+
+| var | bound by | read by | nil means |
+|---|---|---|---|
+| `flow/*answer*` | `flow/defflow` resume path | cloroutine `(s/await …)` resume value | flow is not in the middle of a resume |
 
 ---
 

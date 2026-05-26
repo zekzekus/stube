@@ -67,6 +67,12 @@ development entry.
     `halt!`). Two embedded kernels in the same JVM now each emit
     their own one-time message. Kernel-less paths (pure
     `s/dispatch` / `s/replay`) skip the warning entirely.
+  - **R1-09** (#37): new `Dynamic bindings` section in
+    `docs/internals.md` catalogues every `^:dynamic` var (15 of
+    them across kernel/render/effects/errors/flow/dev) by where
+    it is bound, where it is read, and what `nil` means. Also
+    fixes the stale `render/*conv*` docstring (`frame/render-frame`
+    is the binder, not the kernel).
 
 ## 0.1.5
 
