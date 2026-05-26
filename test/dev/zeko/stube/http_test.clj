@@ -43,6 +43,23 @@
     (is (some #(= "already" (:conv/owner-token %))
               (vals (server/active-conversations))))))
 
+(deftest shell-set-cookie-matches-conv-owner-token
+  ;; Pins the shell→SSE handshake.  shell-handler used to call
+  ;; ensure-session twice on a cookie-less request: once to compute the
+  ;; Set-Cookie header, once inside mint-conversation!.  Each call
+  ;; minted a fresh sid, so the conversation ended up owned by a sid
+  ;; the browser was never told about — and the subsequent SSE GET
+  ;; (now carrying the cookie from Set-Cookie) was rejected as
+  ;; cross-session.
+  (let [resp     ((http/shell-handler :test/root) {:headers {}})
+        cookie   (get-in resp [:headers "Set-Cookie"])
+        sid      (second (re-find #"stube_sid=([^;]+)" cookie))
+        owners   (->> (server/active-conversations) vals
+                      (keep :conv/owner-token) set)]
+    (is (some? sid) "Set-Cookie should include stube_sid=<value>")
+    (is (contains? owners sid)
+        "minted conversation must be owned by the sid in Set-Cookie")))
+
 (deftest event-rejects-wrong-session
   (registry/register!
     {:component/id :test/noop

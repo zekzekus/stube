@@ -2,7 +2,11 @@
  ;; `defalias` (core.clj) re-exports a target var while keeping `:doc`
  ;; and `:arglists`.  Tell kondo to treat the form as a plain def so
  ;; downstream namespaces can resolve the new vars.
- {dev.zeko.stube.core/defalias clj-kondo.lint-as/def-catch-all}
+ {dev.zeko.stube.core/defalias       clj-kondo.lint-as/def-catch-all
+
+  ;; `with-page` binds its first vector arg the way `with-open` does
+  ;; (one binding, one init expression), so kondo can model it the same.
+  dev.zeko.stube.e2e.fixture/with-page clojure.core/with-open}
 
  :linters
  {:unresolved-var

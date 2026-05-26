@@ -222,12 +222,21 @@
    (install-conversation! k root-id {} nil owner-token)))
 
 (defn mint-conversation!
-  "Register a new conversation for `root-id` and return its cid."
+  "Register a new conversation for `root-id` and return its cid.
+
+  The 4-arity calls [[ensure-session]] internally; the 5-arity accepts
+  a pre-computed `owner-token` from a caller that already ran
+  ensure-session and needs the conversation to be owned by *that*
+  exact session (otherwise ensure-session, called with a still-
+  cookieless request, would mint a second sid and own the conv with
+  one the browser will never present)."
   ([k root-id request]
    (mint-conversation! k root-id {} request))
   ([k root-id init-args request]
    (let [[sid _set-cookie] (ensure-session k request)]
-     (install-conversation! k root-id init-args request sid))))
+     (install-conversation! k root-id init-args request sid)))
+  ([k root-id init-args request owner-token]
+   (install-conversation! k root-id init-args request owner-token)))
 
 (defn- cid-lock
   "Return (and lazily mint) the per-cid monitor object for `cid`.  Locking

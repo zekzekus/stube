@@ -226,9 +226,9 @@
                   "Cache-Control" "no-store"
                   "Retry-After"   "5"}
         :body    "stube is shutting down; try again in a moment."}
-       (let [[_sid set-cookie] (rt/ensure-session k req)
+       (let [[sid set-cookie] (rt/ensure-session k req)
              init-args (init-args-fn req)
-             cid       (rt/mint-conversation! k flow-id init-args req)
+             cid       (rt/mint-conversation! k flow-id init-args req sid)
              dev?      (rt/halos? k)
              pre-on?   (and dev? (halos-http/requested? req))]
          (when pre-on?

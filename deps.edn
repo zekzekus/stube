@@ -71,6 +71,28 @@
   {:extra-paths ["examples"]
    :main-opts   ["-m" "dev.zeko.stube.examples.embedded-ring"]}
 
+  ;; clojure -M:e2e   (or: make e2e)
+  ;; Browser-driven smoke tests over the live examples server.  Runs the
+  ;; whole examples catalogue on one http-kit instance and drives it
+  ;; with a single shared Chromium via Playwright.  See
+  ;; `test-e2e/dev/zeko/stube/e2e/fixture.clj` for harness lifecycle.
+  ;;
+  ;; First invocation downloads the Chromium browser to
+  ;; `~/.cache/ms-playwright/`.  Env vars: STUBE_E2E_PORT (default 18080),
+  ;; STUBE_E2E_HEADED=1 to watch the run.
+  :e2e
+  {:extra-paths ["test-e2e" "examples"]
+   :extra-deps  {io.github.cognitect-labs/test-runner
+                 {:git/tag "v0.5.1" :git/sha "dfb30dd"}
+                 ;; Keep the minor in lock-step with nixpkgs'
+                 ;; `playwright-driver.version`.  Mismatched minors will
+                 ;; ask for a Chromium revision the Nix bundle doesn't
+                 ;; ship (e.g. 1.49 → chromium-1148 vs 1.59 → chromium-1217).
+                 com.microsoft.playwright/playwright {:mvn/version "1.59.0"}}
+   :main-opts   ["-m" "cognitect.test-runner" "-d" "test-e2e"]
+   :exec-fn     cognitect.test-runner.api/test
+   :exec-args   {:dirs ["test-e2e"]}}
+
   ;; clojure -T:build {jar,install,deploy,clean}
   ;; Builds the library jar/pom under target/.  `deploy` shells out to
   ;; deps-deploy and reads CLOJARS_USERNAME / CLOJARS_PASSWORD from the
