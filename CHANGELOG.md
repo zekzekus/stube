@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.1.6
+
 - **R1 — refactor round 1** (road to 1.0): cleanup, docs, and a
   shape refresh around the embed / runtime / server seam. No
   user-visible behaviour change; the public surface stays where
