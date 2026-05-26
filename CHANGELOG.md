@@ -5,13 +5,9 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- Deployment error forced this release to keep changelog consistent
 
 ## 0.1.3
-
-(No changes yet.)
-
-## Unreleased
 
 - **Road to 1.0** (breaking, pre-1.0): trimmed pre-1.0 surface in
   preparation for stability.
