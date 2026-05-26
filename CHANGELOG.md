@@ -55,6 +55,12 @@ development entry.
     `docs/api.md` document why lifecycle keys are a closed set
     while resume keys (`:on-foo`, `:on-error-foo`) pass through
     verbatim.
+  - **R1-10** (#38): replaced the `subvec` + `apply hash-map`
+    accessors in `effects/call-resume` and
+    `effects/slot-call-resume` with positional destructure
+    (Option A from the issue). The wire shape stays a vector and
+    the kernel multimethod is unchanged; the per-effect
+    allocation overhead in `call`/`call-in-slot` goes away.
 
 ## 0.1.5
 

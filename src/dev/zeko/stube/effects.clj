@@ -73,10 +73,12 @@
   ([embed]            [:call embed :resume nil])
   ([embed resume-key] [:call embed :resume resume-key]))
 
-(defn call-embed  [eff] (nth eff 1))
-(defn call-resume [eff]
-  (let [tail (subvec (vec eff) 2)]
-    (-> (apply hash-map tail) :resume)))
+(defn call-embed [eff] (nth eff 1))
+;; Constructors above always emit `[:call <embed> :resume <k>]`, so
+;; the resume value sits at index 3.  Destructuring positionally
+;; avoids the per-effect `subvec` + `apply hash-map` allocation that
+;; the old `(:resume (apply hash-map …))` form paid on the hot path.
+(defn call-resume [[_op _embed _resume-kw resume]] resume)
 
 (defn call-in-slot
   "Temporarily swap an embedded slot's child; the new child answers back
@@ -84,11 +86,11 @@
   ([slot embed]            [:call-in-slot slot embed :resume nil])
   ([slot embed resume-key] [:call-in-slot slot embed :resume resume-key]))
 
-(defn slot-call-slot   [eff] (nth eff 1))
-(defn slot-call-embed  [eff] (nth eff 2))
-(defn slot-call-resume [eff]
-  (let [tail (subvec (vec eff) 3)]
-    (-> (apply hash-map tail) :resume)))
+(defn slot-call-slot  [eff] (nth eff 1))
+(defn slot-call-embed [eff] (nth eff 2))
+;; Constructors emit `[:call-in-slot <slot> <embed> :resume <k>]`.
+;; Same allocation argument as `call-resume` above.
+(defn slot-call-resume [[_op _slot _embed _resume-kw resume]] resume)
 
 (defn answer
   "Pop this frame; deliver `value` to the parent under its resume key."
