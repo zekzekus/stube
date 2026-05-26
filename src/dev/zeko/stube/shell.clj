@@ -19,10 +19,9 @@
 (defn fragment
   "Hiccup fragment a host page can slot into its own layout.  It opens
   the SSE stream and contains the DOM target for the first stube patch."
-  [cid {:keys [dev? base-path route-style root-selector]
-        :or {base-path "" route-style :legacy root-selector "#root"}}]
+  [cid {:keys [dev? base-path root-selector]
+        :or {base-path "" root-selector "#root"}}]
   (binding [render/*base-path* base-path
-            render/*route-style* route-style
             render/*root-selector* root-selector]
     [:div (cond-> {:data-init (str "@get('" (render/sse-url cid) "')")}
             dev? (assoc :data-stube-cid cid
@@ -36,10 +35,9 @@
 
   Standalone [[html]] uses this directly; embedders normally call the
   public `dev.zeko.stube.embed/head-tags` wrapper for their kernel."
-  [{:keys [dev? ui-css? base-path route-style root-selector]
-    :or {ui-css? true base-path "" route-style :legacy root-selector "#root"}}]
+  [{:keys [dev? ui-css? base-path root-selector]
+    :or {ui-css? true base-path "" root-selector "#root"}}]
   (binding [render/*base-path* base-path
-            render/*route-style* route-style
             render/*root-selector* root-selector]
     (cond-> []
       ui-css? (conj [:link {:rel "stylesheet" :href (render/ui-css-url)}])
@@ -52,8 +50,8 @@
   started with `:halos? true`), inject the halos overlay script and the
   `data-stube-cid` hook so the floating pill can activate the overlay."
   [cid opts-or-dev?]
-  (let [{:keys [dev? ui-css? base-path route-style root-selector]
-         :or {ui-css? true base-path "" route-style :legacy root-selector "#root"}}
+  (let [{:keys [dev? ui-css? base-path root-selector]
+         :or {ui-css? true base-path "" root-selector "#root"}}
         (if (map? opts-or-dev?)
           opts-or-dev?
           {:dev? opts-or-dev?})]
@@ -62,16 +60,13 @@
   ;; patch the kernel pushes thereafter morphs into the DOM by id,
   ;; starting with the `<div id="root">` placeholder below.
     (binding [render/*base-path* base-path
-              render/*route-style* route-style
               render/*root-selector* root-selector]
       (let [[_ body-attrs root] (fragment cid {:dev? dev?
                                                :base-path base-path
-                                               :route-style route-style
                                                :root-selector root-selector})
             assets (head-tags {:dev? dev?
                                :ui-css? ui-css?
                                :base-path base-path
-                               :route-style route-style
                                :root-selector root-selector})]
         (chassis/html
           [chassis/doctype-html5

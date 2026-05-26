@@ -78,7 +78,7 @@
 
   Differs in shape from [[dev.zeko.stube.core/replay]], which does not
   take a kernel.  Use this one when you want the replay to honour the
-  same base-path / route-style / context the kernel produces in
+  same base-path / context the kernel produces in
   production; the bare `core/replay` is for unit-tests of components
   whose render output doesn't depend on those bindings."
   [k root-id events]
@@ -188,9 +188,6 @@
 
 (defn ^:no-doc base-path [k]
   ((runtime-var 'dev.zeko.stube.runtime/base-path) k))
-
-(defn ^:no-doc route-style [k]
-  ((runtime-var 'dev.zeko.stube.runtime/route-style) k))
 
 (defn ^:no-doc root-selector [k]
   ((runtime-var 'dev.zeko.stube.runtime/root-selector) k))

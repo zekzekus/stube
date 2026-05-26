@@ -22,7 +22,7 @@
   frame: the parent's `:instance/resume` value names the function to call.
 
   Author keys (`:init`, `:render`, `:handle`, `:keep`, `:doc`, `:state`,
-  `:start`, `:stop`, `:wakeup`, `:children`) are lifted to their
+  `:start`, `:stop`, `:wakeup`, `:children`, `:url`) are lifted to their
   `:component/<name>` homes by [[register!]] so every cdef the kernel
   reads has a single uniform namespace.
 
@@ -51,21 +51,6 @@
               m))
           cdef
           colocated-keys))
-
-(defn- lift-emit-on-mount
-  "Lift `:emit-on-mount` to `:component/start` (sugar for the
-  effect-only `:start` case).  Declaring both is a registration-time
-  error so the collision can't go unnoticed."
-  [cdef]
-  (if-not (contains? cdef :emit-on-mount)
-    cdef
-    (do
-      (when (contains? cdef :component/start)
-        (throw (ex-info ":emit-on-mount and :start may not be declared on the same component"
-                        {:component/id (:component/id cdef)})))
-      (-> cdef
-          (assoc :component/start (:emit-on-mount cdef))
-          (dissoc :emit-on-mount)))))
 
 ;; Only `:component/id` is strictly required.  All lifecycle keys
 ;; (`:component/init`, `:component/render`, `:component/handle`,
@@ -97,7 +82,7 @@
   (`defcomponent` macro, `register-component!` function, or
   `decorate!`)."
   [cdef]
-  (let [cdef (-> cdef validate! lift-colocated lift-emit-on-mount)]
+  (let [cdef (-> cdef validate! lift-colocated)]
     (swap! !components assoc (:component/id cdef) cdef)
     cdef))
 

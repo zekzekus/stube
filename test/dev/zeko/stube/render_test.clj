@@ -13,21 +13,21 @@
           [k v] (first attrs)]
       (is (= 1 (count attrs)))
       (is (= (keyword "data-on:submit") k))
-      (is (re-find #"@post\('/conv/cv-001/ix-9/submit'\)" v)))))
+      (is (re-find #"@post\('/event/cv-001/ix-9/submit'\)" v)))))
 
 (deftest on-encodes-structured-event-payload
   (binding [render/*cid* "cv-001"]
     (let [attrs (render/on {:instance/id "ix-9"} :click :as [:pick-day 12])
           [k v] (first attrs)]
       (is (= (keyword "data-on:click") k))
-      (is (re-find #"/conv/cv-001/ix-9/pick-day\?_stube_payload=12" v)))))
+      (is (re-find #"/event/cv-001/ix-9/pick-day\?_stube_payload=12" v)))))
 
 (deftest on-target-routes-to-explicit-instance
   (binding [render/*cid* "cv-001"]
     (let [attrs (render/on-target "ix-parent" :click :as [:open 42])
           [k v] (first attrs)]
       (is (= (keyword "data-on:click") k))
-      (is (re-find #"/conv/cv-001/ix-parent/open\?_stube_payload=42" v)))))
+      (is (re-find #"/event/cv-001/ix-parent/open\?_stube_payload=42" v)))))
 
 (deftest on-without-cid-throws
   (binding [render/*cid* nil]
@@ -115,7 +115,7 @@
   (binding [render/*cid* "cv-001"]
     (is (= [:button {:type "button"
                      :class "stube-button"
-                     (keyword "data-on:click") "@post('/conv/cv-001/back')"}
+                     (keyword "data-on:click") "@post('/back/cv-001')"}
             "Back"]
            (render/back-button "Back")))))
 
@@ -123,7 +123,7 @@
   (binding [render/*cid* "cv-001"]
     (let [self {:instance/id "ix-9"}]
       (is (= {:method  "post"
-              :action  "/stube/upload/cv-001/ix-9"
+              :action  "/upload/cv-001/ix-9"
               :enctype "multipart/form-data"
               :target  "stube-upload-ix-9"}
              (render/upload-attrs self)))

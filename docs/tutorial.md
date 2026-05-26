@@ -608,8 +608,8 @@ A few rules of thumb:
   conversation across two identities is exactly the bug
   mint-time principals prevent.
 - **In tests**, both default to `nil`. Component tests that need a
-  stand-in can wrap the dispatch with
-  `(binding [dev.zeko.stube.kernel/*current-app* {:db stub}] …)`.
+  stand-in can wrap the dispatch with `(s/with-app {:db stub} …)` (or
+  `s/with-principal` for the principal slot).
 
 See `examples/dev/zeko/stube/examples/protected_counter.clj` for a
 working demo, including the framework-owner-cookie protection that
@@ -632,8 +632,7 @@ the framework:
 
 1. **`:init-args-fn`** on `s/mount!` parses the GET query string into
    the root's `:init` args.
-2. **`:emit-on-mount`** (or `:start` if you have other lifecycle
-   ceremony to do) emits any keyed-children / signal setup the URL
+2. **`:start`** emits any keyed-children / signal setup the URL
    implies, so the page renders the asked-for state on first paint.
 3. **`:url`** projects the live `:item-ids` (or whatever the durable
    shape is) back into the address bar as the user mutates state.
@@ -666,12 +665,12 @@ are restored:
   :url    (fn [self] (url-for (:item-ids self)))
 
   ;; 2) Restore-from-URL: emit the keyed-children setup based on the
-  ;;    just-initialised state.  :emit-on-mount is sugar for the
-  ;;    effect-only :start case; declaring both raises at registration.
-  :emit-on-mount
+  ;;    just-initialised state.
+  :start
   (fn [self]
-    (when (seq (:item-ids self))
-      [(s/set-keyed-children :slot/items (pairs (:item-ids self)))]))
+    (if-not (seq (:item-ids self))
+      [self []]
+      [self [(s/set-keyed-children :slot/items (pairs (:item-ids self)))]]))
 
   :render (fn [self]
             [:section (s/root-attrs self)
@@ -703,9 +702,9 @@ are restored:
 - `:url` is a *projection*, not state. Authoritative state lives on
   the instance map; the URL just mirrors it. Browser Back / Forward
   (with `:push`) walks history through the kernel, no special case.
-- `:emit-on-mount` only exists because keyed-children needs an effect
-  to populate the slot before first render. Components without
-  keyed children don't need it — `:init` is enough.
+- `:start` does the keyed-children setup because that needs to be
+  an *effect*, not state — `:init` returns the state map only.
+  Components without keyed children don't need `:start` at all.
 
 **The cid-cookie trade-off.** Two browsers hitting the same URL each
 get a fresh cid; each conversation reconstitutes from the URL

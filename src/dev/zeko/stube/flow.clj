@@ -27,8 +27,9 @@
 
   The result is a component whose externally observable behaviour is
   identical to a hand-rolled chain of `:on-step-N` callbacks (modulo the
-  resume key's name; see §13 of `v2_1.md`), but whose source reads as
-  ordinary Clojure.
+  resume key's name; see ADR
+  [0001-resume-key-naming](../../../../docs/decisions/0001-resume-key-naming.md)),
+  but whose source reads as ordinary Clojure.
 
   ──────────────────────────────────────────────────────────────────────
   Restrictions inherited from cloroutine
@@ -38,8 +39,10 @@
     method, or anywhere else the surrounding form might escape the
     coroutine's synchronous context.  `let`/`do`/`if`/`cond`/`when`/
     `loop`+`recur` are all fine.
-  * `try`/`catch` *across* an `await` is not supported in slice 1 (open
-    question, see `v2_1.md` §13).
+  * `try`/`catch` *across* an `await` is not supported: a `catch` in
+    the surrounding body cannot intercept the exception thrown into
+    the coroutine on resume.  Use [[dev.zeko.stube.core/answer-error]]
+    in the child to route failures explicitly.
   * Storing the coroutine on the instance map gives up EDN
     serialisability for flow instances.  A conversation containing a
     `defflow` is therefore not durable — the [[dev.zeko.stube.store]]

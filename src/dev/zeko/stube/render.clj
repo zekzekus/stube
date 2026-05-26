@@ -35,12 +35,6 @@
   Datastar URLs stay inside the host route tree."
   "")
 
-(def ^:dynamic *route-style*
-  "Route shape used by URL helpers.  `:legacy` preserves the original
-  standalone paths (`/conv/...`, `/stube/upload/...`); `:adapter` uses
-  the embeddable Ring adapter paths (`/sse/...`, `/event/...`)."
-  :legacy)
-
 (def ^:dynamic *root-selector*
   "Selector targeted by the first frame render.  The shell and embedded
   fragment render a matching element."
@@ -110,9 +104,7 @@
 (defn sse-url
   "URL the shell uses to open the Datastar SSE stream for `cid`."
   [cid]
-  (case *route-style*
-    :adapter (path "/sse/" cid)
-    :legacy  (path "/conv/" cid "/sse")))
+  (path "/sse/" cid))
 
 (defn ui-css-url
   "URL for the stock stylesheet in the current mount."
@@ -144,9 +136,7 @@
                     {:route-event route-event})))
   (let [{:keys [event payload]} (parse-route-event route-event)
         cid  (require-cid!)
-        base (case *route-style*
-               :adapter (path "/event/" cid "/" iid "/" (name event))
-               :legacy  (path "/conv/" cid "/" iid "/" (name event)))]
+        base (path "/event/" cid "/" iid "/" (name event))]
     (if (= no-payload payload)
       base
       (str base "?" payload-query-param "=" (url-encode (pr-str payload))))))
@@ -172,10 +162,7 @@
 (defn back-url
   "URL the browser POSTs to for the conversation-level Back action."
   []
-  (let [cid (require-cid!)]
-    (case *route-style*
-      :adapter (path "/back/" cid)
-      :legacy  (path "/conv/" cid "/back"))))
+  (path "/back/" (require-cid!)))
 
 (defn upload-url
   "URL a multipart upload form POSTs to for `self`.
@@ -189,9 +176,7 @@
   (let [iid (or (:instance/id self)
                 (throw (ex-info "dev.zeko.stube.render/upload-url requires an instance map"
                                 {:got self})))]
-    (case *route-style*
-      :adapter (path "/upload/" (require-cid!) "/" iid)
-      :legacy  (path "/stube/upload/" (require-cid!) "/" iid))))
+    (path "/upload/" (require-cid!) "/" iid)))
 
 (defn upload-target
   "Stable hidden iframe target name for upload forms owned by `self`."
@@ -299,9 +284,11 @@
 
       (s/back-button \"Back\")
 
-  This intentionally does not take `self`: browser history rewind is a
-  conversation operation, not a component-local event.  For wizard-style
-  Back buttons that answer a parent with a sentinel, keep using
+  This intentionally does not take `self`: conversation-level history
+  rewind is a conversation operation, not a component-local event.  It
+  walks `:conv/history` (not `window.history`) — the browser's Back
+  button still works independently.  For wizard-style Back buttons that
+  answer a parent with a sentinel, keep using
   `(s/on self :click :as ...)` from that component."
   ([label]
    (back-button label {}))

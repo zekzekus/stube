@@ -126,11 +126,12 @@ picked them up from UCW and Seaside, that is also fine.
 
 ## See also
 
-- [`docs/v2.md`](v2.md) — the original design.
-- [`docs/v2_1.md`](v2_1.md) — the revised plan, including §0 on the
-  five Datastar facts the implementation had to discover the hard
-  way.
-- [`docs/seaside-examples.md`](seaside-examples.md) — Seaside's
-  canonical examples ported to stube.
-- [`docs/halos-spike.md`](halos-spike.md) — the dev overlay, shaped
-  after Smalltalk's halos.
+- [`docs/archive/v2.md`](archive/v2.md) — the original design.
+- [`docs/archive/v2_1.md`](archive/v2_1.md) — the revised plan,
+  including §0 on the five Datastar facts the implementation had to
+  discover the hard way.
+- [`docs/archive/seaside-examples.md`](archive/seaside-examples.md) —
+  Seaside's canonical examples ported to stube (live examples in
+  `examples/` are the source of truth now).
+- [`docs/archive/halos-spike.md`](archive/halos-spike.md) — the dev
+  overlay design spike, shaped after Smalltalk's halos.

@@ -3,7 +3,7 @@
 Tracking what's left. The road-to-1.0 sweep that landed in 0.1.1 cleared
 most of the leverage items; what's here is the small set of things that
 genuinely remain. Older history — the full 1.0 punch list, the tiered
-sweeps, the resolved items — lives at `docs/archived_todo.md`.
+sweeps, the resolved items — lives at `docs/archive/archived_todo.md`.
 
 Three tiers:
 

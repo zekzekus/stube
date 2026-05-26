@@ -92,7 +92,7 @@
 (defn inspect [cid] (s/inspect cid))
 
 ;; ---------------------------------------------------------------------------
-;; Halos — dev overlay (see docs/halos-spike.md)
+;; Halos — dev overlay (see docs/archive/halos-spike.md)
 ;; ---------------------------------------------------------------------------
 ;;
 ;; Quick path:

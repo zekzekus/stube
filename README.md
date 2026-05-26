@@ -73,8 +73,8 @@ Seaside model, rebuilt for 2026.
 | [**Rationale**](docs/rationale.md) | Why stube exists. Seaside, the uncommon web, and where the model came from. |
 | [**Changelog**](CHANGELOG.md) | Big-rock changes by release/development pass. |
 
-The design notes that drove the implementation live in
-[`docs/v2.md`](docs/v2.md) and [`docs/v2_1.md`](docs/v2_1.md).
+The historical design notes that drove the implementation are
+archived under [`docs/archive/`](docs/archive/).
 
 ---
 

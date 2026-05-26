@@ -43,8 +43,8 @@ Two embedder options on `make-kernel`:
   re-attach to whatever the new kernel has.
 - **`(s/app)` and `(s/principal)` are zero-arity.** They read
   dynamic vars the runtime binds during dispatch and render. Tests
-  that need a stand-in can rebind: `(binding
-  [dev.zeko.stube.kernel/*current-app* {:db stub}] …)`.
+  that need a stand-in wrap the call site with `(s/with-app {:db
+  stub} …)` (or `s/with-principal`).
 - **Identity changes require ending the conversation.** Reusing one
   conversation across two identities (a session swap mid-flow) is
   the exact failure mode mint-time principals prevent. The framework

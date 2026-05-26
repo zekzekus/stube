@@ -138,7 +138,7 @@ framework-owned keyed-child metadata.
 ### Resume keys, the right way around
 
 This bit is worth stating clearly because it's the single thing
-v2.md got slightly wrong:
+`docs/archive/v2.md` got slightly wrong:
 
 > The resume key lives on the **child** frame, not the parent.
 
@@ -246,7 +246,7 @@ Following one click from browser back to browser. Pretend you clicked
 
 ```
 browser
-  │ click → Datastar reads data-on:click → @post('/conv/CID/IID/inc')
+  │ click → Datastar reads data-on:click → @post('/event/CID/IID/inc')
   ▼
 http.clj  event-handler
   │ pull cid, iid, event name from path
@@ -494,16 +494,14 @@ effort; a disk-full condition must not break the live request.
 Five conversation routes, all in `dev.zeko.stube.http`:
 
 ```
-GET  /<mount-path>           → shell-handler   ; mint cid, serve HTML
-GET  /conv/:cid/sse          → sse-handler     ; long-lived SSE
-POST /conv/:cid/back         → back-handler    ; emit [:back]
-POST /conv/:cid/:iid/:event  → event-handler   ; dispatch one event
-POST /stube/upload/:cid/:iid → upload-handler  ; multipart → :upload-received
+GET  /<mount-path>             → shell-handler   ; mint cid, serve HTML
+GET  /sse/:cid                 → sse-handler     ; long-lived SSE
+POST /back/:cid                → back-handler    ; emit [:back]
+POST /event/:cid/:iid/:event   → event-handler   ; dispatch one event
+POST /upload/:cid/:iid         → upload-handler  ; multipart → :upload-received
 ```
 
-Those are the standalone/legacy shapes. Embedded kernels default to the
-shorter adapter routes under their `:base-path`: `/sse/:cid`,
-`/back/:cid`, `/event/:cid/:iid/:event`, and `/upload/:cid/:iid`.
+Embedded kernels prefix the same paths with their `:base-path`.
 
 Plus `/stube/ui.css` (the stock stylesheet), `/stube/preserve.js` (the
 preserved-subtree bridge — also hosts the `data-stube-on-unmount`
@@ -607,7 +605,7 @@ http-server-close` plus a large `timeout tunnel` works.
     <script type="module" src="/stube/preserve.js"></script>
     <script type="module" src="<datastar-cdn>"></script>
   </head>
-  <body data-init="@get('/conv/CID/sse')">
+  <body data-init="@get('/sse/CID')">
     <div id="root"></div>
   </body>
 </html>
@@ -616,11 +614,11 @@ http-server-close` plus a large `timeout tunnel` works.
 `data-init` is what Datastar fires once when it processes the
 element. (`data-on:load` doesn't, because `<body>` has no `load`
 event after Datastar attaches — one of the five Datastar facts the
-slice-0 implementation had to discover the hard way; see `v2_1.md`
-§0.)
+slice-0 implementation had to discover the hard way; see
+`docs/archive/v2_1.md` §0.)
 
 `shell/head-tags` exposes the same head nodes for embedders, with
-`:base-path`, `:route-style`, `:ui-css?`, and `:halos?` already applied;
+`:base-path`, `:ui-css?`, and `:halos?` already applied;
 `embed/head-tags` is the public wrapper. After that one line of HTML,
 every UI patch in the user's session arrives via the SSE stream.
 
@@ -725,4 +723,4 @@ A few things that are deliberately not in stube as of this writing:
   framework's vocabulary.
 
 If any of these change before 1.0, the change will land in
-`docs/v2_1.md` (or its successor) first, with the rationale.
+`docs/decisions/` (or its successor) first, with the rationale.

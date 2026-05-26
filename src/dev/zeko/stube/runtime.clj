@@ -38,7 +38,6 @@
             :principal-fn      nil
             :store             (store/in-memory-store)
             :base-path         ""
-            :route-style       :adapter
             :root-selector     "#root"
             :session-id-fn     session/request-session
             :ensure-session-fn (when-not custom-session?
@@ -104,7 +103,6 @@
 
 (defn current-store [k] (:store k))
 (defn base-path [k] (:base-path k))
-(defn route-style [k] (:route-style k))
 (defn root-selector [k] (:root-selector k))
 (defn ui-css? [k] (boolean (:ui-css? k)))
 (defn halos? [k] (boolean (:halos? k)))
@@ -139,7 +137,6 @@
   (let [principal (get-in @(:!conversations k) [cid :conv/principal])]
     (binding [render/*cid* cid
               render/*base-path* (:base-path k)
-              render/*route-style* (:route-style k)
               render/*root-selector* (:root-selector k)
               pure/*current-kernel* k
               pure/*current-app* (:app k)
@@ -160,7 +157,6 @@
   (let [principal (get-in @(:!conversations k) [cid :conv/principal])]
     (binding [render/*cid* cid
               render/*base-path* (:base-path k)
-              render/*route-style* (:route-style k)
               render/*root-selector* (:root-selector k)
               pure/*current-app* (:app k)
               pure/*current-principal* principal]
@@ -398,7 +394,6 @@
   [k cid]
   (shell/fragment cid {:dev? (halos? k)
                        :base-path (:base-path k)
-                       :route-style (:route-style k)
                        :root-selector (:root-selector k)}))
 
 (defn head-tags
@@ -407,7 +402,6 @@
   (shell/head-tags {:dev? (halos? k)
                     :ui-css? (ui-css? k)
                     :base-path (:base-path k)
-                    :route-style (:route-style k)
                     :root-selector (:root-selector k)}))
 
 ;; ---------------------------------------------------------------------------
@@ -541,7 +535,6 @@
         c0  (cond-> (conv/new-conversation)
               (some? ctx) (assoc :conv/context ctx))]
     (binding [render/*base-path* (:base-path k)
-              render/*route-style* (:route-style k)
               render/*root-selector* (:root-selector k)
               pure/*run-io!* nil]
       (let [[booted boot-frags]

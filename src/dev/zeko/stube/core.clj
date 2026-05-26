@@ -84,8 +84,8 @@
 
   `registry/register!` lifts colocated author keys (`:init`, `:render`,
   `:handle`, `:keep`, `:doc`, `:state`, `:start`, `:stop`, `:wakeup`,
-  `:children`) to `:component/<name>` so cdefs are uniform regardless of
-  which entry point produced them."
+  `:children`, `:url`) to `:component/<name>` so cdefs are uniform
+  regardless of which entry point produced them."
   ([id opts]
    (register-component! id opts nil))
   ([id opts source]
@@ -316,7 +316,7 @@
   Returns `nil` outside a runtime dispatch/render (e.g. when component
   code is exercised through `core/replay` in a unit test).  Component
   tests that need a stand-in can wrap the call site with
-  `(binding [dev.zeko.stube.kernel/*current-app* my-stub] …)`."
+  [[with-app]]."
   []
   kernel/*current-app*)
 
@@ -326,9 +326,31 @@
 
   Returns `nil` for anonymous conversations.  The principal is fixed
   for the life of the conversation — to refresh it (post-login, after
-  account switching), end the conversation and re-mint."
+  account switching), end the conversation and re-mint.
+
+  Tests that need a stand-in can wrap the call site with
+  [[with-principal]]."
   []
   kernel/*current-principal*)
+
+(defmacro with-app
+  "Run `body` with `(s/app)` returning `app-value`.  Intended for
+  component-author tests that exercise handler/render code through
+  [[replay]] or [[dispatch]] without a running runtime.
+
+      (s/with-app {:db stub-conn}
+        (s/replay :my/component events))"
+  [app-value & body]
+  `(binding [kernel/*current-app* ~app-value]
+     ~@body))
+
+(defmacro with-principal
+  "Run `body` with `(s/principal)` returning `principal-value`.  Pairs
+  with [[with-app]] for tests that need a stand-in principal without
+  minting a real conversation."
+  [principal-value & body]
+  `(binding [kernel/*current-principal* ~principal-value]
+     ~@body))
 
 (def ^{:doc "Sentinel returned by cancellable stock UI components."}
   cancel ui/cancel)

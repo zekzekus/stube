@@ -71,7 +71,6 @@ Recognised keys:
 | `:render` | `(fn [self] hiccup)` | whenever a frame needs re-rendering |
 | `:handle` | `(fn [self {:keys [event payload signals]}] …)` | on every dispatched event |
 | `:start` | `(fn [self] …)` | once, right after instantiation |
-| `:emit-on-mount` | `(fn [self] effects)` | sugar over `:start` for the effect-only case; collides with `:start` at registration |
 | `:stop` | `(fn [self] …)` | just before the frame/subtree is removed |
 | `:wakeup` | `(fn [self] …)` | when a persisted/history-restored frame becomes live again |
 | `:on-<key>` | `(fn [self answer-value] …)` | when a child `:answer`s under that resume key |
@@ -498,9 +497,9 @@ iid, and a pure reorder emits one outer patch for the container.
 **Restore-from-URL** lives at the intersection of keyed-children and
 `:init-args-fn`. Because the slot doesn't exist until a
 `:set-keyed-children` effect fires, components that re-create columns
-from a query string emit the setup from `:emit-on-mount` (or `:start`)
-based on the just-initialised ids. See [Shareable views — URL as
-durable state](tutorial.md#65--shareable-views--url-as-durable-state).
+from a query string emit the setup from `:start` based on the
+just-initialised ids. See [Shareable views — URL as durable
+state](tutorial.md#65--shareable-views--url-as-durable-state).
 
 ### `(s/context self)`
 
@@ -617,8 +616,8 @@ and how long it should live.
 - **Reading `(s/app)` outside a dispatch — e.g. in a top-level
   helper function or a test that never booted a kernel.** Returns
   `nil`. For tests, either run via `s/replay` against a registered
-  flow and bind `dev.zeko.stube.kernel/*current-app*` yourself, or
-  pass the dependency in as a function argument.
+  flow inside `(s/with-app {:db stub} …)`, or pass the dependency in
+  as a function argument.
 
 ### A worked migration
 
@@ -681,7 +680,7 @@ to `s/call` or `s/await` exactly like your own embeds.
 | function | answers with | purpose |
 |---|---|---|
 | `(s/confirm "Save?")` | `true` / `false` | Yes/No |
-| `(s/prompt "Name?")` / `(s/prompt "Name?" "default")` | typed string or `s/cancel` | text input |
+| `(s/prompt "Name?")` / `(s/prompt "Name?" "default")` | typed string, the supplied default if the user submits unchanged, or `s/cancel` | text input |
 | `(s/choose ["a" "b"] "Pick one:")` | the picked element or `s/cancel` | one-of-N |
 | `(s/info "Saved.")` | `:ok` | informational, single OK |
 
@@ -716,7 +715,7 @@ root component:
 ```
 
 For restore-from-URL into a keyed-children slot, pair `:init-args-fn`
-with `:emit-on-mount` / `:start` so the slot exists on first render —
+with `:start` so the slot exists on first render —
 see [URL as a projection of state](#url-as-a-projection-of-state) and
 the [Shareable views tutorial](tutorial.md#65--shareable-views--url-as-durable-state).
 
@@ -745,6 +744,8 @@ Options:
 | `:store` | `(s/in-memory-store)` | persistence backend |
 | `:ui-css?` | `true` | link the stock `/stube/ui.css` |
 | `:halos?` | `false` | enable dev halos (per-conv via `?halos=1`) |
+| `:app` | `nil` | host-app value returned by `(s/app)` |
+| `:principal-fn` | `nil` | `(fn [request] principal)` stamped at mint time and returned by `(s/principal)` |
 | `:conversation-ttl` | `nil` | reaper TTL (`java.time.Duration` or millis) |
 | `:reaper-interval` | 60000 | reaper interval |
 
@@ -794,7 +795,7 @@ Stable functions:
 
 `opts` supports `:context-fn`, `:app`, `:principal-fn`, `:store`,
 `:base-path`, `:session-id-fn`, `:on-conv-mint`, `:on-error`,
-`:ui-css?`, `:halos?`, `:route-style`, and `:root-selector`. Values
+`:ui-css?`, `:halos?`, and `:root-selector`. Values
 returned by `:context-fn` are available to handlers and lifecycle
 hooks with `(s/context self)`. For when to pick which primitive,
 see [Reading

@@ -3,16 +3,16 @@
 
   Five endpoints implement the client/server contract:
 
-  | route                       | method | purpose                                                                       |
-  |-----------------------------|--------|-------------------------------------------------------------------------------|
-  | `/<mount-path>`             | GET    | mint a conversation, serve the shell HTML                                     |
-  | `/conv/:cid/sse`            | GET    | open the long-lived SSE stream for the conversation                           |
-  | `/conv/:cid/back`           | POST   | restore the previous conversation snapshot                                    |
-  | `/stube/upload/:cid/:iid`   | POST   | parse multipart data and dispatch `:upload-received`                          |
-  | `/conv/:cid/:iid/:event`    | POST   | dispatch one event; the iid and event live in the path, signals in the body  |
+  | route                         | method | purpose                                                                       |
+  |-------------------------------|--------|-------------------------------------------------------------------------------|
+  | `/<mount-path>`               | GET    | mint a conversation, serve the shell HTML                                     |
+  | `/sse/:cid`                   | GET    | open the long-lived SSE stream for the conversation                           |
+  | `/back/:cid`                  | POST   | restore the previous conversation snapshot                                    |
+  | `/upload/:cid/:iid`           | POST   | parse multipart data and dispatch `:upload-received`                          |
+  | `/event/:cid/:iid/:event`     | POST   | dispatch one event; the iid and event live in the path, signals in the body  |
 
   The shell page is a trivial HTML document.  All real UI is delivered
-  via SSE patches once the browser connects to `/conv/:cid/sse`."
+  via SSE patches once the browser connects to `/sse/:cid`."
   (:require [charred.api                                       :as json]
             [clojure.edn                                      :as edn]
             [clojure.java.io                                  :as io]
@@ -240,7 +240,6 @@
           :body    (shell/html cid {:dev? dev?
                                     :ui-css? (embed/ui-css? k)
                                     :base-path (embed/base-path k)
-                                    :route-style (embed/route-style k)
                                     :root-selector (embed/root-selector k)})})))))
 
 (defn- resume-render
@@ -309,7 +308,7 @@
             (embed/unregister-sse! k cid))})))))
 
 (defn back-handler
-  "POST `/conv/:cid/back` — emit the [[:back]] effect.  Mirrors
+  "POST `/back/:cid` — emit the [[:back]] effect.  Mirrors
   [[event-handler]] but without an instance id or signals payload."
   ([req]
    (back-handler (default-kernel) req))
@@ -330,7 +329,7 @@
            {:status 204}))))))
 
 (defn upload-handler
-  "POST `/stube/upload/:cid/:iid` — parse a multipart request and route it
+  "POST `/upload/:cid/:iid` — parse a multipart request and route it
   to the target instance as `:upload-received`.
 
   Upload responses are written into a hidden iframe by `s/upload-attrs`;

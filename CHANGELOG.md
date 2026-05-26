@@ -5,6 +5,23 @@ development entry.
 
 ## Unreleased
 
+- **Road to 1.0** (breaking, pre-1.0): trimmed pre-1.0 surface in
+  preparation for stability.
+  - Removed the `:emit-on-mount` colocated key; use `:start`
+    directly. `:start` already covers the effect-only case
+    (`(fn [self] [self effects])`), so the sugar layer was net
+    cruft. Tutorial chapter and `reading_list.clj` updated. The
+    S-12 CHANGELOG note below describes the original sugar.
+  - Removed the dual URL route shape: the `:legacy` standalone
+    paths (`/conv/:cid/sse`, `/conv/:cid/:iid/:event`, …) are gone;
+    every kernel now uses the `:adapter` paths (`/sse/:cid`,
+    `/event/:cid/:iid/:event`, …). `:route-style` is no longer
+    an option to `s/start!`, `make-kernel`, or the shell.
+  - Added `s/with-app` and `s/with-principal` macros so component
+    tests no longer reach into `dev.zeko.stube.kernel/*current-*`
+    directly. Docstrings, `docs/api.md`, `docs/tutorial.md`, and
+    ADR 0004 updated to use them.
+
 - **S-15**: `s/on-unmount` Hiccup helper for preserved hosts. Mirrors
   `s/on-mount`: returns a `data-stube-on-unmount` attribute carrying
   a synchronous JS expression with `el` bound to the host element.

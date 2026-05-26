@@ -397,10 +397,10 @@
            ((:component/render deco) {})))))
 
 ;; ---------------------------------------------------------------------------
-;; S-12: init args + :emit-on-mount produce keyed children before first render
+;; S-12: init args + :start produce keyed children before first render
 ;; ---------------------------------------------------------------------------
 
-(deftest emit-on-mount-restores-keyed-children-from-init-args
+(deftest start-restores-keyed-children-from-init-args
   (registry/register!
     {:component/id     :s12/item
      :component/init   (fn [{:keys [id]}] {:id id})
@@ -408,12 +408,14 @@
   (registry/register!
     {:component/id     :s12/desk
      :component/init   (fn [{:keys [items]}] {:item-ids (vec (or items []))})
-     :emit-on-mount    (fn [self]
-                         (when (seq (:item-ids self))
-                           [(s/set-keyed-children
-                              :slot/items
-                              (mapv (fn [id] [id (s/embed :s12/item {:id id})])
-                                    (:item-ids self)))]))
+     :start            (fn [self]
+                         (if-not (seq (:item-ids self))
+                           [self []]
+                           [self
+                            [(s/set-keyed-children
+                               :slot/items
+                               (mapv (fn [id] [id (s/embed :s12/item {:id id})])
+                                     (:item-ids self)))]]))
      :component/render (fn [self]
                          [:section {:id (:instance/id self)}
                           (s/keyed-children self :slot/items)])})

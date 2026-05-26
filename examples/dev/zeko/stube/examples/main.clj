@@ -9,8 +9,8 @@
   interactive landing page.  This namespace only starts the shared
   server entry point used by `clojure -M:examples`.
 
-  See `seaside-examples.md` for the full curated list of Seaside apps
-  and which ones drive new framework functionality."
+  See `docs/archive/seaside-examples.md` for the full curated list of
+  Seaside apps and which ones drove new framework functionality."
   (:require [dev.zeko.stube.core              :as s]
             [dev.zeko.stube.examples.example-browser]))
 

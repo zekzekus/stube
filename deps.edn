@@ -1,15 +1,13 @@
 ;; stube — top-level dependency manifest.
 ;;
-;; Slice 0 keeps the production surface small on purpose:
+;; The production surface is intentionally small:
 ;;
 ;;   * Chassis            — fast Hiccup-compatible HTML rendering.
 ;;   * Charred            — fast pure-Clojure JSON parser/writer for signals.
 ;;   * Datastar SDK       — SSE event types and the http-kit adapter.
 ;;   * http-kit           — long-lived SSE-friendly HTTP server.
 ;;   * Reitit ring        — small data-driven router.
-;;
-;; cloroutine and the `defflow` macro arrive in slice 1; they are not pulled
-;; in here.
+;;   * cloroutine         — macro-based stackless coroutines powering `defflow`.
 
 {:paths ["src" "resources"]
 

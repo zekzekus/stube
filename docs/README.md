@@ -21,13 +21,19 @@ User-facing guides:
 - **[Changelog](../CHANGELOG.md)** — big-rock framework changes by
   release/development pass.
 
-Design notes (historical; useful context, not normative API docs):
+Archived (kept verbatim for reference, not updated):
 
-- **[v2.md](v2.md)** — the original design document.
-- **[v2_1.md](v2_1.md)** — the revised plan that drove the slices,
-  with §0 covering the five Datastar facts the implementation had
-  to discover the hard way.
-- **[seaside-examples.md](seaside-examples.md)** — Seaside's
-  canonical examples translated into stube.
-- **[halos-spike.md](halos-spike.md)** — the dev overlay design.
-- **[todo-tiers.md](todo-tiers.md)** — slice planning notes.
+- **[archive/v1.md](archive/v1.md)** — first design pass.
+- **[archive/v2.md](archive/v2.md)** — the original design document.
+- **[archive/v2_1.md](archive/v2_1.md)** — the revised plan that drove
+  the slices, with §0 covering the five Datastar facts the
+  implementation had to discover the hard way.
+- **[archive/todo-tiers.md](archive/todo-tiers.md)** — slice planning notes.
+- **[archive/seaside-examples.md](archive/seaside-examples.md)** —
+  Seaside's canonical examples translated into stube; the live examples
+  in `examples/` are now the source of truth.
+- **[archive/halos-spike.md](archive/halos-spike.md)** — the dev
+  overlay design spike.
+- **[archive/archived_todo.md](archive/archived_todo.md)** — the
+  road-to-1.0 punch list, resolved and superseded by
+  [todo.md](../todo.md).

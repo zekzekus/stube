@@ -10,10 +10,9 @@
   ──────────────────────────────────────────────────────────────────────
 
   * `:init-args-fn` on `s/mount!` parses `?items=` into `:items`.
-  * `:emit-on-mount` (sugar over `:start`) emits the
-    `[:set-keyed-children …]` setup so the keyed-children slot exists
-    on first render — without this, the URL says \"open three columns\"
-    but the desk shows nothing.
+  * `:start` emits the `[:set-keyed-children …]` setup so the
+    keyed-children slot exists on first render — without this, the
+    URL says \"open three columns\" but the desk shows nothing.
   * `:url` projects `:item-ids` back into `?items=` so adding or
     removing a column updates the address bar automatically.
 
@@ -87,11 +86,11 @@
 
   ;; Restore-from-URL: emit the keyed-children setup as soon as the
   ;; root is instantiated, using the ids that arrived via :init.
-  ;; `:emit-on-mount` is a thin sugar over `:start` — see docs/tutorial.md.
-  :emit-on-mount
+  :start
   (fn [self]
-    (when (seq (:item-ids self))
-      [(s/set-keyed-children :slot/items (pairs (:item-ids self)))]))
+    (if-not (seq (:item-ids self))
+      [self []]
+      [self [(s/set-keyed-children :slot/items (pairs (:item-ids self)))]]))
 
   :render
   (fn [self]

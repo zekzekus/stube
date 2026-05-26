@@ -26,7 +26,6 @@
 (defn- new-kernel [{:keys [store ui-css? halos? app principal-fn]
                     :or {ui-css? true halos? false}}]
   (embed/make-kernel {:store        (or store (store/in-memory-store))
-                      :route-style  :legacy
                       :base-path    ""
                       :ui-css?      ui-css?
                       :halos?       halos?

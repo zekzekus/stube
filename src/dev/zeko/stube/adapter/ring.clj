@@ -13,18 +13,10 @@
 
 (defn- core-routes [k]
   (let [base (embed/base-path k)]
-    (case (embed/route-style k)
-      :adapter
-      [[(join-path base "/sse/:cid")              {:get  {:handler (h http/sse-handler k)}}]
-       [(join-path base "/back/:cid")             {:post {:handler (h http/back-handler k)}}]
-       [(join-path base "/upload/:cid/:iid")      {:post {:handler (h http/upload-handler k)}}]
-       [(join-path base "/event/:cid/:iid/:event") {:post {:handler (h http/event-handler k)}}]]
-
-      :legacy
-      [[(join-path base "/conv/:cid/sse")          {:get  {:handler (h http/sse-handler k)}}]
-       [(join-path base "/conv/:cid/back")         {:post {:handler (h http/back-handler k)}}]
-       [(join-path base "/stube/upload/:cid/:iid") {:post {:handler (h http/upload-handler k)}}]
-       [(join-path base "/conv/:cid/:iid/:event")  {:post {:handler (h http/event-handler k)}}]])))
+    [[(join-path base "/sse/:cid")              {:get  {:handler (h http/sse-handler k)}}]
+     [(join-path base "/back/:cid")             {:post {:handler (h http/back-handler k)}}]
+     [(join-path base "/upload/:cid/:iid")      {:post {:handler (h http/upload-handler k)}}]
+     [(join-path base "/event/:cid/:iid/:event") {:post {:handler (h http/event-handler k)}}]]))
 
 (defn ring-routes
   "Return a Reitit route data vector for kernel `k`.
