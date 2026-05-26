@@ -5,6 +5,7 @@
             [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.core :as s]
             [dev.zeko.stube.embed :as embed]
+            [dev.zeko.stube.runtime :as rt]
             [dev.zeko.stube.kernel :as kernel]
             [dev.zeko.stube.registry :as registry]))
 
@@ -32,8 +33,8 @@
                            self))}))
 
 (defn- boot-live! [k cid]
-  (let [root (embed/pending-root k cid)]
-    (embed/apply-conv! k cid
+  (let [root (rt/pending-root k cid)]
+    (rt/apply-conv! k cid
       (fn [c] (kernel/run-effects c (kernel/boot root))))))
 
 (deftest make-kernel-instances-do-not-share-live-state
@@ -46,15 +47,15 @@
         cid2 (embed/mint-conversation! k2 :isolation/counter {} {})]
     (boot-live! k1 cid1)
     (boot-live! k2 cid2)
-    (let [iid1  (conv/top-id (embed/conversation k1 cid1))
-          _iid2 (conv/top-id (embed/conversation k2 cid2))]
+    (let [iid1  (conv/top-id (rt/conversation k1 cid1))
+          _iid2 (conv/top-id (rt/conversation k2 cid2))]
       (embed/dispatch! k1 cid1 {:instance-id iid1 :event :inc :signals {}})
-      (is (= 1 (:n (conv/top-instance (embed/conversation k1 cid1)))))
-      (is (= 0 (:n (conv/top-instance (embed/conversation k2 cid2)))))
-      (is (= "one" (:name (s/context (conv/top-instance (embed/conversation k1 cid1))))))
-      (is (= "two" (:name (s/context (conv/top-instance (embed/conversation k2 cid2))))))
-      (is (not (contains? (embed/active-conversations k1) cid2)))
-      (is (not (contains? (embed/active-conversations k2) cid1)))
+      (is (= 1 (:n (conv/top-instance (rt/conversation k1 cid1)))))
+      (is (= 0 (:n (conv/top-instance (rt/conversation k2 cid2)))))
+      (is (= "one" (:name (s/context (conv/top-instance (rt/conversation k1 cid1))))))
+      (is (= "two" (:name (s/context (conv/top-instance (rt/conversation k2 cid2))))))
+      (is (not (contains? (rt/active-conversations k1) cid2)))
+      (is (not (contains? (rt/active-conversations k2) cid1)))
       (is (str/includes? (pr-str (embed/shell-for k1 cid1))
                          (str "/one/sse/" cid1)))
       (is (str/includes? (pr-str (embed/shell-for k2 cid2))
@@ -85,13 +86,13 @@
         cid2 (embed/mint-conversation! k2 :isolation/pubsub {} {})]
     (boot-live! k1 cid1)
     (boot-live! k2 cid2)
-    (let [iid1 (conv/top-id (embed/conversation k1 cid1))]
+    (let [iid1 (conv/top-id (rt/conversation k1 cid1))]
       (embed/dispatch! k1 cid1 {:instance-id iid1
                                 :event       :publish
                                 :signals     {}})
       (is (eventually #(= "one" (:seen (conv/top-instance
-                                         (embed/conversation k1 cid1))))))
-      (is (nil? (:seen (conv/top-instance (embed/conversation k2 cid2))))))))
+                                         (rt/conversation k1 cid1))))))
+      (is (nil? (:seen (conv/top-instance (rt/conversation k2 cid2))))))))
 
 (deftest replay-works-against-kernel-without-starting-server
   (install-test-component!)
@@ -100,7 +101,7 @@
                                                             {:event :inc}])]
     (is (= 2 (:n (conv/top-instance c))))
     (is (= "replay" (:name (s/context (conv/top-instance c)))))
-    (is (empty? (embed/active-conversations k)))))
+    (is (empty? (rt/active-conversations k)))))
 
 (deftest app-and-principal-are-visible-to-component-code
   (let [seen     (atom [])
@@ -118,14 +119,14 @@
                                    :principal-fn login-fn})
           cid  (embed/mint-conversation! k :isolation/app-principal {}
                                          {:query-string "ada"})]
-      (let [root (embed/pending-root k cid)]
-        (embed/apply-conv! k cid
+      (let [root (rt/pending-root k cid)]
+        (rt/apply-conv! k cid
           (fn [c] (kernel/run-effects c (kernel/boot root)))))
-      (let [iid (conv/top-id (embed/conversation k cid))]
+      (let [iid (conv/top-id (rt/conversation k cid))]
         (embed/dispatch! k cid {:instance-id iid :event :ping :signals {}}))
       (is (= [{:app {:db ::stub-db} :principal :ada}] @seen)
           "handler sees both :app and :principal bound by the runtime")
-      (is (= :ada (:conv/principal (embed/conversation k cid)))
+      (is (= :ada (:conv/principal (rt/conversation k cid)))
           ":principal-fn result is persisted on the conversation"))))
 
 (deftest principal-defaults-to-nil-without-principal-fn
@@ -134,7 +135,7 @@
      :component/render (fn [self] [:div (s/root-attrs self)])})
   (let [k   (embed/make-kernel)
         cid (embed/mint-conversation! k :isolation/no-principal {} {})]
-    (is (nil? (:conv/principal (embed/conversation k cid))))))
+    (is (nil? (:conv/principal (rt/conversation k cid))))))
 
 (deftest ring-routes-use-kernel-base-path
   (let [k      (embed/make-kernel {:base-path "/widget"})

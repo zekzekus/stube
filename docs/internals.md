@@ -70,11 +70,13 @@ Three observations:
 1. **The kernel does not require the server.** The pure fold half of
    `kernel.clj` works over plain values; the server is what drives it.
    That is why `(s/dispatch conv event)` and `(s/replay …)` work with
-   no HTTP layer running. The embedder-façade half of the same file
-   (the `make-kernel`-and-friends block) lazily forwards into
-   `runtime.clj` via `requiring-resolve` so the pure fold can stay
-   load-order-independent while hosts get a single import surface.
-   The pure/impure split is codified in
+   no HTTP layer running. The embedder-façade in `embed.clj` is a thin
+   public surface — ~10 functions, all documented — that delegates
+   straight into `runtime.clj` via a normal `:require`; adapters
+   (`http.clj`, `halos/http.clj`, the standalone `server.clj`) reach
+   into runtime directly. See ADR 0006 for the rationale and the
+   earlier `requiring-resolve` indirection it replaces. The pure/impure
+   split is codified in
    `test/dev/zeko/stube/load_direction_test.clj`, which fails if any
    pure namespace transitively `:require`s the runtime, server, http,
    or adapter namespaces.

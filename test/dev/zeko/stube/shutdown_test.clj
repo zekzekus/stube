@@ -55,8 +55,8 @@
   (register-flag-component!)
   (let [k   (embed/make-kernel)
         cid (embed/mint-conversation! k :t/with-stop {} {})]
-    (embed/run-effects! k cid (kernel/boot :t/with-stop))
-    (let [iid (-> k (embed/conversation cid) :conv/stack peek)]
+    (runtime/run-effects! k cid (kernel/boot :t/with-stop))
+    (let [iid (-> k (runtime/conversation cid) :conv/stack peek)]
       (is (some? iid))
       (is (nil? (get @!stop-flags iid)) "no :stop hook fired before halt!")
       (embed/halt! k)
@@ -76,7 +76,7 @@
                   (fn [_gen frags]
                     (doseq [{:fragment/keys [kind]} frags]
                       (swap! pushed conj kind)))]
-      (embed/register-sse! k cid sse-gen)
+      (runtime/register-sse! k cid sse-gen)
       (embed/halt! k))
     (is (some #{:close} @pushed)
         "halt! flushed a :close fragment to every registered SSE stream")))
@@ -88,11 +88,11 @@
   (let [k       (embed/make-kernel {:sse-keepalive-ms 60000})
         sse-gen (reify Object)
         cid     "cv-keepalive-test"]
-    (embed/register-sse! k cid sse-gen)
+    (runtime/register-sse! k cid sse-gen)
     (let [^Thread t (get @(:!sse-keepalive k) cid)]
       (is (some? t) "register-sse! starts a keepalive thread")
       (is (.isAlive t) "keepalive thread is alive after registration")
-      (embed/unregister-sse! k cid)
+      (runtime/unregister-sse! k cid)
       (is (not (contains? @(:!sse-keepalive k) cid))
           "unregister-sse! removes the keepalive entry")
       (.join t 1000)
@@ -102,17 +102,17 @@
   (let [k       (embed/make-kernel {:sse-keepalive-ms nil})
         sse-gen (reify Object)
         cid     "cv-keepalive-off"]
-    (embed/register-sse! k cid sse-gen)
+    (runtime/register-sse! k cid sse-gen)
     (is (not (contains? @(:!sse-keepalive k) cid))
         "no keepalive thread is started when :sse-keepalive-ms is nil")
-    (embed/unregister-sse! k cid)))
+    (runtime/unregister-sse! k cid)))
 
 (deftest halt-flushes-store-with-pending-conversations
   (register-flag-component!)
   (let [{:keys [saved store]} (recording-store)
         k   (embed/make-kernel {:store store})
         cid (embed/mint-conversation! k :t/with-stop {} {})]
-    (embed/run-effects! k cid (kernel/boot :t/with-stop))
+    (runtime/run-effects! k cid (kernel/boot :t/with-stop))
     (let [saves-before (set @saved)]
       (embed/halt! k)
       (testing "every live conversation received a final save! before halt! returned"

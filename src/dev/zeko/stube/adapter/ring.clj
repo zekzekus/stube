@@ -1,9 +1,9 @@
 (ns dev.zeko.stube.adapter.ring
   "Ring/Reitit adapter for embeddable stube kernels."
   (:require [reitit.ring                 :as ring]
-            [dev.zeko.stube.embed       :as embed]
             [dev.zeko.stube.halos.http  :as halos-http]
-            [dev.zeko.stube.http        :as http]))
+            [dev.zeko.stube.http        :as http]
+            [dev.zeko.stube.runtime     :as rt]))
 
 (defn- join-path [base suffix]
   (str (or base "") suffix))
@@ -12,7 +12,7 @@
   (fn [req] (f k req)))
 
 (defn- core-routes [k]
-  (let [base (embed/base-path k)]
+  (let [base (rt/base-path k)]
     [[(join-path base "/sse/:cid")              {:get  {:handler (h http/sse-handler k)}}]
      [(join-path base "/back/:cid")             {:post {:handler (h http/back-handler k)}}]
      [(join-path base "/upload/:cid/:iid")      {:post {:handler (h http/upload-handler k)}}]
@@ -28,7 +28,7 @@
   ([k]
    (ring-routes k {}))
   ([k {:keys [mounts] :or {mounts {}}}]
-   (let [base (embed/base-path k)]
+   (let [base (rt/base-path k)]
      (into [[(join-path base "/stube/ui.css")            {:get  {:handler http/ui-css-handler}}]
             [(join-path base "/stube/preserve.js")       {:get  {:handler http/preserve-js-handler}}]
             [(join-path base "/stube/halos.js")          {:get  {:handler (h halos-http/js-handler k)}}]

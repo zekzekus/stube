@@ -93,6 +93,15 @@ development entry.
     straight call. Decision: not yet. `docs/internals.md` picks
     up a one-paragraph note next to the dispatch-path diagram so
     the seam is grep-able when a second consumer appears.
+  - **R1-05** (#33): dropped the `requiring-resolve` indirection
+    in `dev.zeko.stube.embed`. The namespace now contains only
+    the ten documented public fns
+    (`make-kernel`/`mint-conversation!`/`shell-for`/`head-tags`/
+    `dispatch!`/`replay-with`/`halt!`/`shutting-down?`/`publish!`),
+    each a thin direct delegate to `dev.zeko.stube.runtime`. The
+    ~25 `^:no-doc` plumbing fns it used to expose for adapters
+    have moved back to `runtime`; `http`, `halos/http`,
+    `adapter/ring`, and `server` `:require` runtime directly.
 
 ## 0.1.5
 

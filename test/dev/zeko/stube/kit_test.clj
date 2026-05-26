@@ -9,7 +9,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [integrant.core :as ig]
             [reitit.ring :as ring]
-            [dev.zeko.stube.embed :as stube]
+            [dev.zeko.stube.runtime :as rt]
             [dev.zeko.stube.kit] ;; registers ig multimethods
             ))
 
@@ -27,8 +27,8 @@
     (try
       (testing ":stube/kernel produces a usable kernel value"
         (let [k (:stube/kernel system)]
-          (is (= "/stube" (stube/base-path k)))
-          (is (some? (stube/current-store k)))))
+          (is (= "/stube" (rt/base-path k)))
+          (is (some? (rt/current-store k)))))
 
       (testing ":reitit.routes/stube returns kit-shaped [base opts children]"
         (let [[base opts children] (:reitit.routes/stube system)]

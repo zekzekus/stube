@@ -12,9 +12,9 @@
   | `/stube/halos/:cid/panel`      | GET    | render the inspector side-panel HTML   |"
   (:require [clojure.java.io       :as io]
             [clojure.string        :as str]
-            [dev.zeko.stube.embed   :as embed]
             [dev.zeko.stube.halos   :as halos]
             [dev.zeko.stube.render  :as render]
+            [dev.zeko.stube.runtime :as rt]
             [dev.zeko.stube.session :as session]))
 
 (defn- default-kernel []
@@ -41,7 +41,7 @@
    (js-handler (default-kernel) req))
   ([k _req]
    (cond
-     (not (embed/halos? k))
+     (not (rt/halos? k))
      {:status 404 :body "stube halos disabled"}
 
      :else
@@ -68,17 +68,17 @@
   ([k {:keys [path-params] :as req}]
    (let [cid (:cid path-params)]
      (cond
-       (not (embed/halos? k))
+       (not (rt/halos? k))
        {:status 404 :body "stube halos disabled"}
 
-       (nil? (embed/conversation k cid))
+       (nil? (rt/conversation k cid))
        {:status 410 :body "no such conversation"}
 
-       (not (embed/authorized? k req cid))
+       (not (rt/authorized? k req cid))
        (session/forbidden-response)
 
        :else
-       (do (embed/enable-halos-and-redraw! k cid)
+       (do (rt/enable-halos-and-redraw! k cid)
            {:status 204})))))
 
 (defn panel-handler
@@ -90,12 +90,12 @@
    (panel-handler (default-kernel) req))
   ([k {:keys [path-params] :as req}]
    (cond
-     (not (embed/halos? k))
+     (not (rt/halos? k))
      {:status 404 :body "stube halos disabled"}
 
      :else
      (let [cid  (:cid path-params)
-           conv (embed/conversation k cid)]
+           conv (rt/conversation k cid)]
        (cond
          (or (nil? conv) (not (:conv/halos? conv)))
          {:status  410
@@ -103,7 +103,7 @@
                     "Cache-Control" "no-store"}
           :body    "<div class=\"stube-halo-body\">halos not active for this conversation</div>"}
 
-         (not (embed/authorized? k req cid))
+         (not (rt/authorized? k req cid))
          (session/forbidden-response)
 
          :else
