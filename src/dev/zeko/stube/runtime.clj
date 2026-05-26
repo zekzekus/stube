@@ -243,6 +243,10 @@
   once — unlike a bare `swap!` whose retry semantics would re-run `f`
   (and its side effects) under contention."
   [k cid f]
+  ;; `cid-lock` returns a long-lived monitor stashed in `(:!cid-locks k)`,
+  ;; so `locking` here is over an object shared across all swap-conv! calls
+  ;; for the same cid.  clj-kondo can't see through the helper.
+  #_:clj-kondo/ignore
   (locking (cid-lock k cid)
     (when-let [c (get @(:!conversations k) cid)]
       (let [pair     (f c)

@@ -14,6 +14,11 @@ development entry.
     The standalone server has long since used
     `dev.zeko.stube.adapter.ring/ring-handler`; the internals
     module map drops the line too.
+  - **R1-02** (#30): cleared seven `clj-kondo` warnings (one in
+    `src/`, six in `test/`). The genuine false positive — kondo
+    can't see through `runtime/cid-lock` — gets an
+    `#_:clj-kondo/ignore` with a one-line explanation; the rest
+    are real cleanups.
 
 ## 0.1.5
 

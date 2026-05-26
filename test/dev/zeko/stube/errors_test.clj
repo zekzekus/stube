@@ -3,6 +3,7 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
             [dev.zeko.stube.conversation :as conv]
+            [dev.zeko.stube.core         :as s]
             [dev.zeko.stube.errors       :as errors]
             [dev.zeko.stube.kernel       :as kernel]
             [dev.zeko.stube.registry     :as registry]))
@@ -113,14 +114,14 @@
      :component/init   (fn [_] {:draft "x"})
      :component/render (fn [s] [:div {:id (:instance/id s)} (:draft s)])
      :component/handle (fn [_ _]
-                         [(dev.zeko.stube.core/answer-error
+                         [(s/answer-error
                             (ex! "conflict"))])})
   (registry/register!
     {:component/id     :t/column
      :component/init   (fn [_] {:banner nil :saved? false})
      :component/render (fn [s] [:div {:id (:instance/id s)} (str (:banner s))])
      :component/handle (fn [_ _]
-                         [(dev.zeko.stube.core/call :t/save-form :on-saved)])
+                         [(s/call :t/save-form :on-saved)])
      :on-saved         (fn [self _] (assoc self :saved? true))
      :on-error-saved   (fn [self ex]
                          (assoc self :banner (ex-message ex)))})
@@ -142,13 +143,13 @@
     {:component/id     :t/save-form2
      :component/render (fn [s] [:div {:id (:instance/id s)}])
      :component/handle (fn [_ _]
-                         [(dev.zeko.stube.core/answer-error (ex! "boom"))])})
+                         [(s/answer-error (ex! "boom"))])})
   (registry/register!
     {:component/id     :t/column2
      :component/init   (fn [_] {:got nil})
      :component/render (fn [s] [:div {:id (:instance/id s)} (str (:got s))])
      :component/handle (fn [_ _]
-                         [(dev.zeko.stube.core/call :t/save-form2 :on-done)])
+                         [(s/call :t/save-form2 :on-done)])
      ;; Only :on-done declared — no :on-error-done.  The kernel should
      ;; deliver `[:error ex]` to :on-done with a deprecation warning.
      :on-done          (fn [self v] (assoc self :got v))})
@@ -156,7 +157,7 @@
         root   (conv/top-id c0)
         [c1 _] (kernel/dispatch c0 {:instance-id root :event :start :signals {}})
         child  (conv/top-id c1)
-        [c2 _] (with-out-str
+        _      (with-out-str
                  (binding [*err* *out*]
                    (kernel/dispatch c1 {:instance-id child :event :save :signals {}})))]
     ;; with-out-str returns a String — restructure with explicit dispatch instead
@@ -167,31 +168,31 @@
         root   (conv/top-id c0)
         [c1 _] (kernel/dispatch c0 {:instance-id root :event :start :signals {}})
         child  (conv/top-id c1)
-        [c2 _] (kernel/dispatch c1 {:instance-id child :event :save :signals {}})]
-    (let [v (:got (conv/instance c2 root))]
-      (is (vector? v) ":on-done received the wrapped value")
-      (is (= :error (first v)) "wrapped tag is :error")
-      (is (= "boom" (ex-message (second v))) "exception is preserved"))))
+        [c2 _] (kernel/dispatch c1 {:instance-id child :event :save :signals {}})
+        v      (:got (conv/instance c2 root))]
+    (is (vector? v) ":on-done received the wrapped value")
+    (is (= :error (first v)) "wrapped tag is :error")
+    (is (= "boom" (ex-message (second v))) "exception is preserved")))
 
 (deftest answer-error-with-no-matching-resume-falls-back-to-banner
   (registry/register!
     {:component/id     :t/bare-child
      :component/render (fn [s] [:div {:id (:instance/id s)}])
      :component/handle (fn [_ _]
-                         [(dev.zeko.stube.core/answer-error (ex! "lonely"))])})
+                         [(s/answer-error (ex! "lonely"))])})
   (registry/register!
     {:component/id     :t/bare-parent
      :component/init   (fn [_] {})
      :component/render (fn [s] [:div {:id (:instance/id s)}])
      :component/handle (fn [_ _]
-                         [(dev.zeko.stube.core/call :t/bare-child :on-foo)])
+                         [(s/call :t/bare-child :on-foo)])
      ;; No :on-foo, no :on-error-foo.
      })
   (let [[c0]   (run-boot :t/bare-parent)
         root   (conv/top-id c0)
         [c1 _] (kernel/dispatch c0 {:instance-id root :event :start :signals {}})
         child  (conv/top-id c1)
-        [c2 frags] (kernel/dispatch c1 {:instance-id child :event :save :signals {}})]
+        [_c2 frags] (kernel/dispatch c1 {:instance-id child :event :save :signals {}})]
     (is (seq (error-fragments frags))
         "missing resume keys fall back to the default error banner")))
 
@@ -200,19 +201,19 @@
     {:component/id     :t/replay-child
      :component/render (fn [s] [:div {:id (:instance/id s)}])
      :component/handle (fn [_ _]
-                         [(dev.zeko.stube.core/answer-error
+                         [(s/answer-error
                             (ex-info "x" {:n 1}))])})
   (registry/register!
     {:component/id     :t/replay-parent
      :component/init   (fn [_] {:hits 0})
      :component/render (fn [s] [:div {:id (:instance/id s)} (:hits s)])
      :component/handle (fn [_ _]
-                         [(dev.zeko.stube.core/call :t/replay-child :on-ans)])
+                         [(s/call :t/replay-child :on-ans)])
      :on-error-ans     (fn [self _] (update self :hits inc))})
-  (let [[c1 _] (dev.zeko.stube.core/replay :t/replay-parent
+  (let [[c1 _] (s/replay :t/replay-parent
                                            [{:event :go}
                                             {:event :go}])
-        [c2 _] (dev.zeko.stube.core/replay :t/replay-parent
+        [c2 _] (s/replay :t/replay-parent
                                            [{:event :go}
                                             {:event :go}])]
     (is (= 1 (:hits (conv/instance c1 (conv/top-id c1)))))

@@ -239,7 +239,7 @@
                          [(s/call :t/url-child)])})
   (let [[c0]   (kernel/run-effects (conv/new-conversation) (kernel/boot :t/url-parent))
         root   (conv/top-id c0)
-        [c1 frags] (kernel/dispatch c0 {:instance-id root :event :go :signals {}})]
+        [_c1 frags] (kernel/dispatch c0 {:instance-id root :event :go :signals {}})]
     (is (not (history-script-with frags "/child-should-be-ignored"))
         "child's :url fn is not consulted; only the root frame's is")))
 
@@ -264,9 +264,9 @@
      :component/render (fn [s] [:div {:id (:instance/id s)} (:n s)])
      :component/handle (fn [s _] (update s :n inc))})
   (let [[c0]   (kernel/run-effects (conv/new-conversation) (kernel/boot :t/url-bad))
-        iid    (conv/top-id c0)]
-    ;; The :handle dispatch wraps in try/catch → the bad return surfaces
-    ;; as an error fragment rather than throwing out of dispatch.
-    (let [[_c1 frags] (kernel/dispatch c0 {:instance-id iid :event :go :signals {}})]
-      (is (some #(= :error (:fragment/kind %)) frags)
-          "an invalid :url return surfaces as an error fragment"))))
+        iid    (conv/top-id c0)
+        ;; The :handle dispatch wraps in try/catch → the bad return surfaces
+        ;; as an error fragment rather than throwing out of dispatch.
+        [_c1 frags] (kernel/dispatch c0 {:instance-id iid :event :go :signals {}})]
+    (is (some #(= :error (:fragment/kind %)) frags)
+        "an invalid :url return surfaces as an error fragment")))
