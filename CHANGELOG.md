@@ -116,6 +116,14 @@ development entry.
     `requiring-resolve` choice was never written down; this
     ADR is the first written form, and the index table also
     picks up the missing 0005 entry along the way.
+  - **R1-16** (#44): restructured the README into two clearly
+    delimited paths — *Getting started* for downstream users
+    (Clojars coordinate, the counter snippet, Datastar SDK
+    pinning, Ring embedding, kit-clj, host widget integration)
+    and *Running this repo* for contributors (`nix develop`,
+    `clojure -M:examples`, the examples table, Datastar
+    Inspector and `(s/inspect cid)` hints). Content was reordered,
+    not rewritten.
 
 ## 0.1.5
 

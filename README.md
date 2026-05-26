@@ -76,119 +76,13 @@ Seaside model, rebuilt for 2026.
 The historical design notes that drove the implementation are
 archived under [`docs/archive/`](docs/archive/).
 
----
-
-## What stube explores
-
-A handful of long-standing ideas, combined now that the missing
-pieces finally exist:
-
-- **Components are values.** A component is a map of pure functions.
-  The kernel is one multimethod and a fold. No class hierarchy, no
-  lifecycle interface, no special object identity.
-
-- **Effects are values.** Handlers return `[self' effects]`. Every
-  interaction is inspectable at the REPL with no server running —
-  `(s/replay :my/root [{:event :submit}])` walks the same code path
-  the browser does.
-
-- **Call and answer.** Components call other components like functions
-  and read the answer like return values. Wizards, confirmations,
-  in-place editors, login flows: one primitive. This is the Seaside
-  idea, rebuilt.
-
-- **Linear flows.** `(s/defflow ...)` writes what would have been a
-  state machine as straight-line Clojure with `(s/await child-embed)`
-  for suspend points. The macro compiles down to a regular component
-  using [cloroutine](https://github.com/leonoel/cloroutine).
-
-- **Datastar over the wire.** SSE patches, morph by id. The only
-  client-side code is the Datastar runtime itself. Two-way bindings
-  through `s/bind`; events through `s/on`.
-
-- **Persistent history.** Every dispatch snapshots the previous
-  conversation onto `:conv/history`. The conversation-level Back
-  button is one line.
-
-- **Small async surface.** Scheduled events (`s/after`),
-  publish/subscribe (`s/publish!` / `s/subscribe`), and zero-JS
-  multipart uploads route back into normal component handlers.
+If you want to **use stube in your own app**, skip ahead to
+[Getting started](#getting-started). If you want to **hack on this
+repo**, see [Running this repo](#running-this-repo).
 
 ---
 
-## Host widget integration
-
-Third-party widgets such as CodeMirror, Monaco, Chart.js and Leaflet
-often own the DOM under one host element. Mark that host with
-`s/preserve`: stube still lets Datastar merge attributes on the host,
-but leaves the live child nodes alone across future morphs. Pair it
-with `s/on-mount` to run the widget constructor once, when the element
-first appears, and `s/on-unmount` to dispose it cleanly when the host
-detaches.
-
-```clojure
-[:div (merge {:class "editor-host"
-              :data-doc-id (:doc-id self)}
-             (s/preserve self :editor)
-             (s/on-mount self :editor
-               "(() => {
-                  if (el.cmView) return
-                  el.cmView = new EditorView({
-                    doc: el.dataset.initialDoc || '',
-                    extensions: [basicSetup],
-                    parent: el
-                  })
-                })()")
-             (s/on-unmount self :editor "el.cmView?.destroy()"))]
-```
-
-The stock stube shell loads `/stube/preserve.js` before Datastar, so
-standalone apps get the bridge automatically. If you embed stube with
-`shell-for`, include `(stube/head-tags kernel)` in your host page's
-`<head>`; it returns the stock CSS (unless disabled), the preserve
-bridge, Datastar, and optional halos tooling with the right
-`:base-path` applied:
-
-```clojure
-[:html
- (into [:head [:title "Host app"]]
-       (stube/head-tags stube-kernel))
- [:body
-  (stube/shell-for stube-kernel cid)]]
-```
-
-If you run your own Idiomorph bridge outside Datastar, use the same
-`data-stube-preserve` marker and merge attributes before telling
-Idiomorph to skip the subtree:
-
-```js
-function mergeAttributes(oldEl, newEl) {
-  for (const attr of Array.from(oldEl.attributes)) {
-    if (!newEl.hasAttribute(attr.name)) oldEl.removeAttribute(attr.name)
-  }
-  for (const attr of Array.from(newEl.attributes)) {
-    if (oldEl.getAttribute(attr.name) !== attr.value) {
-      oldEl.setAttribute(attr.name, attr.value)
-    }
-  }
-}
-
-Idiomorph.morph(oldRoot, newRoot, {
-  callbacks: {
-    beforeNodeMorphed(oldNode, newNode) {
-      if (!(oldNode instanceof Element) || !(newNode instanceof Element)) return true
-      const key = oldNode.getAttribute('data-stube-preserve')
-      if (!key || newNode.getAttribute('data-stube-preserve') !== key) return true
-      mergeAttributes(oldNode, newNode)
-      return false
-    }
-  }
-})
-```
-
----
-
-## Trying it
+## Getting started
 
 stube is on Clojars. Add to `deps.edn`:
 
@@ -208,6 +102,10 @@ should stay in `dev.zeko.stube.core`. Host frameworks may also use the
 embedder surface in `dev.zeko.stube.embed` and
 `dev.zeko.stube.adapter.ring`; other namespaces are internal.
 
+A minimum-viable app is just the counter snippet from the top of this
+page — `(s/defcomponent …)`, `(s/mount! "/" :id)`, `(s/start! {:port 8080})`,
+and open the browser.
+
 ### Datastar SDK pinning
 
 stube pins the Datastar SDK transitively via its
@@ -217,9 +115,7 @@ transitive pin do its job, otherwise a version mismatch between the
 SDK and the http-kit adapter can produce silent SSE breakage that is
 painful to track down. If you need a newer SDK, upgrade stube.
 
----
-
-## Embedding in an existing Ring app
+### Embedding in an existing Ring app
 
 For host apps that already own their HTTP stack, use the stable
 embedder surface in `dev.zeko.stube.embed` plus the Ring adapter:
@@ -295,9 +191,79 @@ stube core has no Integrant dependency; the adapter ns is the only
 place `integrant.core` is referenced.  Add `integrant/integrant` to
 your own `deps.edn` to use it.
 
+### Host widget integration
+
+Third-party widgets such as CodeMirror, Monaco, Chart.js and Leaflet
+often own the DOM under one host element. Mark that host with
+`s/preserve`: stube still lets Datastar merge attributes on the host,
+but leaves the live child nodes alone across future morphs. Pair it
+with `s/on-mount` to run the widget constructor once, when the element
+first appears, and `s/on-unmount` to dispose it cleanly when the host
+detaches.
+
+```clojure
+[:div (merge {:class "editor-host"
+              :data-doc-id (:doc-id self)}
+             (s/preserve self :editor)
+             (s/on-mount self :editor
+               "(() => {
+                  if (el.cmView) return
+                  el.cmView = new EditorView({
+                    doc: el.dataset.initialDoc || '',
+                    extensions: [basicSetup],
+                    parent: el
+                  })
+                })()")
+             (s/on-unmount self :editor "el.cmView?.destroy()"))]
+```
+
+The stock stube shell loads `/stube/preserve.js` before Datastar, so
+standalone apps get the bridge automatically. If you embed stube with
+`shell-for`, include `(stube/head-tags kernel)` in your host page's
+`<head>`; it returns the stock CSS (unless disabled), the preserve
+bridge, Datastar, and optional halos tooling with the right
+`:base-path` applied:
+
+```clojure
+[:html
+ (into [:head [:title "Host app"]]
+       (stube/head-tags stube-kernel))
+ [:body
+  (stube/shell-for stube-kernel cid)]]
+```
+
+If you run your own Idiomorph bridge outside Datastar, use the same
+`data-stube-preserve` marker and merge attributes before telling
+Idiomorph to skip the subtree:
+
+```js
+function mergeAttributes(oldEl, newEl) {
+  for (const attr of Array.from(oldEl.attributes)) {
+    if (!newEl.hasAttribute(attr.name)) oldEl.removeAttribute(attr.name)
+  }
+  for (const attr of Array.from(newEl.attributes)) {
+    if (oldEl.getAttribute(attr.name) !== attr.value) {
+      oldEl.setAttribute(attr.name, attr.value)
+    }
+  }
+}
+
+Idiomorph.morph(oldRoot, newRoot, {
+  callbacks: {
+    beforeNodeMorphed(oldNode, newNode) {
+      if (!(oldNode instanceof Element) || !(newNode instanceof Element)) return true
+      const key = oldNode.getAttribute('data-stube-preserve')
+      if (!key || newNode.getAttribute('data-stube-preserve') !== key) return true
+      mergeAttributes(oldNode, newNode)
+      return false
+    }
+  }
+})
+```
+
 ---
 
-## Running the bundled examples
+## Running this repo
 
 This project assumes the development environment provided by
 `flake.nix`.
@@ -305,7 +271,7 @@ This project assumes the development environment provided by
 ```bash
 nix develop          # enter dev shell
 clojure -M:examples  # open http://localhost:8080/ in your browser
-clojure -X:test      # run the test suite
+clojure -X:test      # run the test suite (or `make test` to lint first)
 ```
 
 The example browser at `/` indexes every shipped demo with a blurb
@@ -344,6 +310,44 @@ extension to watch the SSE stream live; on the REPL side,
 `(s/inspect cid)` prints the live conversation summary and
 `(s/replay :some/root [{:event :submit}])` walks the same path without
 a browser.
+
+---
+
+## What stube explores
+
+A handful of long-standing ideas, combined now that the missing
+pieces finally exist:
+
+- **Components are values.** A component is a map of pure functions.
+  The kernel is one multimethod and a fold. No class hierarchy, no
+  lifecycle interface, no special object identity.
+
+- **Effects are values.** Handlers return `[self' effects]`. Every
+  interaction is inspectable at the REPL with no server running —
+  `(s/replay :my/root [{:event :submit}])` walks the same code path
+  the browser does.
+
+- **Call and answer.** Components call other components like functions
+  and read the answer like return values. Wizards, confirmations,
+  in-place editors, login flows: one primitive. This is the Seaside
+  idea, rebuilt.
+
+- **Linear flows.** `(s/defflow ...)` writes what would have been a
+  state machine as straight-line Clojure with `(s/await child-embed)`
+  for suspend points. The macro compiles down to a regular component
+  using [cloroutine](https://github.com/leonoel/cloroutine).
+
+- **Datastar over the wire.** SSE patches, morph by id. The only
+  client-side code is the Datastar runtime itself. Two-way bindings
+  through `s/bind`; events through `s/on`.
+
+- **Persistent history.** Every dispatch snapshots the previous
+  conversation onto `:conv/history`. The conversation-level Back
+  button is one line.
+
+- **Small async surface.** Scheduled events (`s/after`),
+  publish/subscribe (`s/publish!` / `s/subscribe`), and zero-JS
+  multipart uploads route back into normal component handlers.
 
 ---
 
