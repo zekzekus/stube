@@ -286,6 +286,15 @@ browser
 
 Two important things this picture flattens:
 
+- **The `:url` auto-emit.** After the handler's effects fold, the
+  kernel compares the root's `(:component/url cdef)` projection against
+  `:conv/last-url` and emits a `[:history :push …]` effect if they
+  diverge (suppressed when the handler already emitted its own
+  `[:history …]`). The logic lives in `maybe-emit-url` inside
+  `kernel/dispatch`. If a second similar feature ever appears (audit
+  hook, post-dispatch invariant, observer), this is the seam to
+  generalise — see issue R1-14 for the sketched hook-list shape. Until
+  there is a real second consumer the special-casing stays inline.
 - **Snapshot before mutate.** `:conv/history` is appended *before*
   the handler runs (modulo the `[:back]` exception), so even a
   handler that emits multiple effects has a clean rewind point.

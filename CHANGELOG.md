@@ -86,6 +86,13 @@ development entry.
     monospace terminals but no longer breaks in editors that
     don't auto-detect UTF-8 or in GitHub's plaintext diff view.
     `AGENTS.md` documents the convention.
+  - **R1-14** (#42): spike-on-hold. The `:url` machinery
+    (S-11) is wired directly into `kernel/dispatch` via
+    `maybe-emit-url`; a hook list would generalise it, but a
+    hook list with one consumer is harder to read than the
+    straight call. Decision: not yet. `docs/internals.md` picks
+    up a one-paragraph note next to the dispatch-path diagram so
+    the seam is grep-able when a second consumer appears.
 
 ## 0.1.5
 
