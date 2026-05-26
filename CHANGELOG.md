@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.1.7
+
 - **Playwright-based e2e smoke suite.** New `:e2e` deps alias and
   `make e2e` target run a browser-driven sanity pass over the live
   examples catalogue. Twenty tests pin one stube primitive each:
