@@ -5,7 +5,7 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- The dev/debug mode halos improved in terms of experience
 
 ## 0.1.4
 
