@@ -421,3 +421,15 @@
     (cond-> (merge-kept-signals inst signals (:component/keep cdef))
       (contains? conv :conv/context)
       (assoc :stube/context (:conv/context conv)))))
+
+(defn replay-event
+  "Normalise a replay event against `conv`: if `event` is a function,
+  invoke it on the conversation; then default `:instance-id` to the
+  top frame and `:signals` to `{}`.  Used by `core/replay` and
+  `runtime/replay-with` (and any future playback tool) so the
+  event-shape rule lives in one place."
+  [conv event]
+  (let [event (if (fn? event) (event conv) event)]
+    (cond-> event
+      (nil? (:instance-id event)) (assoc :instance-id (top-id conv))
+      (nil? (:signals event))     (assoc :signals {}))))

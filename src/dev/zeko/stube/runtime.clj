@@ -523,12 +523,6 @@
 ;; Pure replay against a kernel configuration
 ;; ---------------------------------------------------------------------------
 
-(defn- replay-event [conv event]
-  (let [event (if (fn? event) (event conv) event)]
-    (cond-> event
-      (nil? (:instance-id event)) (assoc :instance-id (conv/top-id conv))
-      (nil? (:signals event))     (assoc :signals {}))))
-
 (defn replay-with
   "Purely replay `events` against a fresh conversation rooted at
   `root-id`, using `k`'s render configuration but mutating no runtime
@@ -548,7 +542,7 @@
         (reduce (fn [[c frags] event]
                   (let [[c' more] (with-render-bindings
                                     k (:conv/id c)
-                                    #(pure/dispatch c (replay-event c event)))]
+                                    #(pure/dispatch c (conv/replay-event c event)))]
                     [c' (into frags more)]))
                 [booted (vec boot-frags)]
                 events)))))

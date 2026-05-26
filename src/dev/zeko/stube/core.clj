@@ -605,12 +605,6 @@
     (throw (ex-info "replay baseline must be a conversation map or flow id"
                     {:baseline baseline}))))
 
-(defn- replay-event [conv event]
-  (let [event (if (fn? event) (event conv) event)]
-    (cond-> event
-      (nil? (:instance-id event)) (assoc :instance-id (conv/top-id conv))
-      (nil? (:signals event))     (assoc :signals {}))))
-
 (defn replay
   "Replay `events` against a baseline conversation or root flow id.
 
@@ -624,7 +618,7 @@
   ([baseline events]
    (let [[c0 boot-frags] (replay-start baseline)]
      (reduce (fn [[c frags] event]
-               (let [[c' more] (kernel/dispatch c (replay-event c event))]
+               (let [[c' more] (kernel/dispatch c (conv/replay-event c event))]
                  [c' (into frags more)]))
              [c0 (vec boot-frags)]
              events))))

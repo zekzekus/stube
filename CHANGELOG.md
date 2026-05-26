@@ -37,6 +37,11 @@ development entry.
     non-`:no-doc` var loses its docstring, or any function var
     loses `:arglists`. Locks the R1-04 invariant against
     regression.
+  - **R1-08** (#36): hoisted the duplicated `replay-event` helper
+    out of `core.clj` and `runtime.clj` into a single public
+    `conversation/replay-event`. Both callers (`core/replay` and
+    `runtime/replay-with`) now share the event-shape normalisation
+    rule.
 
 ## 0.1.5
 
