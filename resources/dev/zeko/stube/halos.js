@@ -13,22 +13,30 @@
 //                Click to HIDE.
 //       HIDDEN — overlay temporarily hidden but still active. Click
 //                pill (or hit `?`) to show again.
+//
+// Layout safety:
+//   The overlay never mutates the inline styles of component elements
+//   or appends children to them. Outlines come from CSS (`outline`
+//   doesn't affect layout). Labels live in a sibling overlay layer
+//   positioned via getBoundingClientRect, so they survive Datastar
+//   morphs and can't perturb flex/grid layouts of the real UI.
 (() => {
-  const PANEL_ID = "stube-halos-panel";
-  const PILL_ID  = "stube-halos-pill";
-  const CID = (document.body && document.body.dataset.stubeCid) || null;
+  const PANEL_ID   = "stube-halos-panel";
+  const PILL_ID    = "stube-halos-pill";
+  const OVERLAY_ID = "stube-halos-overlay";
+  const CID  = (document.body && document.body.dataset.stubeCid) || null;
   const BASE = (document.body && document.body.dataset.stubeBasePath) || "";
   if (!CID) return;
 
   const haloPath = (suffix) => `${BASE}/stube/halos/${CID}${suffix}`;
 
   const STYLE = `
-    /* ─── component outlines ────────────────────────────────────── */
+    /* ─── component outlines (CSS-only; no layout impact) ──────── */
     body.stube-halos-on [data-stube-iid] {
       outline: 1px solid hsl(var(--stube-hue, 280) 70% 55% / 0.55);
       outline-offset: -1px;
     }
-    body.stube-halos-on [data-stube-iid]:hover {
+    body.stube-halos-on [data-stube-iid].stube-halo-hovered {
       outline: 1px solid hsl(var(--stube-hue, 280) 80% 60% / 0.95);
     }
     body.stube-halos-on [data-stube-iid].stube-halo-selected {
@@ -37,31 +45,38 @@
       box-shadow: 0 0 0 2px hsl(var(--stube-hue, 280) 90% 65% / 0.25);
     }
 
-    /* ─── hover label (sits above the element, never covers content) */
+    /* ─── overlay layer for labels (own stacking context) ──────── */
+    #${OVERLAY_ID} {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      z-index: 9997;
+      overflow: hidden;
+    }
+    body:not(.stube-halos-on) #${OVERLAY_ID} { display: none; }
+
     .stube-halo-tag {
       position: absolute;
-      top: -16px;
-      left: -1px;
-      background: hsl(var(--stube-hue, 280) 70% 45%);
+      background: hsl(var(--stube-hue, 280) 55% 30%);
       color: #fff;
       font: 10px/14px ui-monospace, SFMono-Regular, Menlo, monospace;
       padding: 0 5px;
       height: 14px;
-      z-index: 9998;
       cursor: pointer;
       user-select: none;
       pointer-events: auto;
       border-radius: 2px 2px 0 0;
       white-space: nowrap;
-      opacity: 0;
-      transition: opacity 80ms ease-in;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.3);
     }
-    body.stube-halos-on [data-stube-iid]:hover > .stube-halo-tag,
-    body.stube-halos-on [data-stube-iid].stube-halo-selected > .stube-halo-tag {
-      opacity: 1;
+    .stube-halo-tag.selected {
+      background: hsl(var(--stube-hue, 280) 55% 25%);
+      font-weight: bold;
+      box-shadow: 0 0 0 1px hsl(var(--stube-hue, 280) 90% 65%) inset,
+                  0 1px 4px rgba(0,0,0,0.4);
     }
     .stube-halo-tag .iid {
-      color: hsl(var(--stube-hue, 280) 30% 90%);
+      color: hsl(var(--stube-hue, 280) 60% 88%);
       margin-left: 4px;
     }
 
@@ -115,6 +130,8 @@
       word-break: break-word;
       color: #cde2ff;
     }
+    #${PANEL_ID} table { border-collapse: collapse; }
+    #${PANEL_ID} td { padding: 1px 0; vertical-align: top; }
     #${PANEL_ID} a { color: #93c5fd; cursor: pointer; text-decoration: none; }
     #${PANEL_ID} a:hover { text-decoration: underline; }
     #${PANEL_ID} a.stube-halo-selected { color: #ffd5fb; font-weight: bold; }
@@ -159,6 +176,20 @@
   document.head.appendChild(styleEl);
 
   // ─── DOM scaffolding ────────────────────────────────────────────
+  const overlay = document.createElement("div");
+  overlay.id = OVERLAY_ID;
+  document.body.appendChild(overlay);
+
+  const hoverTag = document.createElement("div");
+  hoverTag.className = "stube-halo-tag";
+  hoverTag.style.display = "none";
+  overlay.appendChild(hoverTag);
+
+  const selectedTag = document.createElement("div");
+  selectedTag.className = "stube-halo-tag selected";
+  selectedTag.style.display = "none";
+  overlay.appendChild(selectedTag);
+
   const panel = document.createElement("aside");
   panel.id = PANEL_ID;
   panel.innerHTML = '<div class="stube-halo-body">…</div>';
@@ -173,6 +204,7 @@
   let state = "off";
   let currentIid = null;
   let currentTab = "tree";
+  let hoveredIid = null;
 
   function renderPill() {
     pill.className = state === "on" ? "on" : state;
@@ -186,43 +218,62 @@
         : "");
   }
 
-  // ─── outline / label decoration ─────────────────────────────────
+  // ─── hue per iid (consistent label colour across the session) ──
   function hueFor(iid) {
-    // tiny string hash → 0..359
     let h = 0;
     for (let i = 0; i < iid.length; i++) h = (h * 31 + iid.charCodeAt(i)) | 0;
     return Math.abs(h) % 360;
   }
 
-  function decorateLabels() {
-    document.querySelectorAll("[data-stube-iid]:not([data-stube-haloed])").forEach(el => {
-      el.dataset.stubeHaloed = "1";
-      if (getComputedStyle(el).position === "static") el.style.position = "relative";
+  function elFor(iid) {
+    return iid ? document.querySelector(`[data-stube-iid="${CSS.escape(iid)}"]`) : null;
+  }
+
+  // ─── tag positioning ────────────────────────────────────────────
+  function positionTag(tag, el) {
+    if (!el || !el.isConnected) {
+      tag.style.display = "none";
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      tag.style.display = "none";
+      return;
+    }
+    const iid  = el.dataset.stubeIid;
+    const type = el.dataset.stubeType;
+    tag.innerHTML = `${type} <span class="iid">${iid}</span>`;
+    tag.style.setProperty("--stube-hue", String(hueFor(iid)));
+    // Sit just above the rect; clamp to viewport top.
+    const top  = Math.max(0, rect.top - 14);
+    const left = Math.max(0, rect.left);
+    tag.style.top  = `${top}px`;
+    tag.style.left = `${left}px`;
+    tag.dataset.haloIid = iid;
+    tag.style.display = "block";
+  }
+
+  function refreshTags() {
+    if (state !== "on") return;
+    positionTag(hoverTag, hoveredIid && hoveredIid !== currentIid ? elFor(hoveredIid) : null);
+    positionTag(selectedTag, currentIid ? elFor(currentIid) : null);
+  }
+
+  // ─── set custom hue per element via CSS variable (no inline pos) ─
+  function decorateHues() {
+    document.querySelectorAll("[data-stube-iid]:not([data-stube-hued])").forEach(el => {
+      el.dataset.stubeHued = "1";
       el.style.setProperty("--stube-hue", String(hueFor(el.dataset.stubeIid)));
-      const tag = document.createElement("span");
-      tag.className = "stube-halo-tag";
-      tag.innerHTML =
-        el.dataset.stubeType +
-        ` <span class="iid">${el.dataset.stubeIid}</span>`;
-      tag.addEventListener("click", e => {
-        e.stopPropagation();
-        e.preventDefault();
-        loadPanel(el.dataset.stubeIid, null);
-      });
-      el.appendChild(tag);
     });
-    applySelected();
   }
 
   function applySelected() {
     document.querySelectorAll("[data-stube-iid].stube-halo-selected")
       .forEach(el => { if (el.dataset.stubeIid !== currentIid) el.classList.remove("stube-halo-selected"); });
-    if (currentIid) {
-      const el = document.querySelector(`[data-stube-iid="${CSS.escape(currentIid)}"]`);
-      if (el) {
-        el.classList.add("stube-halo-selected");
-        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
+    const sel = elFor(currentIid);
+    if (sel) {
+      sel.classList.add("stube-halo-selected");
+      sel.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
     // mirror in panel
     panel.querySelectorAll("a.stube-halo-selected").forEach(a => a.classList.remove("stube-halo-selected"));
@@ -230,6 +281,21 @@
       const a = panel.querySelector(`a[data-halo-iid="${CSS.escape(currentIid)}"]`);
       if (a) a.classList.add("stube-halo-selected");
     }
+    refreshTags();
+  }
+
+  function applyHovered(iid) {
+    if (hoveredIid === iid) return;
+    if (hoveredIid) {
+      const prev = elFor(hoveredIid);
+      if (prev) prev.classList.remove("stube-halo-hovered");
+    }
+    hoveredIid = iid;
+    if (iid) {
+      const el = elFor(iid);
+      if (el) el.classList.add("stube-halo-hovered");
+    }
+    refreshTags();
   }
 
   // ─── panel fetch / state ────────────────────────────────────────
@@ -244,7 +310,6 @@
       const res = await fetch(haloPath(`/panel?${params.toString()}`),
                               { credentials: "same-origin" });
       if (res.status === 410) {
-        // Conv has halos? off — flip our local state.
         setState("off");
         return;
       }
@@ -263,10 +328,7 @@
         console.warn("stube halos: enable failed", res.status);
         return;
       }
-      // The server pushes the decorated frame over SSE.  Once Datastar
-      // morphs it in, MutationObserver wakes and `decorateLabels` runs.
       setState("on");
-      // Give SSE a moment to land the new frame before fetching panel.
       setTimeout(() => loadPanel(null, null), 100);
     } catch (err) {
       console.warn("stube halos: enable threw", err);
@@ -278,19 +340,22 @@
     document.body.classList.toggle("stube-halos-on", s === "on");
     document.body.classList.toggle("stube-halos-panel-hidden", s === "hidden");
     renderPill();
-    if (s === "on") loadPanel(null, null);
+    if (s === "on") {
+      decorateHues();
+      refreshTags();
+      loadPanel(null, null);
+    } else {
+      hoverTag.style.display = "none";
+      selectedTag.style.display = "none";
+    }
   }
 
   // ─── event delegation ───────────────────────────────────────────
-  // One listener on body covers pill clicks, panel buttons, and any
-  // halo links rendered into the panel.  Robust against innerHTML
-  // replacement on every panel fetch.
   document.body.addEventListener("click", e => {
     const t = e.target.closest("[data-halo-iid], [data-halo-tab], [data-halo-refresh], [data-halo-panel-toggle], #" + PILL_ID);
     if (!t) return;
 
     if (t.id === PILL_ID || t.parentElement?.id === PILL_ID) {
-      // Outer pill click — but ignore if the inner panel-btn handled it.
       if (e.target.closest("[data-halo-panel-toggle]")) {
         e.preventDefault();
         if (state === "on") setState("hidden");
@@ -305,6 +370,7 @@
     }
     if (t.dataset.haloIid) {
       e.preventDefault();
+      e.stopPropagation();
       loadPanel(t.dataset.haloIid, null);
     } else if (t.dataset.haloTab) {
       e.preventDefault();
@@ -315,13 +381,38 @@
     }
   });
 
-  // ─── DOM observation ────────────────────────────────────────────
-  let labelTimer = null;
-  const obs = new MutationObserver(() => {
-    if (labelTimer) return;
-    labelTimer = setTimeout(() => { labelTimer = null; decorateLabels(); }, 30);
+  // ─── hover tracking ─────────────────────────────────────────────
+  // mouseover bubbles; closest() picks the innermost halo'd ancestor.
+  document.body.addEventListener("mouseover", e => {
+    if (state !== "on") return;
+    if (e.target.closest("#" + PANEL_ID) ||
+        e.target.closest("#" + PILL_ID)) {
+      applyHovered(null);
+      return;
+    }
+    const el = e.target.closest("[data-stube-iid]");
+    applyHovered(el ? el.dataset.stubeIid : null);
   });
-  obs.observe(document.body, { childList: true, subtree: true });
+
+  // ─── DOM observation ────────────────────────────────────────────
+  let refreshTimer = null;
+  function scheduleRefresh() {
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      decorateHues();
+      refreshTags();
+    }, 30);
+  }
+  const obs = new MutationObserver(scheduleRefresh);
+  obs.observe(document.body, { childList: true, subtree: true, attributes: true,
+                               attributeFilter: ["data-stube-iid", "data-stube-type"] });
+
+  // Tags float over real elements via fixed coords, so they need to
+  // follow scroll/resize. capture:true catches scrolls inside any
+  // nested scrollable region too.
+  window.addEventListener("scroll", refreshTags, { passive: true, capture: true });
+  window.addEventListener("resize", refreshTags, { passive: true });
 
   // ─── keyboard toggle ────────────────────────────────────────────
   window.addEventListener("keydown", e => {
@@ -335,11 +426,10 @@
   });
 
   // ─── boot ───────────────────────────────────────────────────────
-  // Probe the panel endpoint to discover the conv's initial state.
   (async () => {
     const res = await fetch(haloPath("/panel"), { credentials: "same-origin" });
     if (res.ok) setState("on");
-    else        { renderPill(); /* state stays "off" */ }
-    decorateLabels();
+    else        { renderPill(); }
+    decorateHues();
   })();
 })();

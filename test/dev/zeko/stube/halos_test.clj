@@ -23,7 +23,15 @@
     :children {:slot/a (s/embed :halos-test/leaf)}
     :render   (fn [self]
                 [:section {:id (:instance/id self)}
-                 (s/render-slot self :slot/a)])))
+                 (s/render-slot self :slot/a)]))
+  (s/defcomponent :halos-test/keyed-parent
+    :start  (fn [self]
+              [self [(s/set-keyed-children :slot/cols
+                                           [[:c1 (s/embed :halos-test/leaf)]
+                                            [:c2 (s/embed :halos-test/leaf)]])]])
+    :render (fn [self]
+              [:section {:id (:instance/id self)}
+               (s/keyed-children self :slot/cols)])))
 
 (use-fixtures :each
   (fn [t]
@@ -76,6 +84,73 @@
         (is (= [:slot/a] (mapv :slot (:slots root))))
         (is (= :halos-test/leaf
                (-> root :slots first :child :type)))))))
+
+(deftest tree-data-includes-keyed-children
+  (binding [render/*cid* "cv-halos-keyed"]
+    (let [[conv _] (kernel/run-effects (conv/new-conversation)
+                                       (kernel/boot :halos-test/keyed-parent))
+          tree     (halos/tree-data conv)
+          root     (first tree)
+          slot     (first (:keyed-slots root))]
+      (is (= :halos-test/keyed-parent (:type root)))
+      (is (= :slot/cols (:slot slot)))
+      (is (= [:c1 :c2] (mapv :key (:children slot))))
+      (is (every? #(= :halos-test/leaf (:type (:child %)))
+                  (:children slot))
+          "each keyed child resolves to the embedded leaf type"))))
+
+(deftest render-decorates-inlined-slot-and-keyed-children
+  ;; Children inlined by a parent's render (`render-slot` /
+  ;; `keyed-children`) must also receive halo data-attrs so the overlay
+  ;; can select them — bug fixed alongside issue #2 in the halos overhaul.
+  (binding [render/*cid* "cv-halos-children"]
+    (let [c0       (conv/new-conversation)
+          [c1 _]   (kernel/run-effects c0 (kernel/boot :halos-test/branch))
+          c1'      (assoc c1 :conv/halos? true)
+          iid      (conv/top-id c1')
+          child    (-> (conv/instance c1' iid) :instance/children :slot/a)
+          [_ fr]   (kernel/dispatch c1' {:instance-id iid
+                                         :event :no-such-thing
+                                         :signals {}})
+          html     (-> fr first :fragment/html)]
+      (is (str/includes? html (str "data-stube-iid=\"" iid "\""))
+          "parent's outer attr present")
+      (is (str/includes? html (str "data-stube-iid=\"" child "\""))
+          "inlined slot child also carries data-stube-iid"))
+    (let [c0       (conv/new-conversation)
+          [c1 _]   (kernel/run-effects c0 (kernel/boot :halos-test/keyed-parent))
+          c1'      (assoc c1 :conv/halos? true)
+          iid      (conv/top-id c1')
+          slot     (-> (conv/instance c1' iid) :instance/keyed-slots :slot/cols)
+          child    (get-in slot [:children :c1 :iid])
+          [_ fr]   (kernel/dispatch c1' {:instance-id iid
+                                         :event :no-such-thing
+                                         :signals {}})
+          html     (-> fr first :fragment/html)]
+      (is (str/includes? html (str "data-stube-iid=\"" child "\""))
+          "inlined keyed child also carries data-stube-iid"))))
+
+(deftest panel-tree-tab-lists-keyed-children
+  (binding [render/*cid* "cv-halos-keyed-panel"]
+    (let [[conv _] (kernel/run-effects (conv/new-conversation)
+                                       (kernel/boot :halos-test/keyed-parent))
+          html     (render/html (halos/panel-hiccup conv {:tab :tree}))]
+      (is (str/includes? html ":slot/cols (keyed)"))
+      (is (str/includes? html "[:c1]"))
+      (is (str/includes? html "[:c2]"))
+      (is (str/includes? html ":halos-test/leaf")
+          "leaf type rendered under the keyed slot"))))
+
+(deftest instance-history-data-returns-state-per-snapshot
+  (binding [render/*cid* "cv-halos-inst-hist"]
+    (let [[c0 _]  (kernel/run-effects (conv/new-conversation)
+                                      (kernel/boot :halos-test/branch))
+          iid     (conv/top-id c0)
+          c1      (conv/snapshot c0)
+          entries (halos/instance-history-data c1 iid)]
+      (is (= 2 (count entries)) "snapshot + current")
+      (is (every? :touched entries))
+      (is (every? #(map? (:state %)) entries)))))
 
 ;; ---------------------------------------------------------------------------
 ;; defcomponent captures source meta

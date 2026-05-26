@@ -53,6 +53,7 @@
   (:require [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.frame        :as frame]
             [dev.zeko.stube.fragments    :as f]
+            [dev.zeko.stube.halos        :as halos]
             [dev.zeko.stube.lifecycle    :as lc]
             [dev.zeko.stube.registry     :as registry]
             [dev.zeko.stube.render       :as render]))
@@ -101,10 +102,11 @@
           :let [child-iid (get-in children [k :iid])
                 child     (some-> child-iid (->> (get (:conv/instances conv))))]
           :when child]
-      (let [cdef     (registry/lookup! (:instance/type child))
+      (let [cdef      (registry/lookup! (:instance/type child))
             render-fn (or (:component/render cdef)
                           frame/default-render)]
-        (render-fn child)))))
+        (cond-> (render-fn child)
+          (:conv/halos? conv) (halos/decorate-root child))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Reconciliation

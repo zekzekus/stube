@@ -16,7 +16,8 @@
   The cid only exists at request time, so the helpers consult a dynamic
   var bound by the http layer for the duration of a render."
   (:require [dev.onionpancakes.chassis.core :as chassis]
-            [dev.zeko.stube.conversation :as conv])
+            [dev.zeko.stube.conversation :as conv]
+            [dev.zeko.stube.halos        :as halos])
   (:import (java.net URLEncoder)))
 
 ;; ---------------------------------------------------------------------------
@@ -441,4 +442,5 @@
          render-fn (or (:component/render cdef)
                        (fn default [s]
                          [:div {:id (:instance/id s) :hidden true}]))]
-     (render-fn child))))
+     (cond-> (render-fn child)
+       (:conv/halos? conv) (halos/decorate-root child)))))
