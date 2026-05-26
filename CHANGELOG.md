@@ -124,6 +124,9 @@ development entry.
     `clojure -M:examples`, the examples table, Datastar
     Inspector and `(s/inspect cid)` hints). Content was reordered,
     not rewritten.
+- New `:example-ring` deps.edn alias runs the plain-Ring embedded
+  example (`examples/dev/zeko/stube/examples/embedded_ring.clj`)
+  via `clojure -M:example-ring` instead of needing a REPL.
 
 ## 0.1.5
 

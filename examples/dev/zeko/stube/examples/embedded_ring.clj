@@ -1,8 +1,9 @@
 (ns dev.zeko.stube.examples.embedded-ring
   "Plain Ring host embedding stube under `/widget`.
 
-  Run with `(dev.zeko.stube.examples.embedded-ring/start!)` from a REPL.
-  The host owns `/healthz` and `/api/foo`; stube owns only the generated
+  Run with `clojure -M:example-ring`, or from a REPL with
+  `(dev.zeko.stube.examples.embedded-ring/start!)`.  The host owns
+  `/healthz` and `/api/foo`; stube owns only the generated
   `/widget/...` SSE/event/upload/assets endpoints."
   (:require [dev.onionpancakes.chassis.core :as chassis]
             [org.httpkit.server             :as http-kit]
@@ -85,3 +86,7 @@
   (when-let [stop @!server]
     (stop)
     (reset! !server nil)))
+
+(defn -main [& _args]
+  (start!)
+  @(promise))

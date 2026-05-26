@@ -63,6 +63,14 @@
   {:extra-paths ["examples"]
    :main-opts   ["-m" "dev.zeko.stube.examples.main"]}
 
+  ;; clojure -M:example-ring
+  ;; Stands up the plain-Ring embed example on
+  ;; http://localhost:8080/widget; see
+  ;; `dev.zeko.stube.examples.embedded-ring`.
+  :example-ring
+  {:extra-paths ["examples"]
+   :main-opts   ["-m" "dev.zeko.stube.examples.embedded-ring"]}
+
   ;; clojure -T:build {jar,install,deploy,clean}
   ;; Builds the library jar/pom under target/.  `deploy` shells out to
   ;; deps-deploy and reads CLOJARS_USERNAME / CLOJARS_PASSWORD from the
