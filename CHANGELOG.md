@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## Unreleased
+
 - **Road to 1.0** (breaking, pre-1.0): trimmed pre-1.0 surface in
   preparation for stability.
   - Removed the `:emit-on-mount` colocated key; use `:start`
