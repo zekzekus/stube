@@ -5,7 +5,14 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- **cljdoc.org publishing.** Added `doc/cljdoc.edn` so the API
+  reference, tutorial, internals, rationale, changelog and ADRs land
+  in the expected order on
+  [cljdoc.org/d/dev.zeko/stube](https://cljdoc.org/d/dev.zeko/stube).
+  README picks up Clojars + cljdoc badges and a one-line pointer to
+  the rendered docs. The release script now POSTs to cljdoc's
+  `request-build2` endpoint after the Clojars push so docs rebuild
+  without a manual step. No library code changed.
 
 ## 0.1.8
 

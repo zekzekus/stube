@@ -111,4 +111,16 @@ echo "→ tagging v$VERSION (annotated git tag) and pushing"
 git tag -a "v$VERSION" -m "Release $VERSION" "$COMMIT_ID"
 git push origin "v$VERSION"
 
+# Triggers cljdoc to fetch the freshly-pushed jar + tag and render
+# the article tree from doc/cljdoc.edn.  Soft-fail: a flaky cljdoc.org
+# shouldn't undo a successful Clojars push — the build can be re-run
+# manually at https://cljdoc.org/d/dev.zeko/stube/$VERSION
+echo "→ requesting cljdoc build"
+if ! curl -fsS -X POST \
+      -d "project=dev.zeko/stube" \
+      -d "version=$VERSION" \
+      https://cljdoc.org/api/request-build2 > /dev/null; then
+  echo "  cljdoc build request failed; re-trigger at https://cljdoc.org/d/dev.zeko/stube/$VERSION" >&2
+fi
+
 echo "✔ released $VERSION"

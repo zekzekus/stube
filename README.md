@@ -1,5 +1,8 @@
 # stube
 
+[![Clojars Project](https://img.shields.io/clojars/v/dev.zeko/stube.svg)](https://clojars.org/dev.zeko/stube)
+[![cljdoc badge](https://cljdoc.org/badge/dev.zeko/stube)](https://cljdoc.org/d/dev.zeko/stube)
+
 > stube is a personal research project — a Clojure exploration of an
 > idea about web frameworks that has been pulling at me for nearly
 > twenty years: that page boundaries should be invisible, that HTML
@@ -72,6 +75,9 @@ Seaside model, rebuilt for 2026.
 | [**Internals**](docs/internals.md) | How the kernel, conversation and effects fit together. |
 | [**Rationale**](docs/rationale.md) | Why stube exists. Seaside, the uncommon web, and where the model came from. |
 | [**Changelog**](CHANGELOG.md) | Big-rock changes by release/development pass. |
+
+Published API docs (rendered from these same files plus every public
+docstring) live on [cljdoc.org/d/dev.zeko/stube](https://cljdoc.org/d/dev.zeko/stube).
 
 The historical design notes that drove the implementation are
 archived under [`docs/archive/`](docs/archive/).

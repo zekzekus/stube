@@ -1,0 +1,14 @@
+{:cljdoc.doc/tree
+ [["Readme"        {:file "README.md"}]
+  ["Tutorial"      {:file "docs/tutorial.md"}]
+  ["API reference" {:file "docs/api.md"}]
+  ["Internals"     {:file "docs/internals.md"}]
+  ["Rationale"     {:file "docs/rationale.md"}]
+  ["Changelog"     {:file "CHANGELOG.md"}]
+  ["Architecture decisions"
+   ["0001 — Resume key naming"              {:file "docs/decisions/0001-resume-key-naming.md"}]
+   ["0002 — EDN-clean conversation state"   {:file "docs/decisions/0002-edn-clean-conversation-state.md"}]
+   ["0003 — Embed vs call"                  {:file "docs/decisions/0003-embed-vs-call.md"}]
+   ["0004 — App store and principal"        {:file "docs/decisions/0004-app-store-and-principal.md"}]
+   ["0005 — Answer, error and resume"       {:file "docs/decisions/0005-answer-error-and-resume.md"}]
+   ["0006 — Embed as direct runtime facade" {:file "docs/decisions/0006-embed-as-direct-runtime-facade.md"}]]]}
