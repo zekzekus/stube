@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.2.0
+
 - **cljdoc.org publishing.** Added `doc/cljdoc.edn` so the API
   reference, tutorial, internals, rationale, changelog and ADRs land
   in the expected order on
