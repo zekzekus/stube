@@ -61,9 +61,9 @@
       (is (str/includes? (pr-str (embed/shell-for k2 cid2))
                          (str "/two/sse/" cid2)))
       (is (str/includes? (pr-str (embed/head-tags k1))
-                         "/one/stube/preserve.js"))
+                         "/one/preserve.js"))
       (is (str/includes? (pr-str (embed/head-tags k2))
-                         "/two/stube/preserve.js")))))
+                         "/two/preserve.js")))))
 
 (deftest core-publish-routes-to-active-embedded-kernel
   (registry/register!
@@ -143,5 +143,8 @@
     (is (contains? paths "/widget/sse/:cid"))
     (is (contains? paths "/widget/event/:cid/:iid/:event"))
     (is (contains? paths "/widget/upload/:cid/:iid"))
-    (is (contains? paths "/widget/stube/ui.css"))
-    (is (contains? paths "/widget/stube/preserve.js"))))
+    (is (contains? paths "/widget/ui.css"))
+    (is (contains? paths "/widget/preserve.js"))
+    (is (contains? paths "/widget/halos.js"))
+    (is (contains? paths "/widget/halos/:cid/panel"))
+    (is (contains? paths "/widget/halos/:cid/enable"))))

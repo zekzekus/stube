@@ -42,7 +42,7 @@
         (let [[_ _ children] (:reitit.routes/stube system)
               handler (ring/ring-handler (ring/router (vec children))
                                          (ring/create-default-handler))
-              resp    (handler {:request-method :get :uri "/stube/stube/ui.css"})]
+              resp    (handler {:request-method :get :uri "/stube/ui.css"})]
           (is (= 200 (:status resp)))))
       (finally
         (ig/halt! system)))))

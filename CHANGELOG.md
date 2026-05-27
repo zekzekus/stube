@@ -5,7 +5,61 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+Driven by the first big embedder's post-migration notes (kasten,
+`kasten/stube_notes.md`). Four threads land here; the fifth — a
+unified signal-naming/binding toolkit — is bigger and stays in
+`todo.md` until a second host hits the same shape.
+
+- **Event modifiers on `s/on` / `s/on-target`.** Both helpers accept
+  an optional trailing `modifiers` map (or vector of pairs) that
+  becomes Datastar event modifiers in the attribute name itself
+  (`data-on:input__debounce.300ms`, `data-on:click__stop__prevent`).
+  Values may be strings, numbers, keywords, or `true` for flag-only
+  modifiers. Map entries are sorted by key name for deterministic
+  output; vector form preserves caller order for cases like
+  `__debounce.300ms.leading` where one Datastar modifier takes
+  multiple positional parts. Previously hosts had to hand-roll the
+  attribute keyword to get debounce/throttle on search boxes,
+  typeaheads, and autosave fields.
+- **Public `s/instance-id` + `s/on-target` accepts an instance map.**
+  Pure rendering helpers no longer have to reach for `:instance/id`
+  to call `on-target`. `(s/instance-id self)` is now the stable seam
+  that returns the iid or throws; `s/on-target` and `s/event-url`
+  accept either a bare iid string or an instance map. New
+  `(s/on-parent self …)` is shorthand for the recurring
+  child-renders-control-that-belongs-to-the-parent pattern —
+  equivalent to `(s/on-target (:instance/parent self) …)` but reads
+  as a stable API surface rather than reaching into the instance
+  map. (Picks the structural name `on-parent` over the semantic
+  `on-owner` to avoid collision with the existing
+  `:conv/owner-token` security vocabulary.)
+- **`stube:patched` browser lifecycle event.** The shipped
+  `preserve.js` bridge now dispatches a `CustomEvent` on `document`
+  after every successful Datastar `patch-elements` morph. Hosts that
+  need to run after a patch lands (scroll/focus restoration, title
+  measurement, third-party widget reflow, optimistic UI cleanup) can
+  listen for `stube:patched` instead of inventing their own
+  MutationObserver. `event.detail` carries `selector` and `mode`
+  from the patch.
+- **Asset URLs collapse the redundant `/stube/` segment** (pre-1.0
+  breaking). With `:base-path "/stube"`, asset routes now live at
+  `/stube/ui.css`, `/stube/preserve.js`, `/stube/halos.js`, and
+  `/stube/halos/:cid/{panel,enable}` instead of doubling the segment
+  (`/stube/stube/ui.css`). Standalone (empty base-path) gets the
+  symmetric `/ui.css`, `/preserve.js`, `/halos.js`. Conversation
+  endpoints (`/sse`, `/event`, `/back`, `/upload`) already lived at
+  the kernel's base-path; this aligns the asset routes with the same
+  rule. URL construction is centralised in `render.clj` and
+  `adapter/ring.clj`, so generated `head-tags` and `shell-for` pick
+  the new paths up automatically; hosts that hardcoded
+  `/stube/stube/...` in their own templates need a trivial rewrite.
+
+Carried forward to `todo.md`: a signal-naming/binding helper toolkit
+(`s/data-signals`, `s/$`, `s/signal` lookup, `s/scoped-signal`) so
+hosts don't rediscover Datastar's HTML-attribute case-collapse rules.
+Tracked but not built: the kasten author flagged this as the biggest
+remaining shared pattern, but the right API surface is design-heavy
+enough to wait for a second concrete embedder.
 
 ## 0.1.7
 

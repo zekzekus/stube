@@ -69,6 +69,30 @@
       (throw (ex-info "dev.zeko.stube.render/*cid* is unbound; cannot build event URL"
                       {}))))
 
+(defn instance-id
+  "Return the `:instance/id` carried on `self`, or throw with a clear
+  message if the value is missing.
+
+  Helpers passing instance ids out into pure rendering code should reach
+  for this rather than destructuring `:instance/id` directly — the
+  framework owns the wire shape, and the public name is the stable seam."
+  [self]
+  (or (:instance/id self)
+      (throw (ex-info "dev.zeko.stube.render/instance-id requires an instance map"
+                      {:got self}))))
+
+(defn- ->iid
+  "Coerce `target` to an instance id.  Accepts either a bare iid string
+  or an instance map (so `(s/on-target self :click :as :foo)` works as
+  well as `(s/on-target iid :click :as :foo)`)."
+  [target]
+  (cond
+    (string? target) target
+    (map? target)    (instance-id target)
+    :else
+    (throw (ex-info "stube target must be an instance map or an instance-id string"
+                    {:got target}))))
+
 (def ^:private no-payload ::no-payload)
 
 (def payload-query-param
@@ -110,55 +134,130 @@
 (defn ui-css-url
   "URL for the stock stylesheet in the current mount."
   []
-  (path "/stube/ui.css"))
+  (path "/ui.css"))
 
 (defn halos-js-url
   "URL for the optional halos script in the current mount."
   []
-  (path "/stube/halos.js"))
+  (path "/halos.js"))
 
 (defn preserve-js-url
   "URL for stube's preserved-subtree bridge script in the current mount."
   []
-  (path "/stube/preserve.js"))
+  (path "/preserve.js"))
 
 (defn event-url
   "URL the browser POSTs to for an event.  Public so user code can build
   custom Datastar expressions that target the same endpoint.
+
+  `target` is either a bare instance-id string or an instance map.
 
   `route-event` is either a keyword (`:save`) or a structured event
   vector (`[:pick-day day]`).  The path always contains the logical
   event name; structured payloads ride in a small EDN query parameter so
   the server can reconstruct `{:event :pick-day :payload day}` without
   teaching Datastar about stube metadata."
-  [iid route-event]
-  (when-not (some? iid)
+  [target route-event]
+  (when-not (some? target)
     (throw (ex-info "dev.zeko.stube.render/event-url requires a target instance id"
                     {:route-event route-event})))
-  (let [{:keys [event payload]} (parse-route-event route-event)
+  (let [iid (->iid target)
+        {:keys [event payload]} (parse-route-event route-event)
         cid  (require-cid!)
         base (path "/event/" cid "/" iid "/" (name event))]
     (if (= no-payload payload)
       base
       (str base "?" payload-query-param "=" (url-encode (pr-str payload))))))
 
+(defn- modifier-token [k v]
+  (let [nm (name k)]
+    (cond
+      (true? v)     (str "__" nm)
+      (false? v)    nil
+      (nil? v)      nil
+      (keyword? v)  (str "__" nm "." (name v))
+      :else         (str "__" nm "." v))))
+
+(defn- modifiers->suffix
+  "Build the Datastar modifier suffix for `data-on:<event>...`.
+
+  `modifiers` is either `nil`, a map, or a sequence of `[k v]` pairs.
+  Maps are emitted in sorted key order for deterministic output;
+  sequences preserve caller order (useful when a single Datastar
+  modifier takes multiple positional parts, e.g. `__debounce.300ms.leading`
+  which the caller can spell as `[[:debounce \"300ms.leading\"]]`)."
+  [modifiers]
+  (cond
+    (nil? modifiers)
+    ""
+
+    (map? modifiers)
+    (->> modifiers
+         (sort-by (comp name key))
+         (keep (fn [[k v]] (modifier-token k v)))
+         (apply str))
+
+    (sequential? modifiers)
+    (->> modifiers
+         (keep (fn [[k v]] (modifier-token k v)))
+         (apply str))
+
+    :else
+    (throw (ex-info "stube event modifiers must be a map or seq of pairs"
+                    {:got modifiers}))))
+
 (defn on-target
-  "Like [[on]], but route the event to an explicit target instance id
+  "Like [[on]], but route the event to an explicit target instance
   instead of the component whose hiccup is being rendered.
 
       [:button (s/on-target parent-iid :click :as [:open note-id]) \"Open\"]
+      [:button (s/on-target parent-self :click :as :open) \"Open\"]
+      [:input  (s/on-target target :input :as :search {:debounce \"300ms\"})]
+
+  `target` may be either a bare instance-id string or an instance map;
+  the helper coerces it through [[instance-id]].
+
+  The optional 5-arity `modifiers` map produces Datastar event modifiers
+  in the attribute name (`data-on:input__debounce.300ms`).  Values may be
+  strings, numbers, keywords, or `true` for flag-only modifiers
+  (`{:stop true :prevent true}` → `__prevent__stop`).  Map entries are
+  sorted by key name for deterministic output; pass a vector of pairs to
+  preserve caller order.
 
   This is intentionally a narrow escape hatch for cross-instance controls
   such as links rendered inside one child that should notify a stable
   parent without answering/removing the child."
-  ([target-iid dom-event]
-   (on-target target-iid dom-event :as dom-event))
-  ([target-iid dom-event as-kw route-event]
+  ([target dom-event]
+   (on-target target dom-event :as dom-event nil))
+  ([target dom-event as-kw route-event]
+   (on-target target dom-event as-kw route-event nil))
+  ([target dom-event as-kw route-event modifiers]
    (when-not (= :as as-kw)
-     (throw (ex-info "dev.zeko.stube.render/on-target: 4-arity expects :as as the third argument"
+     (throw (ex-info "dev.zeko.stube.render/on-target: expects :as as the third argument"
                      {:got as-kw})))
-   {(keyword (str "data-on:" (name dom-event)))
-    (str "@post('" (event-url target-iid route-event) "')")}))
+   {(keyword (str "data-on:" (name dom-event) (modifiers->suffix modifiers)))
+    (str "@post('" (event-url target route-event) "')")}))
+
+(defn on-parent
+  "Like [[on-target]], but routes the event to `self`'s parent instance.
+
+      [:button (s/on-parent self :click :as [:open note-id]) \"Open\"]
+
+  Equivalent to `(on-target (:instance/parent self) …)`, but the public
+  name lets pure render helpers ride one stable seam instead of
+  reaching for the instance-map's keys.  Use this for the recurring
+  pattern of a child rendering controls whose semantics belong to the
+  parent (close button on a card, link inside a row that opens
+  something in the owning desk, etc.)."
+  ([self dom-event]
+   (on-parent self dom-event :as dom-event nil))
+  ([self dom-event as-kw route-event]
+   (on-parent self dom-event as-kw route-event nil))
+  ([self dom-event as-kw route-event modifiers]
+   (let [parent (or (:instance/parent self)
+                    (throw (ex-info "dev.zeko.stube.render/on-parent requires self to have :instance/parent"
+                                    {:got self})))]
+     (on-target parent dom-event as-kw route-event modifiers))))
 
 (defn back-url
   "URL the browser POSTs to for the conversation-level Back action."
@@ -333,17 +432,24 @@
 
       [:form   (s/on self :submit) …]
       [:button (s/on self :click :as :inc) \"+\"]
-      [:button (s/on self :click :as :dec) \"−\"]"
+      [:button (s/on self :click :as :dec) \"−\"]
+      [:input  (s/on self :input :as :search {:debounce \"300ms\"})]
+
+  The optional 5-arity `modifiers` map produces Datastar event
+  modifiers in the attribute name (`data-on:input__debounce.300ms`).
+  See [[on-target]] for the modifier rules."
   ([self dom-event]
-   (on self dom-event :as dom-event))
+   (on self dom-event :as dom-event nil))
   ([self dom-event as-kw route-event]
+   (on self dom-event as-kw route-event nil))
+  ([self dom-event as-kw route-event modifiers]
    (when-not (= :as as-kw)
-     (throw (ex-info "dev.zeko.stube.render/on: 4-arity expects :as as the third argument"
+     (throw (ex-info "dev.zeko.stube.render/on: expects :as as the third argument"
                      {:got as-kw})))
    (let [iid (or (:instance/id self)
                  (throw (ex-info "dev.zeko.stube.render/on requires an instance map"
                                  {:got self})))
-         attr-k (keyword (str "data-on:" (name dom-event)))
+         attr-k (keyword (str "data-on:" (name dom-event) (modifiers->suffix modifiers)))
          expr   (str "@post('" (event-url iid route-event) "')")]
      {attr-k expr})))
 

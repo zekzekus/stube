@@ -1,12 +1,12 @@
-// stube halos — dev-only overlay. Served as /stube/halos.js when the
-// server was started with :halos? true.
+// stube halos — dev-only overlay. Served as <base-path>/halos.js when
+// the server was started with :halos? true.
 //
 // Lifecycle:
 //   - The shell injects this script + data-stube-cid on body when the
 //     server is in dev mode. The overlay starts in OFF state.
 //   - A floating pill in the bottom-right shows the current state:
 //       OFF    — server is in dev mode but this conv has halos? false.
-//                Click to POST /stube/halos/<cid>/enable, then the
+//                Click to POST <base-path>/halos/<cid>/enable, then the
 //                kernel re-emits the top frame decorated with halo
 //                data-attrs and we flip to ON.
 //       ON     — outlines + hover labels are visible, side panel open.
@@ -28,7 +28,7 @@
   const BASE = (document.body && document.body.dataset.stubeBasePath) || "";
   if (!CID) return;
 
-  const haloPath = (suffix) => `${BASE}/stube/halos/${CID}${suffix}`;
+  const haloPath = (suffix) => `${BASE}/halos/${CID}${suffix}`;
 
   const STYLE = `
     /* ─── component outlines (CSS-only; no layout impact) ──────── */

@@ -64,6 +64,33 @@ framework cruft.
       state at runtime."
       [carried §2]
 
+- [ ] **Signal naming / binding / lookup toolkit.** First flagged in
+      the kasten post-migration notes (`kasten/stube_notes.md`).
+      Datastar's `data-bind:<key>` camel-cases the wire key, which
+      collides with kebab-case Clojure conventions: emitting
+      `data-bind:editMarkdown` reaches the browser as
+      `data-bind:editmarkdown`, so updates land on the wrong signal.
+      Today `s/bind` works around it with `__case.kebab`, but apps
+      that *also* need JS-identifier refs in inline expressions and a
+      matching server-side lookup convention end up re-inventing a
+      small registry (kasten kept one). The sketch is roughly:
+
+      ```clojure
+      (s/data-signals {:edit-title "Title" :edit-markdown "Body"})
+      (s/bind :edit-markdown {:wire-case :camel}) ; data-bind:edit-markdown
+      (s/$ :edit-markdown)                        ; "$editMarkdown"
+      (s/signal event :edit-markdown)             ; read from event signals
+      (s/scoped-signal :save-submitting note-id)  ; safe indicator name+ref
+      ```
+
+      Don't build until a second host hits the same shape — the
+      design space (wire-case as a global vs per-binding, how
+      scoping interacts with `local-signal`, whether `$` should be a
+      function or a tagged literal) is wide enough that one
+      datapoint is not enough. When a second example needs it, the
+      kasten signals namespace is a faithful sketch to adapt.
+      [from kasten post-migration notes, post-0.1.7]
+
 - [x] **`[:answer-error e]` + `:on-error` resume.** Shipped under S-14
       (issue #25) for the 0.1.3 / round-2 kasten-migration sweep.
       `(s/answer-error ex)` pops the child frame and routes the

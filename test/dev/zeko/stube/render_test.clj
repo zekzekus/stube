@@ -29,6 +29,64 @@
       (is (= (keyword "data-on:click") k))
       (is (re-find #"/event/cv-001/ix-parent/open\?_stube_payload=42" v)))))
 
+(deftest on-target-accepts-instance-map-or-iid-string
+  (binding [render/*cid* "cv-001"]
+    (let [via-map  (render/on-target {:instance/id "ix-parent"} :click :as :open)
+          via-iid  (render/on-target "ix-parent" :click :as :open)]
+      (is (= via-map via-iid)
+          "passing self or its iid string yields the same wire attrs"))))
+
+(deftest on-parent-routes-to-parent-instance
+  (binding [render/*cid* "cv-001"]
+    (let [self  {:instance/id "ix-child" :instance/parent "ix-parent"}
+          attrs (render/on-parent self :click :as :close)
+          [k v] (first attrs)]
+      (is (= (keyword "data-on:click") k))
+      (is (re-find #"/event/cv-001/ix-parent/close" v)
+          "on-parent posts to :instance/parent, not :instance/id"))
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (render/on-parent {:instance/id "ix-orphan"} :click :as :close))
+        "missing :instance/parent throws — there is no implicit fallback")
+    (let [self {:instance/id "ix-child" :instance/parent "ix-parent"}]
+      (is (= (render/on-target "ix-parent" :click :as :close)
+             (render/on-parent self :click :as :close))
+          "on-parent is a thin wrapper around on-target"))))
+
+(deftest instance-id-helper
+  (is (= "ix-7" (render/instance-id {:instance/id "ix-7"})))
+  (is (thrown? clojure.lang.ExceptionInfo
+               (render/instance-id {}))
+      "throws with a clear message rather than handing back nil"))
+
+(deftest on-accepts-event-modifiers
+  (binding [render/*cid* "cv-001"]
+    (testing "valued modifier produces __key.value suffix on the attribute name"
+      (let [attrs (render/on {:instance/id "ix"} :input :as :search {:debounce "300ms"})
+            [k _v] (first attrs)]
+        (is (= (keyword "data-on:input__debounce.300ms") k))))
+    (testing "flag-only modifiers emit __key with no value"
+      (let [attrs (render/on {:instance/id "ix"} :click :as :open
+                             {:prevent true :stop true})
+            [k _v] (first attrs)]
+        (is (= (keyword "data-on:click__prevent__stop") k)
+            "map-style modifiers are sorted by key name for deterministic output")))
+    (testing "false / nil modifier values are skipped"
+      (let [attrs (render/on {:instance/id "ix"} :input :as :search
+                             {:debounce "300ms" :passive false :capture nil})
+            [k _v] (first attrs)]
+        (is (= (keyword "data-on:input__debounce.300ms") k))))
+    (testing "vector form preserves caller order"
+      (let [attrs (render/on {:instance/id "ix"} :click :as :open
+                             [[:stop true] [:prevent true]])
+            [k _v] (first attrs)]
+        (is (= (keyword "data-on:click__stop__prevent") k))))))
+
+(deftest on-target-accepts-event-modifiers
+  (binding [render/*cid* "cv-001"]
+    (let [attrs (render/on-target "ix-p" :input :as :search {:debounce "200ms"})
+          [k _v] (first attrs)]
+      (is (= (keyword "data-on:input__debounce.200ms") k)))))
+
 (deftest on-without-cid-throws
   (binding [render/*cid* nil]
     (is (thrown? clojure.lang.ExceptionInfo

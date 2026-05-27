@@ -520,12 +520,14 @@ POST /upload/:cid/:iid         → upload-handler  ; multipart → :upload-recei
 
 Embedded kernels prefix the same paths with their `:base-path`.
 
-Plus `/stube/ui.css` (the stock stylesheet), `/stube/preserve.js` (the
+Plus `<base>/ui.css` (the stock stylesheet), `<base>/preserve.js` (the
 preserved-subtree bridge — also hosts the `data-stube-on-unmount`
 MutationObserver that fires the host-widget teardown expression on
 real DOM removal, queueMicrotask-deferred so Idiomorph's
-detach+reattach swap dance can't double-fire), and `/stube/halos.js`
-(the dev overlay, when halos are enabled).
+detach+reattach swap dance can't double-fire, and dispatches a
+`stube:patched` `CustomEvent` on `document` after each successful
+morph), and `<base>/halos.js` (the dev overlay, when halos are
+enabled).
 
 The SSE handler has three startup paths:
 
@@ -618,8 +620,8 @@ http-server-close` plus a large `timeout tunnel` works.
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <link rel="stylesheet" href="/stube/ui.css">   <!-- optional -->
-    <script type="module" src="/stube/preserve.js"></script>
+    <link rel="stylesheet" href="/ui.css">   <!-- optional -->
+    <script type="module" src="/preserve.js"></script>
     <script type="module" src="<datastar-cdn>"></script>
   </head>
   <body data-init="@get('/sse/CID')">

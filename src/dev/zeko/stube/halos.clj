@@ -12,7 +12,7 @@
      hiccup attrs. The kernel calls this once per render when halos are
      active.
   2. **Side-panel hiccup** — [[panel-hiccup]] builds the inspector
-     content fetched by `halos.js` from `/stube/halos/<cid>/panel`.
+     content fetched by `halos.js` from `<base>/halos/<cid>/panel`.
      The panel is plain server-rendered HTML; no SSE / no extra conv.
   3. **REPL helpers** — [[tree]], [[instance]], [[history]],
      [[where]]. Re-exported by `dev.zeko.stube.core`.

@@ -383,17 +383,54 @@ Datastar registers listeners under the colon form (`data-on:<event>`).
 `data-on:submit` automatically calls `preventDefault`, so forms
 never trigger a full‑page reload.
 
-### `(s/on-target target-iid dom-event)`  /  `(s/on-target target-iid dom-event :as route-event)`
-
-Like `on`, but posts to an explicit instance id instead of `self`.
-Use it sparingly for cross-instance controls: for example, a child
-rendering a link that should notify a stable parent without answering
-and disappearing.
+**Event modifiers.** A trailing map (optional 5-arity) becomes Datastar
+event modifiers in the attribute name — `debounce`, `throttle`,
+`stop`, `prevent`, etc.
 
 ```clojure
-[:button (s/on-target (:parent-iid self) :click :as [:open (:id note)])
- "Open"]
+[:input  (s/on self :input :as :search {:debounce "300ms"})]
+[:button (s/on self :click :as :submit {:stop true :prevent true})]
 ```
+
+Map values may be strings, numbers, keywords, or `true` for
+flag-only modifiers. Map entries are sorted by key name so the
+generated attribute is stable across renders; pass a vector of
+`[k v]` pairs when you need to preserve order (e.g. for
+`__debounce.300ms.leading`-style positional arguments to one
+Datastar modifier).
+
+### `(s/on-target target dom-event)`  /  `(s/on-target target dom-event :as route-event [modifiers])`
+
+Like `on`, but posts to an explicit target instead of `self`. `target`
+may be either a bare instance-id string or an instance map. Use this
+for cross-instance controls: for example, a child rendering a link
+that should notify a stable parent without answering and
+disappearing. Accepts the same `modifiers` map as `on`.
+
+```clojure
+[:button (s/on-target (s/instance-id parent) :click :as [:open (:id note)])
+ "Open"]
+[:button (s/on-target parent :click :as :close) "x"]    ; instance map also OK
+```
+
+### `(s/on-parent self dom-event)`  /  `(s/on-parent self dom-event :as route-event [modifiers])`
+
+Shorthand for the most common cross-instance pattern: post to
+`self`'s parent. Equivalent to
+`(s/on-target (:instance/parent self) …)` but reads as a stable seam
+rather than reaching into the instance map. Throws if `self` has no
+parent.
+
+```clojure
+[:button (s/on-parent self :click :as [:close (:id note)]) "Close"]
+```
+
+### `(s/instance-id self)`
+
+Return `self`'s `:instance/id`, throwing with a clear message if it is
+absent. Use this in pure rendering helpers that pass an iid out instead
+of destructuring `:instance/id` directly — the framework owns the wire
+shape, and the public name is the stable seam.
 
 ### `(s/event-url iid route-event)`
 
@@ -422,6 +459,25 @@ other tear-down the widget owns.
              (s/on-mount   self :editor "el.cmView = new EditorView({parent:el})")
              (s/on-unmount self :editor "el.cmView?.destroy()"))]
 ```
+
+### Browser lifecycle: `stube:patched`
+
+Stube's preserve bridge dispatches a `CustomEvent` on `document` after
+every successful Datastar `patch-elements` morph driven by an SSE
+event. Host pages can listen for it to hook scroll/focus restoration,
+title measurement, third-party widget reflow, or optimistic UI cleanup
+without inventing their own MutationObserver:
+
+```javascript
+document.addEventListener("stube:patched", (event) => {
+  // event.detail.selector — CSS selector the patch targeted (or null
+  //                          when the patch addressed elements by id)
+  // event.detail.mode     — Datastar morph mode (outer/inner/…) or null
+});
+```
+
+The event is best-effort and fires after the morph has landed. It
+bubbles `false`, so attach the listener on `document`.
 
 **`on-unmount` semantics.**
 
@@ -698,7 +754,7 @@ to `s/call` or `s/await` exactly like your own embeds.
 (when (= answer s/cancel) …)
 ```
 
-All four are visually styled by the stock `/stube/ui.css`, which the
+All four are visually styled by the stock `/ui.css`, which the
 shell links by default. Pass `(s/start! {:ui-css? false})` to
 disable and ship your own.
 
@@ -750,7 +806,7 @@ Options:
 |---|---|---|
 | `:port` | 8080 | TCP port |
 | `:store` | `(s/in-memory-store)` | persistence backend |
-| `:ui-css?` | `true` | link the stock `/stube/ui.css` |
+| `:ui-css?` | `true` | link the stock `/ui.css` |
 | `:halos?` | `false` | enable dev halos (per-conv via `?halos=1`) |
 | `:app` | `nil` | host-app value returned by `(s/app)` |
 | `:principal-fn` | `nil` | `(fn [request] principal)` stamped at mint time and returned by `(s/principal)` |
@@ -812,7 +868,7 @@ dependencies](#reading-dependencies--app-vs-context-vs-principal).
 `stube-ring/ring-routes` also accepts `{:mounts {"/path" :root/id}}`
 or `{:mounts {"/path" {:flow-id :root/id :opts {:init-args-fn f}}}}`
 to add shell routes beside the adapter endpoints. `:base-path` prefixes
-the generated stube endpoints/assets (`/sse`, `/event`, `/stube/ui.css`,
+the generated stube endpoints/assets (`/sse`, `/event`, `/ui.css`,
 etc.); mount paths are left exactly as supplied by the host app.
 
 ### Application boundaries: `:app` and `:principal-fn`

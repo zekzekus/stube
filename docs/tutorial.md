@@ -33,7 +33,7 @@ deps.edn project that depends on stube. The finished file is about
 
 > **Heads up.** The screenshots and CSS in this tutorial are
 > illustrative. The actual app inherits the stock stylesheet at
-> `/stube/ui.css`; you can disable it with `(s/start! {:ui-css?
+> `/ui.css`; you can disable it with `(s/start! {:ui-css?
 > false})` if you prefer to ship your own.
 
 ---

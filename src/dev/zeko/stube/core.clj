@@ -278,6 +278,8 @@
 
 (defalias on           render/on           "See [[dev.zeko.stube.render/on]].")
 (defalias on-target    render/on-target    "See [[dev.zeko.stube.render/on-target]].")
+(defalias on-parent    render/on-parent    "See [[dev.zeko.stube.render/on-parent]].")
+(defalias instance-id  render/instance-id  "See [[dev.zeko.stube.render/instance-id]].")
 (defalias event-url    render/event-url    "See [[dev.zeko.stube.render/event-url]].")
 (defalias bind         render/bind         "See [[dev.zeko.stube.render/bind]].")
 (defalias root-attrs   render/root-attrs   "See [[dev.zeko.stube.render/root-attrs]].")

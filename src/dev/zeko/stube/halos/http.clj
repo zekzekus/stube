@@ -7,9 +7,9 @@
 
   | route                          | method | purpose                                |
   |--------------------------------|--------|----------------------------------------|
-  | `/stube/halos.js`              | GET    | the overlay script                     |
-  | `/stube/halos/:cid/enable`     | POST   | flip a conv into halos mode + redraw   |
-  | `/stube/halos/:cid/panel`      | GET    | render the inspector side-panel HTML   |"
+  | `<base>/halos.js`              | GET    | the overlay script                     |
+  | `<base>/halos/:cid/enable`     | POST   | flip a conv into halos mode + redraw   |
+  | `<base>/halos/:cid/panel`      | GET    | render the inspector side-panel HTML   |"
   (:require [clojure.java.io       :as io]
             [clojure.string        :as str]
             [dev.zeko.stube.halos   :as halos]
@@ -60,7 +60,7 @@
     :tree))
 
 (defn enable-handler
-  "POST `/stube/halos/:cid/enable` — flip the conv into halos mode and
+  "POST `<base>/halos/:cid/enable` — flip the conv into halos mode and
   push a freshly-decorated frame so the overlay sees data-stube attrs
   without a hard reload."
   ([req]

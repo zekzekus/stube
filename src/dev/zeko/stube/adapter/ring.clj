@@ -29,11 +29,11 @@
    (ring-routes k {}))
   ([k {:keys [mounts] :or {mounts {}}}]
    (let [base (rt/base-path k)]
-     (into [[(join-path base "/stube/ui.css")            {:get  {:handler http/ui-css-handler}}]
-            [(join-path base "/stube/preserve.js")       {:get  {:handler http/preserve-js-handler}}]
-            [(join-path base "/stube/halos.js")          {:get  {:handler (h halos-http/js-handler k)}}]
-            [(join-path base "/stube/halos/:cid/panel")  {:get  {:handler (h halos-http/panel-handler k)}}]
-            [(join-path base "/stube/halos/:cid/enable") {:post {:handler (h halos-http/enable-handler k)}}]]
+     (into [[(join-path base "/ui.css")            {:get  {:handler http/ui-css-handler}}]
+            [(join-path base "/preserve.js")       {:get  {:handler http/preserve-js-handler}}]
+            [(join-path base "/halos.js")          {:get  {:handler (h halos-http/js-handler k)}}]
+            [(join-path base "/halos/:cid/panel")  {:get  {:handler (h halos-http/panel-handler k)}}]
+            [(join-path base "/halos/:cid/enable") {:post {:handler (h halos-http/enable-handler k)}}]]
            (concat (core-routes k)
                    (for [[path mount-val] mounts
                          :let [{:keys [flow-id opts]

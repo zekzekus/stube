@@ -138,19 +138,53 @@
     return prepared;
   };
 
+  // Public lifecycle event. Fired on `document` after every successful
+  // Datastar `patch-elements` morph driven by an SSE patch. Apps that
+  // need to run after a patch lands (scroll/focus restoration, title
+  // measurement, third-party widget reflow, optimistic UI cleanup) can
+  // hook this instead of inventing their own MutationObserver.
+  //
+  // `detail` carries:
+  //   - selector: the CSS selector Datastar used to find targets
+  //                (or null when the patch addressed elements by id)
+  //   - mode:     "outer" | "inner" | "before" | "after" | "remove" | ...
+  //                (whatever the SSE event carried; absent → null)
+  //   - patched:  true (reserved for future flag bits)
+  //
+  // The event is best-effort: we fire it after the underlying dispatch
+  // returns regardless of preserve handling, but never before Datastar
+  // has actually applied the morph.
+  const dispatchPatched = (argsRaw) => {
+    try {
+      const detail = {
+        selector: typeof argsRaw?.selector === "string" ? argsRaw.selector : null,
+        mode:     typeof argsRaw?.mode === "string"     ? argsRaw.mode     : null,
+        patched:  true,
+      };
+      originalDispatchEvent(
+        new CustomEvent("stube:patched", {detail, bubbles: false, cancelable: false}),
+      );
+    } catch (err) {
+      try { console.error("stube:patched dispatch threw:", err); }
+      catch (_e) { /* console may be missing in test envs */ }
+    }
+  };
+
   document.dispatchEvent = (evt) => {
     if (
       evt instanceof CustomEvent &&
       evt.type === fetchEvent &&
       evt.detail?.type === patchElements
     ) {
-      const prepared = preparePreservedElements(evt.detail.argsRaw);
+      const argsRaw = evt.detail.argsRaw;
+      const prepared = preparePreservedElements(argsRaw);
       try {
         return originalDispatchEvent(evt);
       } finally {
         for (const {oldEl, attrs} of prepared) {
           if (oldEl.isConnected) applyAttributes(oldEl, attrs);
         }
+        dispatchPatched(argsRaw);
       }
     }
     return originalDispatchEvent(evt);

@@ -33,7 +33,7 @@ routes (`src/dev/zeko/stube/http.clj`):
 +------------------------+       +------------------------------+
 ```
 
-Plus a few asset routes (`/stube/ui.css`, `/stube/preserve.js`) and
+Plus a few asset routes (`<base>/ui.css`, `<base>/preserve.js`) and
 the dev‑only halos endpoints which are 404 unless `:halos? true`
 (`src/dev/zeko/stube/halos/http.clj`).
 
