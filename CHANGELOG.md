@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.2.1
+
 - **cljdoc analysis fix.** Marked `dev.zeko.stube.kit` with `^:no-doc`
   so cljdoc-analyzer filters the namespace out before requiring it.
   The kit adapter pulls in `integrant.core`, which stube intentionally

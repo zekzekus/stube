@@ -51,7 +51,7 @@ mkdir standup && cd standup
 ```clojure
 {:paths ["src"]
  :deps
- {dev.zeko/stube {:mvn/version "0.2.0"}}}
+ {dev.zeko/stube {:mvn/version "0.2.1"}}}
 ```
 
 Create `src/standup.clj` and require stube:

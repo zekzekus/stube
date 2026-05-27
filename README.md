@@ -94,7 +94,7 @@ stube is on Clojars. Add to `deps.edn`:
 
 ```clojure
 {:deps
- {dev.zeko/stube {:mvn/version "0.2.0"}}}
+ {dev.zeko/stube {:mvn/version "0.2.1"}}}
 ```
 
 Then in code:
