@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.1.8
+
 Driven by the first big embedder's post-migration notes (kasten,
 `kasten/stube_notes.md`). Four threads land here; the fifth — a
 unified signal-naming/binding toolkit — is bigger and stays in
