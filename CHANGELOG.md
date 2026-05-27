@@ -5,7 +5,13 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- **cljdoc analysis fix.** Marked `dev.zeko.stube.kit` with `^:no-doc`
+  so cljdoc-analyzer filters the namespace out before requiring it.
+  The kit adapter pulls in `integrant.core`, which stube intentionally
+  does not declare as a runtime dependency — without the marker the
+  0.2.0 cljdoc build failed on `Could not locate integrant/core`. The
+  kit-clj integration story still lives in the README; only the
+  generated API page for this one namespace is omitted from cljdoc.
 
 ## 0.2.0
 

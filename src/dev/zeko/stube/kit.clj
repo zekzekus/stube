@@ -1,4 +1,4 @@
-(ns dev.zeko.stube.kit
+(ns ^:no-doc dev.zeko.stube.kit
   "Integrant adapter for embedding stube into kit-clj / Integrant systems.
 
   Drop these into your `system.edn`:
@@ -16,7 +16,12 @@
   simply never `require` this namespace.
 
   See [[dev.zeko.stube.embed/make-kernel]] for the full option set
-  accepted by `:stube/kernel`."
+  accepted by `:stube/kernel`.
+
+  `^:no-doc` on the ns form keeps cljdoc-analyzer from requiring this
+  namespace at build time; analysis runs without integrant on the
+  classpath, and consumers using the adapter pull integrant in via
+  their own deps anyway."
   (:require [integrant.core              :as ig]
             [dev.zeko.stube.adapter.ring :as stube-ring]
             [dev.zeko.stube.embed        :as stube]))
