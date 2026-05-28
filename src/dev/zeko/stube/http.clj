@@ -315,6 +315,8 @@
                      set-cookie (assoc "Set-Cookie" set-cookie))
           :body    (shell/html cid {:dev? dev?
                                     :ui-css? (rt/ui-css? k)
+                                    :base-css (:base-css k)
+                                    :eager-scripts (:eager-scripts k)
                                     :base-path (rt/base-path k)
                                     :root-selector (rt/root-selector k)})})))))
 

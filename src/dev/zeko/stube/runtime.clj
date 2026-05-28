@@ -45,6 +45,8 @@
             :on-conv-mint      (fn [conv _request] conv)
             :on-error          nil
             :ui-css?           true
+            :base-css          []
+            :eager-scripts     []
             :halos?            false
             ;; SSE comment-frame heartbeat that keeps reverse-proxy idle
             ;; timers happy.  15s sits under the common 30/60s thresholds
@@ -73,6 +75,22 @@
   * `:session-id-fn` — host session lookup; defaults to `stube_sid`.
   * `:on-conv-mint` — optional `(fn [conv request] conv')` hook.
   * `:on-error` — reserved hook for adapter error reporting.
+  * `:base-css` — vector of stylesheet URLs (strings) that
+    [[head-tags]] should emit unconditionally, before any
+    component-derived stylesheet.  Use this when the host has
+    page-wide CSS that must appear on every page — including pages
+    that do not embed a stube shell (so component-scoped
+    `stube_styles/<ns>/<name>.css` is not enough).  URLs are emitted
+    verbatim; relative URLs resolve against the host page, absolute
+    URLs are passed through unchanged.
+  * `:eager-scripts` — vector of inline JS snippets (strings)
+    [[head-tags]] should emit as synchronous `<script>` blocks in
+    `<head>` *before* any `type=\"module\"` script.  Use this to seed
+    `window.<X>` namespaces that inline Datastar expressions
+    (`data-on:input=\"window.X.foo(...)\"`) need available from
+    frame 1, before the deferred ESM module graph finishes.  Snippets
+    are emitted verbatim and concatenated into a single `<script>`
+    block; the host is responsible for the contents (no escaping).
   * `:sse-keepalive-ms` — interval in milliseconds for the SSE
     heartbeat that keeps reverse-proxy idle timers happy.  Defaults
     to 15000.  Set to nil or 0 to disable (e.g. when the host's proxy
@@ -418,6 +436,8 @@
   [k]
   (shell/head-tags {:dev? (halos? k)
                     :ui-css? (ui-css? k)
+                    :base-css (:base-css k)
+                    :eager-scripts (:eager-scripts k)
                     :base-path (:base-path k)
                     :root-selector (:root-selector k)}))
 

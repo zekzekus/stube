@@ -503,12 +503,22 @@ Every callback is optional. `ctx` is one blessed shape:
 | `ctx.el` | the host element |
 | `ctx.args` | `{camelCasedKey: stringValue}` parsed from `data-stube-arg-*` |
 | `ctx.basePath` | the kernel's base path, for building further URLs |
-| `ctx.signals` | `{get(name), set(name, value)}` thin Datastar accessor |
+| `ctx.signals` | `{get(name), set(name, value), patch(map)}` Datastar accessor |
+| `ctx.setSignal(name, value)` | alias for `ctx.signals.set` |
+| `ctx.patchSignals(map)` | alias for `ctx.signals.patch` — write many signals at once |
+| `ctx.fetch(eventUrl, opts?)` | POST to a stube event URL (`event-url` on the server side) |
 
 `args` values stringify on the way out (`name` for keywords, `str`
 for numbers/booleans, `pr-str` for anything else). Pass small scalars
 that mirror the server's view of the element — avoid round-tripping
 large blobs through DOM attributes.
+
+Use `ctx.setSignal` / `ctx.patchSignals` when the behavior owns a
+live widget (CodeMirror, a chart, a drag-and-drop tracker) whose
+internal state should mirror into Datastar signals without a sibling
+hidden-input shim. The signal must already exist on the page —
+either declare it on the server with `:signals` / `s/bind` or seed
+it from the same render that attaches the behavior.
 
 ### `(s/preserve self label)` / `(s/on-mount self label expr)` / `(s/on-unmount self label expr)`
 
@@ -948,6 +958,8 @@ Options:
 | `:port` | 8080 | TCP port |
 | `:store` | `(s/in-memory-store)` | persistence backend |
 | `:ui-css?` | `true` | link the stock `/ui.css` |
+| `:base-css` | `[]` | extra stylesheet URLs `head-tags` emits on every shell |
+| `:eager-scripts` | `[]` | inline JS snippets emitted as a synchronous `<script>` before any module |
 | `:halos?` | `false` | enable dev halos (per-conv via `?halos=1`) |
 | `:app` | `nil` | host-app value returned by `(s/app)` |
 | `:principal-fn` | `nil` | `(fn [request] principal)` stamped at mint time and returned by `(s/principal)` |
@@ -1000,7 +1012,8 @@ Stable functions:
 
 `opts` supports `:context-fn`, `:app`, `:principal-fn`, `:store`,
 `:base-path`, `:session-id-fn`, `:on-conv-mint`, `:on-error`,
-`:ui-css?`, `:halos?`, and `:root-selector`. Values
+`:ui-css?`, `:base-css`, `:eager-scripts`, `:halos?`, and
+`:root-selector`. Values
 returned by `:context-fn` are available to handlers and lifecycle
 hooks with `(s/context self)`. For when to pick which primitive,
 see [Reading
@@ -1011,6 +1024,44 @@ or `{:mounts {"/path" {:flow-id :root/id :opts {:init-args-fn f}}}}`
 to add shell routes beside the adapter endpoints. `:base-path` prefixes
 the generated stube endpoints/assets (`/sse`, `/event`, `/ui.css`,
 etc.); mount paths are left exactly as supplied by the host app.
+
+### Host-level head injection: `:base-css` and `:eager-scripts`
+
+Use these when the host has assets that must be on the page from the
+first byte — independent of which components happen to be registered.
+
+`:base-css` is a vector of stylesheet URLs. Every call to
+`head-tags` (and the standalone shell) emits one `<link
+rel="stylesheet">` per entry, in order, before component-derived
+stylesheets. Use it when a host's CSS is shared between stube
+routes and non-stube routes (an `/about` page that doesn't go
+through `embed/head-tags`), so head-tags alone can't cover both.
+
+```clojure
+(embed/make-kernel
+  {:base-css ["/css/notes.css"]
+   :base-path "/notes"})
+```
+
+`:eager-scripts` is a vector of inline JS snippets. They are
+concatenated into a single synchronous `<script>` block emitted
+*before* any `type="module"` script — the only way to seed
+`window.<X>` for inline Datastar expressions
+(`data-on:input="window.X.foo($value)"`) that may evaluate before
+the deferred ESM graph finishes parsing. Snippets are emitted
+verbatim, so the host owns the contents (no escaping is performed).
+
+```clojure
+(embed/make-kernel
+  {:eager-scripts
+   ["window.NotesAttrs = {createForm:'create-form'};"
+    "window.NotesSignals = {editTitle:'editTitle'};"]})
+```
+
+For most apps neither option is needed: the per-component
+stylesheet convention and the `:modules` declaration on
+`defcomponent` are the preferred seams.  Reach for these when the
+component-scoped placement isn't expressive enough.
 
 ### Application boundaries: `:app` and `:principal-fn`
 

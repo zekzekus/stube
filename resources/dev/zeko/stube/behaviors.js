@@ -36,15 +36,64 @@
   const argPrefix = "data-stube-arg-";
   const stateKey = "__stubeBehaviorState";
 
-  const currentScript = document.currentScript;
-  const basePathFromScript = currentScript?.getAttribute("data-stube-base-path");
+  // Resolving the kernel base-path is non-trivial because this file is
+  // loaded as `<script type="module">`, and inside a module IIFE
+  // `document.currentScript` is always null (MDN: "It returns null if
+  // the script element is a module script").  We try every reasonable
+  // source in order and cache the first hit:
+  //
+  //   1. `import.meta.url` — always available in module scripts.  The
+  //      bridge is served from `<base>/behaviors.js`, so stripping the
+  //      trailing `/behaviors.js` from its pathname recovers the base.
+  //   2. `<html>` or `<body>` `data-stube-base-path` attribute, if the
+  //      host stamped one on (legacy escape hatch).
+  //   3. Any element in the document with `data-stube-base-path` (e.g.
+  //      the stube shell `<div>` itself always carries the attribute).
+  //   4. Empty string (standalone stube mount).
+  // `import.meta.url` is evaluated at the module's top level (capturing
+  // it here, not inside a function, makes it accessible even when the
+  // resolver re-runs after later DOM updates).
+  let importMetaUrl = null;
+  try { importMetaUrl = import.meta.url; } catch (_e) {}
+
+  let resolvedBasePath = null;
+  const trimTrailingSlash = (s) =>
+    s && s !== "/" && s.endsWith("/") ? s.slice(0, -1) : (s === "/" ? "" : s);
+  const stripSelfFromUrl = (url) => {
+    try {
+      const u = new URL(url);
+      // strip the final `/behaviors.js` segment if present
+      return u.pathname.replace(/\/behaviors\.js$/, "");
+    } catch (_e) { return null; }
+  };
   const resolveBasePath = () => {
-    if (typeof basePathFromScript === "string") return basePathFromScript;
-    const body = document.body;
-    if (body && body.hasAttribute("data-stube-base-path")) {
-      return body.getAttribute("data-stube-base-path") || "";
+    if (resolvedBasePath !== null) return resolvedBasePath;
+    // 1. import.meta.url — most reliable in modules.
+    if (importMetaUrl) {
+      const fromMeta = stripSelfFromUrl(importMetaUrl);
+      if (typeof fromMeta === "string") {
+        resolvedBasePath = trimTrailingSlash(fromMeta) || "";
+        return resolvedBasePath;
+      }
     }
-    return "";
+    // 2. <html>/<body> data attribute.
+    for (const el of [document.documentElement, document.body]) {
+      if (el && el.hasAttribute && el.hasAttribute("data-stube-base-path")) {
+        resolvedBasePath = el.getAttribute("data-stube-base-path") || "";
+        return resolvedBasePath;
+      }
+    }
+    // 3. Any element carrying the attribute (e.g. the shell <div>).
+    try {
+      const any = document.querySelector("[data-stube-base-path]");
+      if (any) {
+        resolvedBasePath = any.getAttribute("data-stube-base-path") || "";
+        return resolvedBasePath;
+      }
+    } catch (_e) {}
+    // 4. Standalone mount.
+    resolvedBasePath = "";
+    return resolvedBasePath;
   };
 
   const moduleCache = new Map();
@@ -77,25 +126,79 @@
     return out;
   };
 
+  // Walk a dotted-path of nested Datastar signal nodes
+  // (e.g. `edit.markdown`) down `ds.signals.value`.
+  const resolveSignalNode = (name) => {
+    const ds = globalThis.ds;
+    let node = ds?.signals?.value;
+    if (!node || typeof name !== "string") return undefined;
+    const parts = name.split(".");
+    for (let i = 0; i < parts.length; i++) {
+      if (node == null) return undefined;
+      node = node[parts[i]];
+      if (node && typeof node === "object" && "value" in node && i < parts.length - 1) {
+        // descend into the inner value for the next path segment
+        node = node.value;
+      }
+    }
+    return node;
+  };
+
   const buildSignals = () => ({
     get(name) {
-      const ds = globalThis.ds;
-      try { return ds?.signals?.value?.[name]?.value; }
-      catch (_e) { return undefined; }
+      try {
+        const sig = resolveSignalNode(name);
+        return sig && typeof sig === "object" && "value" in sig ? sig.value : undefined;
+      } catch (_e) { return undefined; }
     },
     set(name, value) {
-      const ds = globalThis.ds;
-      const sig = ds?.signals?.value?.[name];
-      if (sig) sig.value = value;
+      try {
+        const sig = resolveSignalNode(name);
+        if (sig && typeof sig === "object" && "value" in sig) sig.value = value;
+      } catch (_e) {}
+    },
+    patch(values) {
+      if (!values || typeof values !== "object") return;
+      for (const [k, v] of Object.entries(values)) {
+        try {
+          const sig = resolveSignalNode(k);
+          if (sig && typeof sig === "object" && "value" in sig) sig.value = v;
+        } catch (_e) {}
+      }
     },
   });
 
-  const buildCtx = (el) => ({
-    el,
-    args: readArgs(el),
-    basePath: resolveBasePath(),
-    signals: buildSignals(),
-  });
+  // A small helper so behaviors can POST to a stube event URL the same
+  // way `s/on` does, without rebuilding the URL by hand.  `eventUrl` is
+  // expected to be the absolute path produced by `s/event-url` on the
+  // server side and passed in via `data-stube-arg-*`.
+  const buildFetch = () => async (eventUrl, opts) => {
+    const init = {
+      method: "POST",
+      headers: {"Accept": "text/event-stream"},
+      ...(opts || {}),
+    };
+    if (init.body && typeof init.body !== "string" && !(init.body instanceof FormData)) {
+      init.body = JSON.stringify(init.body);
+      init.headers = {"Content-Type": "application/json", ...init.headers};
+    }
+    return fetch(eventUrl, init);
+  };
+
+  const buildCtx = (el) => {
+    const signals = buildSignals();
+    return {
+      el,
+      args: readArgs(el),
+      basePath: resolveBasePath(),
+      signals,
+      // Convenience aliases so behavior code doesn't have to reach
+      // into `ctx.signals` for the common write paths.
+      setSignal: signals.set,
+      patchSignals: signals.patch,
+      fetch: buildFetch(),
+    };
+  };
 
   const safeCall = (fn, el, ctx, phase, slug) => {
     if (typeof fn !== "function") return;

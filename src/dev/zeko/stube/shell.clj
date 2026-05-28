@@ -76,37 +76,59 @@
     (when (seq chunks)
       [:style {:type "text/css"} (str/join "\n" chunks)])))
 
+(defn- base-css-links [urls]
+  (->> urls
+       (filter string?)
+       (filter seq)
+       (map (fn [href] [:link {:rel "stylesheet" :href href}]))))
+
+(defn- eager-script-block [snippets]
+  (let [chunks (->> snippets
+                    (filter string?)
+                    (filter seq))]
+    (when (seq chunks)
+      [:script (str/join "\n" chunks)])))
+
 (defn head-tags
   "Hiccup nodes a host page should include in `<head>` for a stube shell
   fragment, in this order:
 
   1. Optional stock `ui.css`.
-  2. One `<link>` per registered component that ships a stylesheet at
+  2. Kernel-level `:base-css` `<link>`s (host-wide stylesheets that
+     should appear regardless of which components are registered).
+  3. One `<link>` per registered component that ships a stylesheet at
      `resources/stube_styles/<ns>/<name>.css` (discovered via
      `io/resource`).
-  3. One `<style>` block holding inline `:styles` from every registered
+  4. One `<style>` block holding inline `:styles` from every registered
      component, with each chunk's `&` prefix scoped to the matching
      `[data-stube-component=\"ns/name\"]` selector.
-  4. Datastar and the framework bridges (`preserve.js`, `behaviors.js`).
-  5. One `<script type=\"module\">` per distinct module id declared by a
+  5. Kernel-level `:eager-scripts` as a single synchronous `<script>`
+     block — emitted *before* any `type=\"module\"` script so inline
+     Datastar expressions can rely on the globals it sets up.
+  6. Datastar and the framework bridges (`preserve.js`, `behaviors.js`).
+  7. One `<script type=\"module\">` per distinct module id declared by a
      component's `:modules` vector, served from
      `resources/stube_modules/<id>.js`.
-  6. Optional halos tooling when `:dev?` is true.
+  8. Optional halos tooling when `:dev?` is true.
 
   Standalone [[html]] uses this directly; embedders normally call the
   public `dev.zeko.stube.embed/head-tags` wrapper for their kernel."
-  [{:keys [dev? ui-css? base-path root-selector]
-    :or {ui-css? true base-path "" root-selector "#root"}}]
+  [{:keys [dev? ui-css? base-css eager-scripts base-path root-selector]
+    :or {ui-css? true base-css [] eager-scripts [] base-path "" root-selector "#root"}}]
   (binding [render/*base-path* base-path
             render/*root-selector* root-selector]
     (let [stylesheet-links (collect-stylesheet-links)
           inline-styles    (collect-inline-styles)
-          module-scripts   (collect-module-scripts)]
+          module-scripts   (collect-module-scripts)
+          base-links       (base-css-links base-css)
+          eager-block      (eager-script-block eager-scripts)]
       (cond-> []
         ui-css? (conj [:link {:rel "stylesheet" :href (render/ui-css-url)}])
 
+        (seq base-links)       (into base-links)
         (seq stylesheet-links) (into stylesheet-links)
         inline-styles          (conj inline-styles)
+        eager-block            (conj eager-block)
 
         true (conj [:script {:type "module"
                              :src (render/preserve-js-url)
@@ -125,8 +147,8 @@
   started with `:halos? true`), inject the halos overlay script and the
   `data-stube-cid` hook so the floating pill can activate the overlay."
   [cid opts-or-dev?]
-  (let [{:keys [dev? ui-css? base-path root-selector]
-         :or {ui-css? true base-path "" root-selector "#root"}}
+  (let [{:keys [dev? ui-css? base-css eager-scripts base-path root-selector]
+         :or {ui-css? true base-css [] eager-scripts [] base-path "" root-selector "#root"}}
         (if (map? opts-or-dev?)
           opts-or-dev?
           {:dev? opts-or-dev?})]
@@ -141,6 +163,8 @@
                                                :root-selector root-selector})
             assets (head-tags {:dev? dev?
                                :ui-css? ui-css?
+                               :base-css base-css
+                               :eager-scripts eager-scripts
                                :base-path base-path
                                :root-selector root-selector})]
         (chassis/html

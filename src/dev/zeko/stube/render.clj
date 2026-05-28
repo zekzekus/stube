@@ -453,6 +453,22 @@
   belong to the server's view of the element — avoid round-tripping
   large blobs through DOM attributes.
 
+  Behavior `ctx` shape:
+
+  * `el` — the DOM element the behavior is attached to.
+  * `args` — `data-stube-arg-*` attributes decoded into a camelCased
+    object.
+  * `basePath` — the kernel base-path so behaviors can build other
+    stube URLs.
+  * `signals.get(name)` / `signals.set(name, v)` / `signals.patch(map)`
+    — read/write Datastar signals.  Aliases `ctx.setSignal(name, v)`
+    and `ctx.patchSignals(map)` exist for the common write paths so
+    behaviors can drive bound signals directly, retiring hidden-input
+    shims.
+  * `fetch(eventUrl, opts?)` — POST to a stube event URL the same
+    shape `s/on` produces.  Pass the URL in via a `data-stube-arg-*`
+    built with [[event-url]] on the server.
+
   Use [[preserve]] when the behavior owns DOM children outside the
   server's render tree, and [[on-unmount]] for one-off teardown that
   doesn't need the full behavior contract."

@@ -36,14 +36,16 @@
 (defonce ^:private !server      (atom nil))
 (defonce ^:private !reaper-stop (atom nil))
 
-(defn- new-kernel [{:keys [store ui-css? halos? app principal-fn]
-                    :or {ui-css? true halos? false}}]
-  (rt/make-kernel {:store        (or store (store/in-memory-store))
-                   :base-path    ""
-                   :ui-css?      ui-css?
-                   :halos?       halos?
-                   :app          app
-                   :principal-fn principal-fn}))
+(defn- new-kernel [{:keys [store ui-css? base-css eager-scripts halos? app principal-fn]
+                    :or {ui-css? true base-css [] eager-scripts [] halos? false}}]
+  (rt/make-kernel {:store         (or store (store/in-memory-store))
+                   :base-path     ""
+                   :ui-css?       ui-css?
+                   :base-css      base-css
+                   :eager-scripts eager-scripts
+                   :halos?        halos?
+                   :app           app
+                   :principal-fn  principal-fn}))
 
 (defn default-kernel
   "The kernel instance used by the standalone server API."
@@ -178,18 +180,20 @@
   them to the underlying kernel.  See
   [[dev.zeko.stube.embed/make-kernel]] for the full set."
   ([] (start! {}))
-  ([{:keys [port store ui-css? halos? app principal-fn
+  ([{:keys [port store ui-css? base-css eager-scripts halos? app principal-fn
             conversation-ttl reaper-interval]
-     :or {port 8080 ui-css? true halos? false}}]
+     :or {port 8080 ui-css? true base-css [] eager-scripts [] halos? false}}]
    (when @!server
      (stop!))
    (when-let [old @!kernel]
      (rt/halt! old))
-   (let [k (new-kernel {:store        store
-                        :ui-css?      ui-css?
-                        :halos?       halos?
-                        :app          app
-                        :principal-fn principal-fn})]
+   (let [k (new-kernel {:store         store
+                        :ui-css?       ui-css?
+                        :base-css      base-css
+                        :eager-scripts eager-scripts
+                        :halos?        halos?
+                        :app           app
+                        :principal-fn  principal-fn})]
      (reset! !kernel k)
      (when (and store (seq (rt/active-conversations k)))
        (println (str "stube: restored " (count (rt/active-conversations k))

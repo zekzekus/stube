@@ -5,7 +5,66 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+Driven by the second wave of kasten post-migration notes
+(`kasten/stube_notes.md`, §"Open rough edges against Stube 0.3.0").
+Four rough edges land here; the fifth — a unified signal-naming /
+binding toolkit — stays deferred in `todo.md §2` until a second host
+hits the same shape.
+
+- **`behaviors.js` base-path resolution no longer requires a host
+  body attribute** (bugfix). The shipped bridge is loaded as
+  `<script type="module">`, and inside a module IIFE
+  `document.currentScript` is always null — so the previous attempt
+  to read `data-stube-base-path` from the script tag silently fell
+  through to an empty base-path on every non-standalone mount, and
+  behavior modules 404'd unless the host stamped the attribute on
+  `<body>` itself. The resolver now consults, in order:
+  `import.meta.url` (always available in modules; the bridge is
+  served from `<base>/behaviors.js`, so stripping that suffix
+  recovers the base), then `<html>` / `<body>`
+  `data-stube-base-path`, then any element carrying the attribute
+  (the shell `<div>` does), then the empty string. The
+  `data-stube-base-path` attribute on the script tag and on the
+  shell `<div>` is retained for legacy fallback.
+
+- **`:base-css` on `make-kernel` / `start!`.** A vector of
+  stylesheet URLs that `head-tags` emits unconditionally, in order,
+  before component-derived stylesheets. Use this when host CSS has
+  to appear on routes that don't embed `head-tags` at all (e.g. a
+  static `/about` page that shares a layered stylesheet with the
+  stube-driven `/`). URLs are emitted verbatim; relative URLs
+  resolve against the host page, absolute URLs pass through.
+
+- **`:eager-scripts` on `make-kernel` / `start!`.** A vector of
+  inline JS snippets that `head-tags` emits as one synchronous
+  `<script>` block in `<head>` *before* any `type="module"` script.
+  This is the blessed seam for seeding `window.<X>` namespaces that
+  inline Datastar expressions
+  (`data-on:input="window.X.bindSlugSync($value)"`) need available
+  from frame 1, before the deferred ESM module graph finishes
+  parsing. Snippets are emitted verbatim and concatenated; the host
+  owns the contents.
+
+- **Behavior `ctx` grows real signal writes and a `fetch` helper.**
+  `ctx.signals` now exposes `get` / `set` / `patch` against
+  Datastar's nested signal tree (dotted paths supported), and the
+  ctx surfaces `ctx.setSignal(name, value)` and
+  `ctx.patchSignals(map)` as direct aliases so behavior code does
+  not have to reach into `ctx.signals` for the common write paths.
+  `ctx.fetch(eventUrl, opts?)` posts to a stube event URL the same
+  shape `s/on` does — pair it with `data-stube-arg-event-url` (or
+  build the URL on the fly with `event-url` and pass it in) when a
+  behavior wants to drive server state without a sibling form. The
+  end result: behaviors that own a live widget (CodeMirror,
+  Chart.js, drag-and-drop) can mirror their internal state into
+  bound signals directly, retiring the hidden-input shim that
+  previously bridged the two worlds.
+
+Carried forward to `todo.md`: the signal-naming / binding helper
+toolkit (`s/data-signals`, `s/$`, `s/signal` lookup,
+`s/scoped-signal`). Kasten still hand-rolls the registry; the right
+API surface remains design-heavy enough that one datapoint is not
+enough to commit to a shape.
 
 ## 0.3.0
 

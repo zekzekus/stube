@@ -65,7 +65,11 @@ framework cruft.
       [carried §2]
 
 - [ ] **Signal naming / binding / lookup toolkit.** First flagged in
-      the kasten post-migration notes (`kasten/stube_notes.md`).
+      the kasten post-migration notes (`kasten/stube_notes.md`), carried
+      forward through 0.1.8 and 0.4.0 — each round of kasten migration
+      notes has re-listed it as the biggest remaining shared pattern,
+      but it remains the work of a single host so the toolkit shape
+      is still under-specified.
       Datastar's `data-bind:<key>` camel-cases the wire key, which
       collides with kebab-case Clojure conventions: emitting
       `data-bind:editMarkdown` reaches the browser as

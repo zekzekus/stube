@@ -66,3 +66,52 @@
     (is (contains? srcs "/modules/notes/search.js"))
     (is (= 1 (count (filter #(= "/modules/notes/zoom.js" %) (keep script-src tags))))
         "duplicate module declarations across components dedupe to one <script>")))
+
+(deftest head-tags-emits-base-css-links-before-component-stylesheets
+  (registry/register! {:component/id :test-style/yes})
+  (let [tags  (shell/head-tags {:ui-css? false
+                                :base-css ["/host/app.css" "/host/extra.css"]})
+        hrefs (vec (keep href-of tags))]
+    (is (= ["/host/app.css" "/host/extra.css" "/styles/test-style/yes.css"]
+           hrefs)
+        ":base-css URLs are emitted in order, before component-derived stylesheets")))
+
+(deftest head-tags-skips-blank-base-css-entries
+  (let [tags  (shell/head-tags {:ui-css? false :base-css ["" nil "/ok.css"]})
+        hrefs (vec (keep href-of tags))]
+    (is (= ["/ok.css"] hrefs))))
+
+(deftest head-tags-emits-eager-scripts-before-module-scripts
+  (let [tags    (shell/head-tags {:ui-css? false
+                                  :eager-scripts ["window.Foo = {a:1};"
+                                                  "window.Foo.b = 2;"]
+                                  :base-path ""})
+        ;; eager block has no :src and no :type (synchronous inline)
+        eager   (some (fn [t]
+                        (when (and (vector? t)
+                                   (= :script (first t))
+                                   (string? (last t)))
+                          t))
+                      tags)
+        eager-idx  (.indexOf ^java.util.List (vec tags) eager)
+        first-mod  (some-> (some (fn [t]
+                                   (when (and (vector? t)
+                                              (= :script (first t))
+                                              (= "module" (get-in t [1 :type])))
+                                     t))
+                                 tags))
+        first-mod-idx (.indexOf ^java.util.List (vec tags) first-mod)]
+    (is (some? eager))
+    (is (str/includes? (last eager) "window.Foo"))
+    (is (str/includes? (last eager) "Foo.b = 2"))
+    (is (and (>= eager-idx 0) (>= first-mod-idx 0)))
+    (is (< eager-idx first-mod-idx)
+        "eager <script> precedes the first type=module bridge")))
+
+(deftest head-tags-omits-eager-block-when-list-is-empty-or-blank
+  (let [tags (shell/head-tags {:ui-css? false :eager-scripts [nil "" ""]})]
+    (is (not-any? (fn [t]
+                    (and (vector? t)
+                         (= :script (first t))
+                         (string? (last t))))
+                  tags))))
