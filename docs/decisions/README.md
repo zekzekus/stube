@@ -17,6 +17,7 @@ later ones inherit.
 | [0004](0004-app-store-and-principal.md) | `:app` is a per-kernel value; `:principal` is fixed at mint time |
 | [0005](0005-answer-error-and-resume.md) | `s/answer-error` is its own effect; `:on-error-<key>` mirrors `:on-<key>` |
 | [0006](0006-embed-as-direct-runtime-facade.md) | `dev.zeko.stube.embed` is a thin direct facade over `runtime`; adapters reach into `runtime` themselves |
+| [0007](0007-client-side-seam.md) | Auto `data-stube-component` + `s/behavior` + file-convention CSS/JS form the client-side seam |
 
 New ADRs should follow the same shape — Context, Decision,
 Consequences. Number sequentially.  Don't rewrite history: when a

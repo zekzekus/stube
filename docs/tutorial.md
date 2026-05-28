@@ -738,9 +738,18 @@ A few next steps worth exploring:
 - **`s/keyed-children` for dynamic collections of child components.**
   See `examples/dev/zeko/stube/examples/columns.clj` for add/remove/
   replace/reorder without re-rendering the whole parent.
-- **`s/preserve` / `s/on-mount` for third-party widgets.** Mark the
-  widget host as preserved so Datastar keeps its child DOM alive across
-  morphs.
+- **`s/behavior` for client-side widgets.** Components declare
+  `(s/behavior self :notes/editor {:doc-id …})`; stube lazy-imports
+  `resources/stube_behaviors/notes/editor.js` and drives its
+  `mount`/`patched`/`unmount` lifecycle. Pair with `s/preserve` when
+  the widget owns DOM children outside the server's render tree.
+- **Per-component CSS.** Drop a file at
+  `resources/stube_styles/<ns>/<name>.css` and stube auto-links it.
+  Every component root carries `data-stube-component="<ns>/<name>"`
+  and `class="stube-c-<ns>-<name>"`, so selectors are stable.
+- **`:modules ["foo/bar"]` for eager JS dependencies** loaded from
+  `resources/stube_modules/foo/bar.js` whenever the declaring
+  component is registered.
 - **Custom decorations.** Wrap any component with a site header /
   permission check / breadcrumb with `s/decorate!`.
 - **The REPL.** `(s/inspect cid)` shows the live conversation;

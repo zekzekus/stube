@@ -5,7 +5,57 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- **Client-side seam: behaviors, component-scoped CSS, file-convention
+  assets.** Stube grows an opinion about where in-browser JS and CSS
+  live and how they connect to a component. See
+  [ADR 0007](docs/decisions/0007-client-side-seam.md) for the design
+  rationale.
+
+  - `s/root-attrs` now automatically emits
+    `data-stube-component="ns/name"` and `class="stube-c-<ns>-<name>"`
+    on every component root, derived from `:instance/type`. CSS
+    selectors and behaviors can address every instance by its
+    registered keyword; user-supplied `:class` is concatenated, never
+    replaced. Instance maps without `:instance/type` (hand-rolled in
+    tests) are unaffected.
+  - **`s/behavior self behavior-id args`** attaches a client-side
+    behavior to an element. Renders `data-stube-behavior="ns/name"`
+    plus one `data-stube-arg-<k>` per arg. The shell loads a tiny
+    `behaviors.js` bridge that sweeps the document on every
+    `stube:patched`, lazy-imports the matching module from
+    `<base>/behaviors/<ns>/<name>.js`, and drives a fixed lifecycle:
+    `mount(el, ctx)` once, `patched(el, ctx)` on every later morph
+    that left the element alive, `unmount(el, ctx)` on detach. `ctx`
+    is `{el, args, basePath, signals}`. Pairs with `s/preserve` when
+    the behavior owns DOM children outside the server's render tree.
+    Behaviors `fetch` the URLs produced by `s/event-url` to drive
+    server state — the canonical "client widget tells the server
+    something happened" pattern, demonstrated in the new `/sketch`
+    example.
+  - **Per-component CSS file convention.**
+    `resources/stube_styles/<ns>/<name>.css`, when present, is
+    auto-linked by `head-tags`. Selectors target the auto-emitted
+    `[data-stube-component="ns/name"]`.
+  - **Inline `:styles "..."` on `defcomponent`.** Colocated CSS for
+    small components: `&` is replaced with the component's
+    `[data-stube-component]` selector at head-emit time; all chunks
+    are concatenated into a single `<style>` block.
+  - **`:modules ["foo/bar"]` on `defcomponent`** declares eager JS
+    module dependencies served from
+    `resources/stube_modules/foo/bar.js`. `head-tags` emits one
+    deduped script per distinct entry across the whole registry.
+  - **Asset routes** added under each kernel's base-path:
+    `/<base>/styles/<ns>/<name>.css`, `/<base>/modules/<id>.js`,
+    `/<base>/behaviors/<ns>/<name>.js`, `/<base>/behaviors.js`. Asset
+    segments are restricted to `[A-Za-z0-9_-]`; traversal-shaped
+    requests return 400 and never touch `io/resource`.
+  - **New `/sketch` example** drives the whole seam end-to-end:
+    `s/behavior` for canvas drawing, `s/preserve` for the live pixels,
+    a per-component stylesheet, an inline `:styles` chip, a `:modules`
+    entry that registers a global `c` keyboard shortcut, an
+    `s/execute-script` snapshot button. Behavior posts back to a
+    server event URL on every pointerup; the server-owned stroke
+    counter morphs in the chip outside the preserved subtree.
 
 ## 0.2.1
 

@@ -32,6 +32,7 @@
             [dev.zeko.stube.examples.reading-list]
             [dev.zeko.stube.examples.seaside-todo]
             [dev.zeko.stube.examples.shared-counter]
+            [dev.zeko.stube.examples.sketch]
             [dev.zeko.stube.examples.table-report]
             [dev.zeko.stube.examples.tabs]
             [dev.zeko.stube.examples.todo]
@@ -86,6 +87,8 @@
     :blurb "S-12: restore keyed columns from `?items=` via `:start`; the URL stays in sync as columns open/close."}
    {:path "/preserved-widget" :title "Preserved widget"        :group "Tier 3"
     :blurb "S-3: `s/preserve` keeps third-party DOM children alive across parent re-renders."}
+   {:path "/sketch"         :title "Sketch pad"                :group "Tier 3"
+    :blurb "Client-side seam end-to-end: `s/behavior` + `s/preserve`, per-component CSS file, inline `:styles`, and a `:modules` entry that registers a keyboard shortcut."}
    {:path "/error-frame"    :title "In-page error frame"       :group "Tier 3"
     :blurb "S-5: a throwing handler turns into a localized banner instead of dropping the SSE stream."}
    {:path "/error-answer"   :title "Child-side error routing"  :group "Tier 3"

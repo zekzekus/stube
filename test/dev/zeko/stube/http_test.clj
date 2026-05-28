@@ -18,6 +18,50 @@
   (is (= "{\"password-ix-1\":\"\"}"
          (#'fragments/json-str {:password-ix-1 ""}))))
 
+(deftest component-style-handler-serves-resource-when-it-exists
+  (let [resp (http/component-style-handler
+               {:path-params {:asset "test-style/yes.css"}})]
+    (is (= 200 (:status resp)))
+    (is (re-find #"text/css" (get-in resp [:headers "Content-Type"])))
+    (is (re-find #"rebeccapurple" (:body resp)))))
+
+(deftest component-style-handler-404s-on-missing-resource
+  (let [resp (http/component-style-handler
+               {:path-params {:asset "test-style/missing.css"}})]
+    (is (= 404 (:status resp)))))
+
+(deftest component-style-handler-rejects-traversal-paths
+  ;; The handler must reject ../, slashes inside segments, and any
+  ;; character that would let an attacker step out of the resource
+  ;; root.  Returns 400 (or rejects matching) for everything off-shape.
+  (doseq [asset ["../../etc/passwd"
+                 "../../etc/passwd.css"
+                 "foo/../bar.css"
+                 "deep/path/x.css"]]
+    (let [resp (http/component-style-handler
+                 {:path-params {:asset asset}})]
+      (is (= 400 (:status resp))
+          (str "must reject traversal-shaped asset: " asset)))))
+
+(deftest component-behavior-handler-serves-js-resource
+  (let [resp (http/component-behavior-handler
+               {:path-params {:asset "test-style/echo.js"}})]
+    (is (= 200 (:status resp)))
+    (is (re-find #"application/javascript"
+                 (get-in resp [:headers "Content-Type"])))
+    (is (re-find #"mount" (:body resp)))))
+
+(deftest component-module-handler-serves-js-resource
+  (let [resp (http/component-module-handler
+               {:path-params {:asset "test-style/setup.js"}})]
+    (is (= 200 (:status resp)))
+    (is (re-find #"test module loaded" (:body resp)))))
+
+(deftest behaviors-js-handler-serves-bridge
+  (let [resp (http/behaviors-js-handler {})]
+    (is (= 200 (:status resp)))
+    (is (re-find #"stube behaviors bridge" (:body resp)))))
+
 (deftest stale-event-returns-410
   (let [resp (http/event-handler {:path-params {:cid "cv-missing"
                                                 :iid "ix-missing"

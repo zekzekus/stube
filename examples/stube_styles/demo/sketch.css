@@ -1,0 +1,128 @@
+/* Per-component stylesheet, auto-linked by head-tags because the
+   matching component id `:demo/sketch` is in the registry.
+   Selectors target the auto-emitted attribute on every component root. */
+
+@layer stube.demo {
+  [data-stube-component="demo/sketch"] {
+    display: grid;
+    gap: 1rem;
+    max-width: 48rem;
+    margin: 1rem auto;
+    font-family: system-ui, sans-serif;
+    color: #0f172a;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__header h1 {
+    margin: 0 0 0.25rem;
+    font-size: 1.5rem;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__header p {
+    margin: 0;
+    color: #475569;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.75rem;
+    background: #f8fafc;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__palette {
+    display: inline-flex;
+    gap: 0.4rem;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__swatch {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.08s ease, border-color 0.08s ease;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__swatch:hover {
+    transform: scale(1.08);
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__swatch--active {
+    border-color: #0f172a;
+    box-shadow: 0 0 0 2px #fff inset;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__stroke {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #334155;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__stroke output {
+    font-variant-numeric: tabular-nums;
+    min-width: 2.5rem;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 0.4rem;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__btn {
+    border: 1px solid #cbd5e1;
+    background: white;
+    border-radius: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__btn:hover {
+    background: #eef2ff;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__btn--snapshot {
+    background: #0f172a;
+    color: white;
+    border-color: #0f172a;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__canvas-host {
+    padding: 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.75rem;
+    background: white;
+  }
+
+  [data-stube-component="demo/sketch"] canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background:
+      linear-gradient(#e2e8f0 1px, transparent 1px) 0 0 / 100% 24px,
+      linear-gradient(90deg, #e2e8f0 1px, transparent 1px) 0 0 / 24px 100%,
+      #ffffff;
+    border-radius: 0.5rem;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__hint {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.9rem;
+  }
+
+  [data-stube-component="demo/sketch"] .sketch__hint kbd {
+    background: #0f172a;
+    color: white;
+    padding: 0.05rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+  }
+}

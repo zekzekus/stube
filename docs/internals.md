@@ -520,14 +520,34 @@ POST /upload/:cid/:iid         → upload-handler  ; multipart → :upload-recei
 
 Embedded kernels prefix the same paths with their `:base-path`.
 
-Plus `<base>/ui.css` (the stock stylesheet), `<base>/preserve.js` (the
-preserved-subtree bridge — also hosts the `data-stube-on-unmount`
-MutationObserver that fires the host-widget teardown expression on
-real DOM removal, queueMicrotask-deferred so Idiomorph's
-detach+reattach swap dance can't double-fire, and dispatches a
-`stube:patched` `CustomEvent` on `document` after each successful
-morph), and `<base>/halos.js` (the dev overlay, when halos are
-enabled).
+Plus the framework asset routes:
+
+```
+GET  <base>/ui.css                       → stock stylesheet
+GET  <base>/preserve.js                  → preserve bridge + on-unmount observer
+GET  <base>/behaviors.js                 → behaviors bridge
+GET  <base>/styles/<ns>/<name>.css       → resources/stube_styles/<ns>/<name>.css
+GET  <base>/modules/<id>.js              → resources/stube_modules/<id>.js
+GET  <base>/behaviors/<ns>/<name>.js     → resources/stube_behaviors/<ns>/<name>.js
+GET  <base>/halos.js                     → dev overlay (when enabled)
+```
+
+`preserve.js` also hosts the `data-stube-on-unmount` MutationObserver
+that fires host-widget teardown expressions on real DOM removal
+(queueMicrotask-deferred so Idiomorph's detach+reattach swap dance
+can't double-fire) and dispatches a `stube:patched` `CustomEvent` on
+`document` after each successful morph.
+
+`behaviors.js` walks elements carrying `data-stube-behavior` on every
+`stube:patched`, lazy-imports the matching module from the
+`/behaviors/` route, and drives the `mount`/`patched`/`unmount`
+lifecycle once per element per slug. The same MutationObserver
+pattern as `preserve.js` keeps unmount firings de-duplicated against
+the morph dance.
+
+Asset segments are validated against `[A-Za-z0-9_-]` before any
+filesystem lookup; traversal-shaped requests return 400 without
+touching `io/resource`.
 
 The SSE handler has three startup paths:
 
@@ -620,15 +640,28 @@ http-server-close` plus a large `timeout tunnel` works.
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <link rel="stylesheet" href="/ui.css">   <!-- optional -->
-    <script type="module" src="/preserve.js"></script>
+    <link rel="stylesheet" href="/ui.css">                   <!-- optional -->
+    <link rel="stylesheet" href="/styles/notes/shell.css">   <!-- one per registered component with a stylesheet -->
+    <style>[data-stube-component="foo/bar"] { … }</style>    <!-- inline :styles, scoped at head-emit -->
+    <script type="module" src="/preserve.js"   data-stube-base-path=""></script>
+    <script type="module" src="/behaviors.js"  data-stube-base-path=""></script>
     <script type="module" src="<datastar-cdn>"></script>
+    <script type="module" src="/modules/notes/zoom.js"></script>
+                                                              <!-- one per distinct :modules entry -->
   </head>
-  <body data-init="@get('/sse/CID')">
+  <body data-init="@get('/sse/CID')" data-stube-base-path="">
     <div id="root"></div>
   </body>
 </html>
 ```
+
+The stylesheet links and module scripts are derived from the
+registry at head-emit time — `head-tags` walks every registered
+component, asks `io/resource` whether a matching stylesheet file
+exists, and unions the `:component/modules` vectors with sort+dedup.
+Inline `:styles` chunks are concatenated into a single `<style>`
+block; each `&` is replaced with the component's
+`[data-stube-component="ns/name"]` selector.
 
 `data-init` is what Datastar fires once when it processes the
 element. (`data-on:load` doesn't, because `<body>` has no `load`

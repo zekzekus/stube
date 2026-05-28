@@ -440,25 +440,164 @@ payload query parameter for structured events. Most code should prefer
 `on`; reach for `event-url` only when writing a custom Datastar
 expression.
 
+## Client-side seam
+
+Most stube components render purely from the server: SSE patches morph
+the DOM, Datastar wires events back. When a feature genuinely needs
+in-browser JS — a code-editor, a drag-and-drop list, a chart, an
+autocomplete — stube pins *where* that code lives and *how* it
+connects to a component. Hosts write plain JavaScript; the framework
+owns the seam.
+
+### Every component root is addressable
+
+`s/root-attrs` always emits two extra attributes derived from the
+component's registered id:
+
+```html
+<div id="ix-1f"
+     data-stube-component="notes/shell"
+     class="stube-c-notes-shell …">
+```
+
+CSS selectors can target either the `data-` attribute or the
+`stube-c-<ns>-<name>` class. Behaviors and module code can locate
+every instance with one query selector. Append your own `:class` and
+it's concatenated, never replaced.
+
+### `(s/behavior self behavior-id args)`
+
+Attach a client-side behavior to this element.
+
+```clojure
+[:div (s/behavior self :notes/cm6-editor {:doc-id (:doc-id self)})]
+```
+
+renders as
+
+```html
+<div data-stube-behavior="notes/cm6-editor" data-stube-arg-doc-id="…">
+```
+
+The behaviors bridge loaded with the shell discovers the marker on
+every `stube:patched`, lazy-imports the matching module from
+`<base-path>/behaviors/notes/cm6-editor.js`, and drives its
+lifecycle. Behaviors are the canonical seam for non-trivial client
+code.
+
+The module's default export is a small object:
+
+```js
+// resources/stube_behaviors/notes/cm6_editor.js
+export default {
+  mount(el, ctx)    { /* run once when el first appears */ },
+  patched(el, ctx)  { /* run on each subsequent patch that left el alive */ },
+  unmount(el, ctx)  { /* run once when el detaches from the DOM */ }
+}
+```
+
+Every callback is optional. `ctx` is one blessed shape:
+
+| field | value |
+|---|---|
+| `ctx.el` | the host element |
+| `ctx.args` | `{camelCasedKey: stringValue}` parsed from `data-stube-arg-*` |
+| `ctx.basePath` | the kernel's base path, for building further URLs |
+| `ctx.signals` | `{get(name), set(name, value)}` thin Datastar accessor |
+
+`args` values stringify on the way out (`name` for keywords, `str`
+for numbers/booleans, `pr-str` for anything else). Pass small scalars
+that mirror the server's view of the element — avoid round-tripping
+large blobs through DOM attributes.
+
 ### `(s/preserve self label)` / `(s/on-mount self label expr)` / `(s/on-unmount self label expr)`
 
-Use these together for third-party widgets that own their child DOM.
 `preserve` marks the host element with `data-stube-preserve`; stube's
-stock shell bridge lets future morphs merge host attributes while
-skipping the child subtree. `on-mount` emits a Datastar
-`data-init` expression only before this instance has rendered, so the
-widget constructor runs once. `on-unmount` attaches a
-`data-stube-on-unmount` expression that fires once when the host
-element is detached from the DOM — the place to call
-`editor.destroy()`, `chart.dispose()`, `removeEventListener`, or any
-other tear-down the widget owns.
+preserve bridge lets future morphs merge host attributes while
+skipping the child subtree — the right tool when a behavior owns DOM
+children outside the server's render tree. `on-mount` emits a Datastar
+`data-init` expression only before this instance has rendered;
+`on-unmount` attaches a `data-stube-on-unmount` expression that fires
+once when the host element detaches. Use these for ad-hoc, one-off
+glue where setting up a full behavior file would be overkill.
 
 ```clojure
 [:div (merge {:class "editor-host"}
-             (s/preserve   self :editor)
-             (s/on-mount   self :editor "el.cmView = new EditorView({parent:el})")
-             (s/on-unmount self :editor "el.cmView?.destroy()"))]
+             (s/behavior   self :notes/cm6-editor {:doc-id (:doc-id self)})
+             (s/preserve   self :editor))]
 ```
+
+For tiny escape-hatch widgets that don't deserve a behavior file:
+
+```clojure
+[:div (merge (s/preserve   self :sparkline)
+             (s/on-mount   self :sparkline "renderSparkline(el)")
+             (s/on-unmount self :sparkline "el.spark?.destroy()"))]
+```
+
+### CSS: component conventions
+
+Three layers, smallest first.
+
+**Per-component stylesheets.** If
+`resources/stube_styles/<ns>/<name>.css` exists, the shell auto-emits
+a `<link>` for it. Selectors target the component by its
+auto-attribute:
+
+```css
+/* resources/stube_styles/notes/shell.css */
+@layer stube.notes {
+  [data-stube-component="notes/shell"] { display: grid }
+  [data-stube-component="notes/shell"] > .column { width: 18rem }
+}
+```
+
+**Inline `:styles` on `defcomponent`.** For small components that
+don't justify a file:
+
+```clojure
+(s/defcomponent :foo/bar
+  :styles "& { display: grid } & > .row { gap: .5rem }"
+  :render …)
+```
+
+Each `&` is replaced with the component's
+`[data-stube-component="foo/bar"]` selector at head-emit time. The
+combined block is rendered once in `<head>`.
+
+**Plain global CSS.** Anything in your host's normal stylesheet
+tree. Hangs off the auto class (`stube-c-notes-shell`) or the data
+attribute — both are stable, both are framework-owned.
+
+### JS: `:modules` on `defcomponent`
+
+A component can declare module dependencies that should be loaded as
+`<script type="module">` on every page where the component is
+registered:
+
+```clojure
+(s/defcomponent :notes/shell
+  :modules ["notes/zoom"]
+  :render …)
+```
+
+resolves to `<base-path>/modules/notes/zoom.js`, served from
+`resources/stube_modules/notes/zoom.js`. Modules are deduped across
+all registered components — declare the same id from two components
+and you still get one script tag. Use modules for global setup
+(keyboard handlers, Datastar plugin registration, third-party SDK
+warm-up). Use behaviors for per-element work.
+
+### Asset layout
+
+| convention | served at | served from |
+|---|---|---|
+| component stylesheet | `/<base>/styles/<ns>/<name>.css` | `resources/stube_styles/<ns>/<name>.css` |
+| component module | `/<base>/modules/<id>.js` | `resources/stube_modules/<id>.js` |
+| component behavior | `/<base>/behaviors/<ns>/<name>.js` | `resources/stube_behaviors/<ns>/<name>.js` |
+
+Asset names are restricted to `[A-Za-z0-9_-]`; traversal segments
+return 400 and never touch the filesystem.
 
 ### Browser lifecycle: `stube:patched`
 
@@ -479,7 +618,7 @@ document.addEventListener("stube:patched", (event) => {
 The event is best-effort and fires after the morph has landed. It
 bubbles `false`, so attach the listener on `document`.
 
-**`on-unmount` semantics.**
+### `on-unmount` semantics
 
 - Runs **exactly once** for a real removal. The bridge defers via
   `queueMicrotask` so an Idiomorph detach+reattach during a swap
@@ -494,6 +633,8 @@ bubbles `false`, so attach the listener on `document`.
 - Pairs naturally with `:keep` if the widget needs to flush state
   (e.g. CM6 cursor position) to a signal before destruction. The
   flush lands on the *next* event, not this one.
+
+## More Hiccup helpers
 
 ### `(s/bind signal)`
 
@@ -1022,15 +1163,17 @@ for the EDN-clean shape.
 ```clojure
 ;; Component shape
 (s/defcomponent :my/widget
-  :init   (fn [args] state-map)
-  :keep   #{:signal-keys}
-  :render (fn [self] hiccup)
-  :handle (fn [self {:keys [event payload signals]}] …)
-  :start  (fn [self] …)        ; once at instantiation
-  :stop   (fn [self] …)        ; just before removal
-  :wakeup (fn [self] …)        ; after history/persistence restore
-  :url    (fn [self] "/x?q=…") ; root-only; auto-emits :history on change
-  :on-foo (fn [self answer] …) ; resume key
+  :init    (fn [args] state-map)
+  :keep    #{:signal-keys}
+  :render  (fn [self] hiccup)
+  :handle  (fn [self {:keys [event payload signals]}] …)
+  :start   (fn [self] …)        ; once at instantiation
+  :stop    (fn [self] …)        ; just before removal
+  :wakeup  (fn [self] …)        ; after history/persistence restore
+  :url     (fn [self] "/x?q=…") ; root-only; auto-emits :history on change
+  :styles  "& { … }"             ; inline CSS, & = this component's selector
+  :modules ["foo/bar"]           ; eager <script type=module> deps
+  :on-foo  (fn [self answer] …)  ; resume key
   )
 
 ;; Effects
@@ -1046,10 +1189,11 @@ for the EDN-clean shape.
 [(s/set-keyed-children :slot/x [[id (s/embed :child args)]])]
 
 ;; Hiccup
-(s/root-attrs self {…} (s/on self :submit))
+(s/root-attrs self {…} (s/on self :submit))      ; emits id + data-stube-component + class
 (s/on self :click :as [:pick id])
 (s/on-target parent-iid :click :as [:pick id])
 (s/bind :draft)                (s/local-bind self :text)
+(s/behavior self :ns/name {:k v})                ; attach a client-side behavior
 (s/preserve self :widget)      (s/on-mount   self :widget "mount(el)")
                                (s/on-unmount self :widget "el.cm?.destroy()")
 (s/render-slot self :slot/x)

@@ -99,8 +99,8 @@
 
   `registry/register!` lifts colocated author keys (`:init`, `:render`,
   `:handle`, `:keep`, `:doc`, `:state`, `:start`, `:stop`, `:wakeup`,
-  `:children`, `:url`) to `:component/<name>` so cdefs are uniform
-  regardless of which entry point produced them."
+  `:children`, `:url`, `:styles`, `:modules`) to `:component/<name>` so
+  cdefs are uniform regardless of which entry point produced them."
   ([id opts]
    (register-component! id opts nil))
   ([id opts source]
@@ -286,6 +286,7 @@
 (defalias preserve     render/preserve     "See [[dev.zeko.stube.render/preserve]].")
 (defalias on-mount     render/on-mount     "See [[dev.zeko.stube.render/on-mount]].")
 (defalias on-unmount   render/on-unmount   "See [[dev.zeko.stube.render/on-unmount]].")
+(defalias behavior     render/behavior     "See [[dev.zeko.stube.render/behavior]].")
 ;; `render/local-signal` is itself a re-export of `conv/local-signal`, which
 ;; doesn't carry `:arglists` on the render var — point at the source so
 ;; `defalias` finds the signature.

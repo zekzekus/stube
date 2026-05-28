@@ -197,37 +197,77 @@ stube core has no Integrant dependency; the adapter ns is the only
 place `integrant.core` is referenced.  Add `integrant/integrant` to
 your own `deps.edn` to use it.
 
-### Host widget integration
+### Client-side code: behaviors, modules, styles
 
-Third-party widgets such as CodeMirror, Monaco, Chart.js and Leaflet
-often own the DOM under one host element. Mark that host with
-`s/preserve`: stube still lets Datastar merge attributes on the host,
-but leaves the live child nodes alone across future morphs. Pair it
-with `s/on-mount` to run the widget constructor once, when the element
-first appears, and `s/on-unmount` to dispose it cleanly when the host
-detaches.
+Stube is server-driven by default. When a feature genuinely needs
+in-browser JS or CSS, the framework pins where that code lives and
+how it connects to a component; the host writes plain JavaScript and
+CSS.
+
+Every component root automatically carries
+`data-stube-component="ns/name"` and `class="stube-c-<ns>-<name>"`,
+so CSS and behaviors can address any instance by its registered id.
+
+**Behaviors** are the canonical seam for non-trivial client code
+(third-party widgets, autocompletes, drag-and-drop). Attach one in
+the render fn:
 
 ```clojure
-[:div (merge {:class "editor-host"
-              :data-doc-id (:doc-id self)}
-             (s/preserve self :editor)
-             (s/on-mount self :editor
-               "(() => {
-                  if (el.cmView) return
-                  el.cmView = new EditorView({
-                    doc: el.dataset.initialDoc || '',
-                    extensions: [basicSetup],
-                    parent: el
-                  })
-                })()")
-             (s/on-unmount self :editor "el.cmView?.destroy()"))]
+[:div (merge (s/behavior self :notes/cm6-editor {:doc-id (:doc-id self)})
+             (s/preserve self :editor))]
 ```
 
-The stock stube shell loads `/stube/preserve.js` before Datastar, so
-standalone apps get the bridge automatically. If you embed stube with
-`shell-for`, include `(stube/head-tags kernel)` in your host page's
-`<head>`; it returns the stock CSS (unless disabled), the preserve
-bridge, Datastar, and optional halos tooling with the right
+The behaviors bridge loaded with the shell discovers the marker on
+every patch, lazy-imports
+`resources/stube_behaviors/notes/cm6_editor.js`, and drives its
+lifecycle:
+
+```js
+export default {
+  mount(el, ctx)   { /* run once */ },
+  patched(el, ctx) { /* run on each subsequent morph */ },
+  unmount(el, ctx) { /* run once on detach */ }
+}
+```
+
+`ctx.args` is parsed from `data-stube-arg-*` attributes. Use
+`s/preserve` together with a behavior when the widget owns DOM
+children outside the server's render tree.
+
+For one-off glue too small to deserve its own file, `s/on-mount` and
+`s/on-unmount` still accept inline JS strings.
+
+**Per-component CSS** lives at
+`resources/stube_styles/<ns>/<name>.css` and is auto-linked by
+`head-tags`:
+
+```css
+/* resources/stube_styles/notes/shell.css */
+@layer stube.notes {
+  [data-stube-component="notes/shell"] { display: grid }
+}
+```
+
+Tiny styles can be colocated on the component with `:styles "& { … }"`
+— each `&` is replaced with the component selector at head-emit time.
+
+**Eager JS modules** declared by a component load automatically:
+
+```clojure
+(s/defcomponent :notes/shell
+  :modules ["notes/zoom"]
+  :render …)
+```
+
+resolves to `resources/stube_modules/notes/zoom.js`, deduped across
+the registry. Use modules for global setup; use behaviors for
+per-element work.
+
+If you embed stube with `shell-for`, include
+`(stube/head-tags kernel)` in your host page's `<head>`; it returns
+the stock CSS (unless disabled), the preserve and behaviors bridges,
+every registered component's stylesheet link, declared module
+scripts, Datastar, and optional halos tooling with the right
 `:base-path` applied:
 
 ```clojure
@@ -306,6 +346,7 @@ first:
 | Tier 3     | `/chat`              | pub/sub across browser tabs |
 | Tier 3     | `/protected-counter` | app login composed with cid owner cookies |
 | Tier 3     | `/preserved-widget`  | `s/preserve` keeps third‑party DOM children alive |
+| Tier 3     | `/sketch`            | client‑side seam end‑to‑end: behavior + preserve + per‑component CSS + inline `:styles` + `:modules` |
 | Tier 3     | `/error-frame`       | a throwing handler turns into a local banner, SSE intact |
 | Tier 3     | `/columns`           | `s/keyed-children` adds/removes/replaces a column |
 | Book app   | `/seaside-todo`      | a fuller port of the HPI *Introduction to Seaside* tutorial |

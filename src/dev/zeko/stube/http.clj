@@ -133,6 +133,82 @@
     {:status 404
      :body   "stube preserve.js not found"}))
 
+(defn behaviors-js-handler
+  "Serve the behaviors bridge loaded by the stock shell."
+  [_req]
+  (if-let [res (io/resource "dev/zeko/stube/behaviors.js")]
+    {:status  200
+     :headers {"Content-Type"  "application/javascript; charset=utf-8"
+               "Cache-Control" "public, max-age=3600"}
+     :body    (slurp res)}
+    {:status 404
+     :body   "stube behaviors.js not found"}))
+
+;; ---------------------------------------------------------------------------
+;; Component-asset handlers (CSS/JS by file convention)
+;; ---------------------------------------------------------------------------
+
+(def ^:private safe-asset-segment #"^[A-Za-z0-9_-]+$")
+
+(defn- safe-asset?
+  "Return `[ns name]` if `asset` is `<ns>/<name>.<ext>` with safe
+  segments, or nil.  Rejects `..`, deeper directories, dots in segment
+  names, and anything outside `[A-Za-z0-9_-]`.
+
+  The asset layout is intentionally flat: every component asset lives
+  one directory deep, named by its component id.  This keeps the
+  resource resolution trivially safe — no traversal can escape the
+  configured root."
+  [asset expected-ext]
+  (when (string? asset)
+    (let [[ns' tail] (str/split asset #"/" 2)]
+      (when (and tail
+                 (re-matches safe-asset-segment (or ns' ""))
+                 (str/ends-with? tail (str "." expected-ext)))
+        (let [base (subs tail 0 (- (count tail) (inc (count expected-ext))))]
+          (when (re-matches safe-asset-segment base)
+            [ns' base]))))))
+
+(defn- serve-resource
+  [resource-path content-type missing-msg]
+  (if-let [res (io/resource resource-path)]
+    {:status  200
+     :headers {"Content-Type"  content-type
+               "Cache-Control" "public, max-age=3600"}
+     :body    (slurp res)}
+    {:status 404
+     :body   missing-msg}))
+
+(defn component-style-handler
+  "Serve `resources/stube_styles/<ns>/<name>.css` for a registered
+  component.  Path: `/styles/<ns>/<name>.css`."
+  [{:keys [path-params]}]
+  (if-let [[ns' name'] (safe-asset? (:asset path-params) "css")]
+    (serve-resource (str "stube_styles/" ns' "/" name' ".css")
+                    "text/css; charset=utf-8"
+                    (str "stube style " ns' "/" name' " not found"))
+    {:status 400 :body "invalid asset path"}))
+
+(defn component-module-handler
+  "Serve `resources/stube_modules/<ns>/<name>.js` for a JS module
+  declared by a component's `:modules` vector."
+  [{:keys [path-params]}]
+  (if-let [[ns' name'] (safe-asset? (:asset path-params) "js")]
+    (serve-resource (str "stube_modules/" ns' "/" name' ".js")
+                    "application/javascript; charset=utf-8"
+                    (str "stube module " ns' "/" name' " not found"))
+    {:status 400 :body "invalid asset path"}))
+
+(defn component-behavior-handler
+  "Serve `resources/stube_behaviors/<ns>/<name>.js` for a behavior
+  module lazy-imported by the behaviors bridge."
+  [{:keys [path-params]}]
+  (if-let [[ns' name'] (safe-asset? (:asset path-params) "js")]
+    (serve-resource (str "stube_behaviors/" ns' "/" name' ".js")
+                    "application/javascript; charset=utf-8"
+                    (str "stube behavior " ns' "/" name' " not found"))
+    {:status 400 :body "invalid asset path"}))
+
 ;; ---------------------------------------------------------------------------
 ;; Stale-page response
 ;; ---------------------------------------------------------------------------

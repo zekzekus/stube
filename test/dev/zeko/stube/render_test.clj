@@ -100,7 +100,7 @@
 (deftest root-attrs-merges-id-with-other-attrs
   (let [self {:instance/id "ix-42"}]
     (is (= {:id "ix-42"} (render/root-attrs self))
-        "bare call yields just the id")
+        "bare call yields just the id (instance/type absent — no auto attrs)")
     (is (= {:id "ix-42" :class "card"} (render/root-attrs self {:class "card"}))
         "single attr map merges with id")
     (is (= {:id "ix-42" :class "card" :data-on:submit "x"}
@@ -112,6 +112,52 @@
     (is (thrown? clojure.lang.ExceptionInfo
                  (render/root-attrs {} {:class "x"}))
         "no :instance/id throws so the wire contract isn't silently lost")))
+
+(deftest root-attrs-auto-emits-component-attribute-and-class
+  (let [self {:instance/id "ix-42" :instance/type :notes/shell}]
+    (testing "bare call carries id + component attribute + auto class"
+      (is (= {:id "ix-42"
+              :data-stube-component "notes/shell"
+              :class "stube-c-notes-shell"}
+             (render/root-attrs self))))
+    (testing "user-supplied :class is concatenated, never replaced"
+      (is (= {:id "ix-42"
+              :data-stube-component "notes/shell"
+              :class "stube-c-notes-shell card"}
+             (render/root-attrs self {:class "card"}))))
+    (testing "wire slug uses slash form so CSS selectors can target the keyword directly"
+      (let [{:keys [data-stube-component]} (render/root-attrs self)]
+        (is (= "notes/shell" data-stube-component))))))
+
+(deftest behavior-emits-data-stube-behavior-and-arg-attrs
+  (let [self {:instance/id "ix-42"}]
+    (testing "bare behavior with no args"
+      (is (= {:data-stube-behavior "notes/cm6-editor"}
+             (render/behavior self :notes/cm6-editor))))
+    (testing "kebab-cased arg attributes; scalar values stringify cleanly"
+      (is (= {:data-stube-behavior "notes/cm6-editor"
+              :data-stube-arg-doc-id "doc-1"
+              :data-stube-arg-readonly "true"}
+             (render/behavior self :notes/cm6-editor
+                              {:doc-id "doc-1" :readonly true}))))
+    (testing "non-scalar values fall back to pr-str so they can survive an attribute round-trip"
+      (is (= "{:a 1}"
+             (-> (render/behavior self :foo/bar {:opts {:a 1}})
+                 :data-stube-arg-opts))))
+    (testing "missing :instance/id is a clear error"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (render/behavior {} :notes/cm6-editor))))))
+
+(deftest component-asset-urls-honour-base-path
+  (binding [render/*base-path* "/widget"]
+    (is (= "/widget/styles/notes/shell.css"
+           (render/component-style-url :notes/shell)))
+    (is (= "/widget/modules/notes/zoom.js"
+           (render/component-module-url "notes/zoom")))
+    (is (= "/widget/behaviors/notes/cm6-editor.js"
+           (render/behavior-module-url :notes/cm6-editor)))
+    (is (= "/widget/behaviors.js"
+           (render/behaviors-js-url)))))
 
 (deftest preserve-marks-widget-host-and-on-mount-is-first-render-only
   (let [fresh   {:instance/id "ix-42"}

@@ -22,9 +22,17 @@
   frame: the parent's `:instance/resume` value names the function to call.
 
   Author keys (`:init`, `:render`, `:handle`, `:keep`, `:doc`, `:state`,
-  `:start`, `:stop`, `:wakeup`, `:children`, `:url`) are lifted to their
-  `:component/<name>` homes by [[register!]] so every cdef the kernel
-  reads has a single uniform namespace.
+  `:start`, `:stop`, `:wakeup`, `:children`, `:url`, `:styles`,
+  `:modules`) are lifted to their `:component/<name>` homes by
+  [[register!]] so every cdef the kernel reads has a single uniform
+  namespace.
+
+  `:styles` is an optional inline CSS string for this component; it is
+  scoped at head-emit time by replacing `&` with the component's
+  `[data-stube-component=\"ns/name\"]` selector.  `:modules` is an
+  optional vector of JS module ids (e.g. `[\"notes/zoom\"]`) that should
+  be loaded as `<script type=\"module\">` whenever this component is
+  registered.
 
   Two kinds of keys, two rules.  *Lifecycle* keys (`:init`, `:render`,
   `:handle`, etc.) are a closed set: the framework owns them, and the
@@ -52,7 +60,8 @@
   Resume keys (`:on-foo`, etc.) are not on this list — they pass through
   verbatim because the kernel looks them up by exact name."
   [:init :render :handle :keep :doc :state
-   :start :stop :wakeup :children :url])
+   :start :stop :wakeup :children :url
+   :styles :modules])
 
 (defn- detect-colocated-collisions
   "Throw if `cdef` declares both `:foo` and `:component/foo` for any

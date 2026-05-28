@@ -15,9 +15,10 @@
 
   The cid only exists at request time, so the helpers consult a dynamic
   var bound by the http layer for the duration of a render."
-  (:require [dev.onionpancakes.chassis.core :as chassis]
-            [dev.zeko.stube.conversation :as conv]
-            [dev.zeko.stube.halos        :as halos])
+  (:require [clojure.string                :as string]
+            [dev.onionpancakes.chassis.core :as chassis]
+            [dev.zeko.stube.conversation   :as conv]
+            [dev.zeko.stube.halos          :as halos])
   (:import (java.net URLEncoder)))
 
 ;; ---------------------------------------------------------------------------
@@ -145,6 +146,28 @@
   "URL for stube's preserved-subtree bridge script in the current mount."
   []
   (path "/preserve.js"))
+
+(defn behaviors-js-url
+  "URL for stube's behaviors bridge script in the current mount."
+  []
+  (path "/behaviors.js"))
+
+(defn component-style-url
+  "URL of the stylesheet for component `type-kw` in the current mount."
+  [type-kw]
+  (path "/styles/" (namespace type-kw) "/" (name type-kw) ".css"))
+
+(defn component-module-url
+  "URL of a JS module by `module-id` (e.g. `\"notes/zoom\"`) in the
+  current mount."
+  [module-id]
+  (path "/modules/" module-id ".js"))
+
+(defn behavior-module-url
+  "URL the behaviors bridge imports for behavior `behavior-id`
+  (a qualified keyword) in the current mount."
+  [behavior-id]
+  (path "/behaviors/" (namespace behavior-id) "/" (name behavior-id) ".js"))
 
 (defn event-url
   "URL the browser POSTs to for an event.  Public so user code can build
@@ -378,6 +401,72 @@
   (preserve-label label)
   {:data-stube-on-unmount expr})
 
+(defn- kebab-case [s]
+  (-> (str s)
+      (string/replace #"_" "-")
+      (string/lower-case)))
+
+(defn- behavior-slug [behavior-id]
+  (cond
+    (qualified-keyword? behavior-id)
+    (str (namespace behavior-id) "/" (name behavior-id))
+
+    (string? behavior-id)
+    behavior-id
+
+    :else
+    (throw (ex-info "stube behavior id must be a qualified keyword or string"
+                    {:got behavior-id}))))
+
+(defn- behavior-arg-attr [k]
+  (keyword (str "data-stube-arg-" (kebab-case (name k)))))
+
+(defn- behavior-arg-value [v]
+  (cond
+    (nil? v)         ""
+    (string? v)      v
+    (keyword? v)     (name v)
+    (symbol? v)      (name v)
+    (number? v)      (str v)
+    (boolean? v)     (str v)
+    :else            (pr-str v)))
+
+(defn behavior
+  "Attach a client-side behavior to this element.
+
+      [:div (s/behavior self :notes/cm6-editor {:doc-id (:doc-id self)})]
+
+  Renders as `data-stube-behavior=\"notes/cm6-editor\"` plus one
+  `data-stube-arg-<key>` attribute per entry in `args`.
+
+  The behaviors bridge loaded with the shell discovers the attribute
+  after each Datastar morph, lazy-imports the module at
+  `/<base-path>/behaviors/<ns>/<name>.js`, and drives its
+  `mount`/`patched`/`unmount` lifecycle.  Behaviors are the canonical
+  seam for non-trivial client code: third-party widgets, autocompletes,
+  drag-and-drop, anything that needs imperative JS keyed to a DOM
+  element.
+
+  `args` values are stringified (`name` for keywords, `str` for
+  numbers/booleans, `pr-str` for everything else) and decoded on the
+  JS side as `ctx.args.<camelKey>`.  Pass small, scalar values that
+  belong to the server's view of the element — avoid round-tripping
+  large blobs through DOM attributes.
+
+  Use [[preserve]] when the behavior owns DOM children outside the
+  server's render tree, and [[on-unmount]] for one-off teardown that
+  doesn't need the full behavior contract."
+  ([self behavior-id]
+   (behavior self behavior-id {}))
+  ([self behavior-id args]
+   (require-instance-id! "dev.zeko.stube.render/behavior" self)
+   (let [slug (behavior-slug behavior-id)
+         arg-attrs (into {}
+                         (map (fn [[k v]]
+                                [(behavior-arg-attr k) (behavior-arg-value v)]))
+                         args)]
+     (assoc arg-attrs :data-stube-behavior slug))))
+
 (defn back-button
   "Return a small Hiccup button wired to the conversation-level `[:back]`
   effect.
@@ -453,24 +542,57 @@
          expr   (str "@post('" (event-url iid route-event) "')")]
      {attr-k expr})))
 
+(defn component-slug
+  "Return the wire form of component id `type-kw` — namespace + \"/\" +
+  name (e.g. `:notes/shell` → `\"notes/shell\"`).  This is the value of
+  `data-stube-component` on every component root."
+  [type-kw]
+  (when (qualified-keyword? type-kw)
+    (str (namespace type-kw) "/" (name type-kw))))
+
+(defn component-class
+  "Return the auto-generated CSS class for component id `type-kw`
+  (e.g. `:notes/shell` → `\"stube-c-notes-shell\"`).  Always present on
+  every component root so host CSS can hang selectors off it without
+  the host having to spell out every class manually."
+  [type-kw]
+  (when (qualified-keyword? type-kw)
+    (str "stube-c-" (namespace type-kw) "-" (name type-kw))))
+
 (defn root-attrs
-  "Return an attribute map carrying `self`'s instance id plus any other
-  attribute maps merged in.  Replaces the recurring boilerplate
-
-      (merge {:id (:instance/id self)} (s/on self :submit) {:class \"x\"})
-
-  with
+  "Return an attribute map carrying the framework hooks every component
+  root needs, merged with any other attribute maps the caller hands in.
 
       (s/root-attrs self (s/on self :submit) {:class \"x\"})
 
-  The id has to be on the root element of every component so Datastar's
-  morph-by-id can locate the frame on subsequent renders.  If an
-  attr-map also contains `:id`, the framework id wins."
+  Emitted attributes:
+
+  * `:id` — `self`'s `:instance/id`, required by Datastar's morph-by-id.
+  * `:data-stube-component` — the component id in `ns/name` form, so
+    CSS selectors and the behaviors bridge can address every component
+    by its registered keyword.
+  * `:class` — the auto-generated `stube-c-<ns>-<name>` class
+    (concatenated with any user-supplied `:class`).
+
+  If the caller passes `:id`, the framework id wins.  If `:instance/type`
+  is missing (component code exercised through tests with hand-rolled
+  instance maps), the component-derived attributes are skipped silently
+  and only `:id` is enforced."
   [self & attr-maps]
   (let [iid (or (:instance/id self)
                 (throw (ex-info "dev.zeko.stube.render/root-attrs requires an instance map"
-                                {:got self})))]
-    (assoc (apply merge attr-maps) :id iid)))
+                                {:got self})))
+        type-kw (:instance/type self)
+        slug    (component-slug type-kw)
+        cls     (component-class type-kw)
+        user    (apply merge attr-maps)
+        user-class (:class user)
+        merged-class (cond
+                       (and cls user-class) (str cls " " user-class)
+                       :else                 (or user-class cls))]
+    (cond-> (assoc user :id iid)
+      slug         (assoc :data-stube-component slug)
+      merged-class (assoc :class merged-class))))
 
 (defn bind
   "Return an attribute map that two-way binds the named signal to the
