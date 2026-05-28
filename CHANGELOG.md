@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.3.1
+
 Driven by the second wave of kasten post-migration notes
 (`kasten/stube_notes.md`, §"Open rough edges against Stube 0.3.0").
 Four rough edges land here; the fifth — a unified signal-naming /
