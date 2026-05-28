@@ -86,13 +86,16 @@
                                   :eager-scripts ["window.Foo = {a:1};"
                                                   "window.Foo.b = 2;"]
                                   :base-path ""})
-        ;; eager block has no :src and no :type (synchronous inline)
+        ;; eager block is `[:script <raw-body>]` — no attribute map, so
+        ;; its second element isn't a map (module scripts always have
+        ;; `{:src ... :type "module"}`).
         eager   (some (fn [t]
                         (when (and (vector? t)
                                    (= :script (first t))
-                                   (string? (last t)))
+                                   (not (map? (second t))))
                           t))
                       tags)
+        eager-body (some-> eager last str)
         eager-idx  (.indexOf ^java.util.List (vec tags) eager)
         first-mod  (some-> (some (fn [t]
                                    (when (and (vector? t)
@@ -102,8 +105,8 @@
                                  tags))
         first-mod-idx (.indexOf ^java.util.List (vec tags) first-mod)]
     (is (some? eager))
-    (is (str/includes? (last eager) "window.Foo"))
-    (is (str/includes? (last eager) "Foo.b = 2"))
+    (is (str/includes? eager-body "window.Foo"))
+    (is (str/includes? eager-body "Foo.b = 2"))
     (is (and (>= eager-idx 0) (>= first-mod-idx 0)))
     (is (< eager-idx first-mod-idx)
         "eager <script> precedes the first type=module bridge")))
@@ -113,5 +116,16 @@
     (is (not-any? (fn [t]
                     (and (vector? t)
                          (= :script (first t))
-                         (string? (last t))))
+                         (not (map? (second t)))))
                   tags))))
+
+(deftest head-tags-eager-scripts-render-quotes-raw
+  ;; Regression: a JSON literal inside an eager-script body must reach
+  ;; the browser with literal `"` quotes, not `&quot;` entities. Hiccup
+  ;; would HTML-escape the body by default; chassis/raw bypasses that.
+  (let [tags  (shell/head-tags {:ui-css? false
+                                :eager-scripts ["window.X={\"k\":\"v\"};"]})
+        html  (str (dev.onionpancakes.chassis.core/html tags))]
+    (is (str/includes? html "{\"k\":\"v\"}")
+        "JSON quotes must render literally; if `&quot;` appears the host script will SyntaxError")
+    (is (not (str/includes? html "&quot;")))))

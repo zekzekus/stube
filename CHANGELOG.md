@@ -5,7 +5,14 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+- **`:eager-scripts` no longer HTML-escapes its body** (bugfix). The
+  shell's `eager-script-block` wrapped the concatenated snippets in
+  `[:script body]` without `chassis/raw`, so any `"` inside a JSON
+  literal landed in the browser as `&quot;` and the `<script>` tag
+  failed to parse with `Uncaught SyntaxError: Unexpected token '&'`.
+  Bodies are now emitted via `chassis/raw`, matching the documented
+  "emitted verbatim" contract. Pinned by `kasten/stube_notes.md`
+  after the 0.3.1 migration.
 
 ## 0.3.1
 

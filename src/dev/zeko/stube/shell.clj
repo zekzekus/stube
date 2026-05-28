@@ -87,7 +87,11 @@
                     (filter string?)
                     (filter seq))]
     (when (seq chunks)
-      [:script (str/join "\n" chunks)])))
+      ;; Wrap the body in `chassis/raw` so quotes inside a JSON literal
+      ;; aren't HTML-escaped to `&quot;` (which breaks the script with
+      ;; `Unexpected token '&'`). `:eager-scripts` are documented as
+      ;; "emitted verbatim"; the host owns the contents.
+      [:script (chassis/raw (str/join "\n" chunks))])))
 
 (defn head-tags
   "Hiccup nodes a host page should include in `<head>` for a stube shell
