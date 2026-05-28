@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.3.2
+
 - **`:eager-scripts` no longer HTML-escapes its body** (bugfix). The
   shell's `eager-script-block` wrapped the concatenated snippets in
   `[:script body]` without `chassis/raw`, so any `"` inside a JSON

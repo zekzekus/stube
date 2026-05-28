@@ -14,7 +14,7 @@
   (:require [clojure.tools.build.api :as b]))
 
 (def lib       'dev.zeko/stube)
-(def version   "0.3.1")
+(def version   "0.3.2")
 (def class-dir "target/classes")
 (def jar-file  (format "target/%s-%s.jar" (name lib) version))
 (def basis     (delay (b/create-basis {:project "deps.edn"})))
