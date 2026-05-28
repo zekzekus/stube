@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.3.0
+
 - **Client-side seam: behaviors, component-scoped CSS, file-convention
   assets.** Stube grows an opinion about where in-browser JS and CSS
   live and how they connect to a component. See
