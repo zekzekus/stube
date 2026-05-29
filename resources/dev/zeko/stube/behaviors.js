@@ -126,33 +126,73 @@
     return out;
   };
 
-  // Writes go through Datastar's documented external-write event so we
-  // don't depend on any internal runtime handle (Datastar v1 does not
-  // expose `globalThis.ds`).  Dotted paths in the signal name are
-  // expanded into a nested-shape detail object — `"edit.markdown"`
-  // dispatches `{edit: {markdown: <value>}}`, matching Datastar's
-  // signal-namespacing convention.
-  const expandDottedDetail = (name, value) => {
-    const parts = String(name).split(".");
-    let detail = value;
-    for (let i = parts.length - 1; i >= 0; i--) detail = { [parts[i]]: detail };
-    return detail;
-  };
+  // Signal writes flow through Datastar's *public* attribute API rather
+  // than any Datastar-internal handle — we depend on `data-bind:<key>`
+  // (the headline two-way-binding feature) and a standard DOM `input`
+  // event, nothing more.  The render layer ships `(s/signal-mirror :k)`
+  // which produces a hidden `<input data-bind:<wire>
+  // data-stube-signal-mirror="<wire>">`.  Writes locate that input by
+  // its marker, set `.value`, and dispatch `input`; Datastar's
+  // `data-bind` machinery propagates the value into the signal store.
+  //
+  // Why not call Datastar's internal setter directly?  The bundle's only
+  // documented external-write surface is the ESM export `mergePatch`,
+  // which couples the bridge to Datastar's module shape (any rename or
+  // bundle split would silently break us).  `data-bind` is the
+  // headline public API every Datastar app relies on; this seam keeps
+  // working across Datastar versions.
+  const mirrorAttr = "data-stube-signal-mirror";
 
-  const dispatchSignalPatch = (detail) => {
-    if (!detail || typeof detail !== "object") return;
+  const findMirror = (rootEl, name) => {
+    if (typeof name !== "string" || !name) return null;
+    let selector;
     try {
-      document.dispatchEvent(
-        new CustomEvent("datastar-signal-patch", { detail })
-      );
-    } catch (_e) {}
+      selector = `[${mirrorAttr}="${CSS.escape(name)}"]`;
+    } catch (_e) {
+      // CSS.escape isn't universal in very old browsers; fall back to a
+      // best-effort match (signal wire names are kebab/camel, never
+      // contain quotes or brackets, so an unescaped attribute selector
+      // is fine in practice).
+      selector = `[${mirrorAttr}="${name}"]`;
+    }
+    // Walk up ancestors querying down at each level — this narrows the
+    // lookup to the nearest mirror when multiple components on the same
+    // page bind the same logical name.  Falls back to a document-wide
+    // search.
+    let scope = rootEl;
+    while (scope && scope.querySelector) {
+      const hit = scope.querySelector(selector);
+      if (hit) return hit;
+      scope = scope.parentElement;
+    }
+    return document.querySelector(selector);
   };
 
-  // Reads remain best-effort against `globalThis.ds` — Datastar v1 does
-  // not document a runtime read handle.  Behaviors that need the latest
-  // value should read it off the DOM (bound input's `.value`) or POST
-  // through `ctx.fetch` and let the server respond with the truth.
-  const resolveSignalNode = (name) => {
+  const writeMirror = (rootEl, name, value) => {
+    const mirror = findMirror(rootEl, name);
+    if (!mirror) {
+      try {
+        console.warn(
+          `stube: ctx.setSignal(${JSON.stringify(name)}, …) found no ` +
+          `[${mirrorAttr}="${name}"] element in scope. Render one with ` +
+          `(s/signal-mirror :${name}) inside the same view.`
+        );
+      } catch (_e) {}
+      return false;
+    }
+    mirror.value = value == null ? "" : String(value);
+    try {
+      mirror.dispatchEvent(new Event("input", { bubbles: true }));
+    } catch (_e) {}
+    return true;
+  };
+
+  // Reads also prefer the mirror's `.value` when present — same DOM
+  // source of truth as writes, so a behavior can round-trip its own
+  // signal through `set` then `get` without depending on any Datastar
+  // runtime handle.  Falls back to `globalThis.ds` for hosts whose
+  // Datastar build happens to expose it (best-effort, version-dependent).
+  const resolveDsNode = (name) => {
     const ds = globalThis.ds;
     let node = ds?.signals?.value;
     if (!node || typeof name !== "string") return undefined;
@@ -167,20 +207,19 @@
     return node;
   };
 
-  const buildSignals = () => ({
+  const buildSignals = (rootEl) => ({
     get(name) {
+      const mirror = findMirror(rootEl, name);
+      if (mirror && typeof mirror.value === "string") return mirror.value;
       try {
-        const sig = resolveSignalNode(name);
+        const sig = resolveDsNode(name);
         return sig && typeof sig === "object" && "value" in sig ? sig.value : undefined;
       } catch (_e) { return undefined; }
     },
-    set(name, value) {
-      if (typeof name !== "string" || !name) return;
-      dispatchSignalPatch(expandDottedDetail(name, value));
-    },
+    set(name, value) { writeMirror(rootEl, name, value); },
     patch(values) {
       if (!values || typeof values !== "object") return;
-      dispatchSignalPatch(values);
+      for (const [k, v] of Object.entries(values)) writeMirror(rootEl, k, v);
     },
   });
 
@@ -202,7 +241,7 @@
   };
 
   const buildCtx = (el) => {
-    const signals = buildSignals();
+    const signals = buildSignals(el);
     return {
       el,
       args: readArgs(el),

@@ -15,13 +15,20 @@ conventions that are easy to get wrong without prior context.
   reference a signal, because JS identifiers can't contain dashes)
   and the helpers stay in lock-step on both sides. A per-call
   `{:case ...}` opt overrides for one site.
-- **Behaviors write signals via `ctx.setSignal` / `ctx.patchSignals`.**
-  Both dispatch Datastar's documented `datastar-signal-patch`
-  `CustomEvent` on `document`. Do not poke `globalThis.ds` — Datastar
-  v1 does not expose it, so any write that goes through the old path
-  silently no-ops. Reads (`ctx.signals.get`) remain best-effort;
-  prefer reading from the DOM or round-tripping through `ctx.fetch`
-  when the latest value matters.
+- **Behaviors write signals via `ctx.setSignal` / `ctx.patchSignals`,
+  which flow through Datastar's public `data-bind` attribute API.**
+  The component renders `(s/signal-mirror :foo)` once per writable
+  signal — that emits a hidden `<input data-bind:<wire>>` marked with
+  `data-stube-signal-mirror="<wire>"`, and the bridge writes to it
+  by setting `.value` and dispatching a DOM `input` event. Datastar's
+  own `data-bind` handler does the rest. Do not import Datastar's
+  ESM exports or read `globalThis.ds` from the bridge: both couple us
+  to Datastar internals and have already broken twice (0.3.1's
+  `globalThis.ds` poke, 0.3.3's outbound `datastar-signal-patch`
+  dispatch). The `data-bind` seam works against the public attribute
+  surface every Datastar app already relies on. Reads
+  (`ctx.signals.get`) read from the mirror's `.value` first with a
+  best-effort `globalThis.ds` fallback.
 - **`embed/head-tags` is chassis-flavoured.** The returned Hiccup tree
   wraps inline `<script>` / `<style>` bodies in chassis `RawString`.
   Hosts rendering through hiccup2 / rum / reagent SSR must re-wrap

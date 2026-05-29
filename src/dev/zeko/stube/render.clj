@@ -730,6 +730,30 @@
   ([event k opts]
    (get-in event [:signals (keyword (signal-wire-name k opts))])))
 
+(defn signal-mirror
+  "Return attrs for a hidden `<input>` that mirrors a Datastar signal,
+  giving client-side behaviors a stable write seam.
+
+      [:input (s/signal-mirror :edit-markdown)]
+
+  The input is `type=\"hidden\"`, two-way-bound to the named signal with
+  the same casing rules as [[bind]], and carries
+  `data-stube-signal-mirror=\"<wire-name>\"` so the behaviors bridge can
+  find it.  A behavior calling `ctx.setSignal(<wire-name>, value)` then
+  writes the value through DOM (set `.value`, dispatch `input`) and
+  Datastar's `data-bind` machinery propagates it to the signal store.
+
+  This is the canonical signal-write path for behaviors that own a live
+  widget (CodeMirror, Chart.js, drag-and-drop): no coupling to any
+  Datastar-internal handle, just the public `data-bind:` attribute and a
+  standard DOM event.  Casing follows the same resolution as [[bind]]."
+  ([signal] (signal-mirror signal nil))
+  ([signal opts]
+   (let [wire (signal-wire-name signal opts)]
+     (assoc (bind signal opts)
+            :type "hidden"
+            :data-stube-signal-mirror wire))))
+
 ;; ---------------------------------------------------------------------------
 ;; Slots: rendering an embedded child inline
 ;; ---------------------------------------------------------------------------

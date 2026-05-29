@@ -61,13 +61,17 @@
   (let [resp (http/behaviors-js-handler {})]
     (is (= 200 (:status resp)))
     (is (re-find #"stube behaviors bridge" (:body resp)))
-    (testing "writes go through Datastar's documented external-write event, not globalThis.ds"
-      ;; Datastar v1 does not expose `globalThis.ds`; poking it silently
-      ;; no-ops.  The bridge must dispatch `datastar-signal-patch` instead
-      ;; so behaviors that call ctx.setSignal / ctx.patchSignals reach the
-      ;; signal store.
-      (is (re-find #"datastar-signal-patch" (:body resp)))
-      (is (re-find #"document\.dispatchEvent" (:body resp))))))
+    (testing "writes flow through Datastar's public data-bind seam, not internal handles"
+      ;; The bridge must locate a `[data-stube-signal-mirror=…]` element
+      ;; (rendered by `s/signal-mirror`), write its `.value`, and
+      ;; dispatch a standard DOM `input` event.  This avoids coupling
+      ;; the bridge to any Datastar-internal symbol — see
+      ;; `kasten/stube_notes.md §1` (against 0.3.3) for the misadventure
+      ;; with the outbound `datastar-signal-patch` event.
+      (is (re-find #"data-stube-signal-mirror" (:body resp)))
+      (is (re-find #"dispatchEvent\(new Event\(\"input\"" (:body resp))))
+    (testing "bridge must not dispatch datastar-signal-patch (Datastar v1 fires that *outbound* on its own setter)"
+      (is (not (re-find #"datastar-signal-patch" (:body resp)))))))
 
 (deftest stale-event-returns-410
   (let [resp (http/event-handler {:path-params {:cid "cv-missing"

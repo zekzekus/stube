@@ -5,7 +5,62 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+Driven by the fourth wave of kasten post-migration notes
+(`kasten/stube_notes.md`, §"Open rough edges against Stube 0.3.3").
+**0.3.3's `ctx.setSignal` fix was based on a misread of Datastar v1
+and shipped a different no-op.** This release corrects the mechanism
+and adds the browser-side round-trip smoke that would have caught
+both 0.3.1 and 0.3.3.
+
+- **`ctx.setSignal` / `ctx.patchSignals` actually reach the signal
+  store now** (bugfix, again). The 0.3.3 implementation dispatched
+  a `datastar-signal-patch` `CustomEvent` on `document`, described in
+  the 0.3.3 changelog as "Datastar v1's documented external-write
+  entry point." That was wrong: in Datastar v1.0.1 the event is
+  *outbound* — Datastar fires it from inside its own signal setter so
+  observers can react — and the only `addEventListener` for it is the
+  hook that makes it a valid target for user-written
+  `data-on:datastar-signal-patch="…"` expressions. Nothing on the
+  receive side consumes our dispatches, so behavior writes still
+  no-op'd. The bridge now writes through Datastar's *public* attribute
+  surface instead: it looks up the element marked
+  `data-stube-signal-mirror="<wire>"`, sets its `.value`, and
+  dispatches a standard DOM `input` event. Datastar's own `data-bind`
+  handler does the rest. No coupling to any Datastar-internal symbol;
+  `data-bind` is the headline public attribute every Datastar app
+  relies on.
+
+- **`s/signal-mirror`** (new). Renders the hidden `data-bind` input
+  the bridge looks up:
+
+  ```clojure
+  [:input (s/signal-mirror :edit-markdown)]
+  ```
+
+  Returns attrs for `<input type="hidden" data-bind:<wire>
+  data-stube-signal-mirror="<wire>">` with the wire name resolved
+  through the same casing rules as [`s/bind`](#) — kernel-level
+  `:signal-case` plus per-call `{:case ...}` override. Behavior code
+  doesn't change: it still calls `ctx.setSignal(name, value)`. The
+  marker just gives the bridge an unambiguous target so it doesn't
+  have to guess which DOM element a behavior wants to write through.
+
+- **`ctx.signals.get` reads from the mirror's `.value`** when one is
+  in scope, with a best-effort `globalThis.ds` fallback for hosts
+  whose Datastar build exposes it. Same DOM source-of-truth for
+  reads and writes — a behavior can round-trip its own signal
+  through `set` then `get` with no Datastar runtime handle.
+
+- **End-to-end Playwright smoke for `ctx.setSignal`** (new). A new
+  `/signal-mirror` example pairs a tiny component with a behavior
+  whose `mount` writes `'hello'`; `test-e2e/.../signal_mirror_test.clj`
+  asserts the bound `<p data-text="$x">` reflects the value within a
+  frame. This is the round-trip check the kasten notes explicitly
+  called out as the missing safeguard; nothing in the unit suite
+  could have caught the silent no-ops that shipped in 0.3.1 and
+  0.3.3.
+
+## 0.3.3
 
 ## 0.3.3
 

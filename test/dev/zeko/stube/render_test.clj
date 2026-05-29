@@ -262,6 +262,26 @@
   (is (= "foo" (render/signal-wire-name :foo {:case :camel}))
       "single-segment names are unchanged under :camel"))
 
+(deftest signal-mirror-renders-hidden-input-with-marker
+  (testing "default :kebab — wire name matches the keyword, marker carries it verbatim"
+    (is (= {(keyword "data-bind:edit-markdown__case.kebab") true
+            :type "hidden"
+            :data-stube-signal-mirror "edit-markdown"}
+           (render/signal-mirror :edit-markdown))))
+  (testing ":camel — wire name is camelCased, marker matches"
+    (is (= {(keyword "data-bind:edit-markdown") true
+            :type "hidden"
+            :data-stube-signal-mirror "editMarkdown"}
+           (render/signal-mirror :edit-markdown {:case :camel}))))
+  (testing "kernel-bound *signal-case* picks the wire shape"
+    (binding [render/*signal-case* :camel]
+      (is (= "editMarkdown"
+             (:data-stube-signal-mirror (render/signal-mirror :edit-markdown))))))
+  (testing "marker matches the active data-bind key so the JS bridge can find it"
+    (let [attrs (render/signal-mirror :edit-markdown {:case :camel})]
+      (is (contains? attrs (keyword "data-bind:edit-markdown")))
+      (is (= "editMarkdown" (:data-stube-signal-mirror attrs))))))
+
 (deftest back-button-posts-to-conversation-back-route
   (binding [render/*cid* "cv-001"]
     (is (= [:button {:type "button"

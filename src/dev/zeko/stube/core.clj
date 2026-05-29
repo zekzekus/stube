@@ -285,6 +285,7 @@
 (defalias $            render/$            "See [[dev.zeko.stube.render/$]].")
 (defalias signal       render/signal       "See [[dev.zeko.stube.render/signal]].")
 (defalias signal-wire-name render/signal-wire-name "See [[dev.zeko.stube.render/signal-wire-name]].")
+(defalias signal-mirror render/signal-mirror "See [[dev.zeko.stube.render/signal-mirror]].")
 (defalias root-attrs   render/root-attrs   "See [[dev.zeko.stube.render/root-attrs]].")
 (defalias preserve     render/preserve     "See [[dev.zeko.stube.render/preserve]].")
 (defalias on-mount     render/on-mount     "See [[dev.zeko.stube.render/on-mount]].")

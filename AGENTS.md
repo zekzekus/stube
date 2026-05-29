@@ -63,12 +63,16 @@ The editor uses **Parinfer**, which infers parenthesis structure from indentatio
   `:camel` when inline Datastar expressions reference signals) and the
   helpers stay in lock-step. Per-call `{:case ...}` opts override for
   one site.
-- **Behaviors write signals via `ctx.setSignal` / `ctx.patchSignals`**,
-  which dispatch Datastar's documented `datastar-signal-patch`
-  `CustomEvent`. Do not poke `globalThis.ds` — Datastar v1 does not
-  expose it. Reads (`ctx.signals.get`) are best-effort; prefer reading
-  from the DOM or round-tripping through `ctx.fetch` when the latest
-  value matters.
+- **Behaviors write signals via `ctx.setSignal` / `ctx.patchSignals`,
+  which flow through Datastar's public `data-bind` attribute API.**
+  The component must render `(s/signal-mirror :foo)` once per signal a
+  behavior will write; the bridge locates that hidden input by its
+  `data-stube-signal-mirror` marker, sets `.value`, and dispatches a
+  standard `input` event. Do not import Datastar's ESM exports or poke
+  `globalThis.ds` from the bridge — both couple us to Datastar's
+  internal symbols and have already broken twice (0.3.1, 0.3.3).
+  Reads (`ctx.signals.get`) read from the mirror's `.value` first
+  with a best-effort `globalThis.ds` fallback.
 - **`embed/head-tags` is chassis-flavoured.** The returned tree carries
   chassis `RawString` markers around `<script>` / `<style>` bodies.
   Hosts using a non-chassis renderer (hiccup2, rum, reagent SSR) must

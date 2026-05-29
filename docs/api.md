@@ -508,20 +508,25 @@ Every callback is optional. `ctx` is one blessed shape:
 | `ctx.patchSignals(map)` | alias for `ctx.signals.patch` — write many signals at once |
 | `ctx.fetch(eventUrl, opts?)` | POST to a stube event URL (`event-url` on the server side) |
 
-Writes (`set` / `patch` / `setSignal` / `patchSignals`) dispatch
-Datastar's documented `datastar-signal-patch` `CustomEvent` on
-`document`, so they reach the signal store without touching any
-Datastar-internal global. Reads (`get`) are best-effort against
-`globalThis.ds`; Datastar v1 does not document a runtime read handle,
-so behaviors that need the latest value should read it from the DOM
-(a bound input's `.value`) or POST through `ctx.fetch` and let the
-server reply with the truth.
+Writes (`set` / `patch` / `setSignal` / `patchSignals`) flow through
+Datastar's **public attribute API** rather than any Datastar-internal
+handle. The component must render
+[`s/signal-mirror`](#ssignal-mirror-signal--ssignal-mirror-signal-case-)
+once per signal a behavior intends to write; the bridge locates that
+hidden `<input>` by its `data-stube-signal-mirror="<wire>"` marker,
+sets `.value`, and dispatches a standard DOM `input` event. Datastar's
+own `data-bind` handler propagates the value into the signal store —
+no coupling to any Datastar-internal symbol, no version-fragile ESM
+import.
+
+Reads (`get`) prefer the mirror's `.value` (same DOM source of truth
+as writes) and fall back to a best-effort `globalThis.ds` lookup.
 
 The signal name follows the kernel's `:signal-case` choice — `:kebab`
 hosts write `ctx.setSignal("edit-markdown", v)`, `:camel` hosts write
-`ctx.setSignal("editMarkdown", v)`. Dotted paths
-(`ctx.setSignal("edit.markdown", v)`) expand into a nested-shape
-detail (`{edit: {markdown: v}}`).
+`ctx.setSignal("editMarkdown", v)`. If no matching mirror is found,
+the bridge logs a `console.warn` pointing at the missing
+`s/signal-mirror` site rather than silently no-op'ing.
 
 `args` values stringify on the way out (`name` for keywords, `str`
 for numbers/booleans, `pr-str` for anything else). Pass small scalars
@@ -704,6 +709,31 @@ for you.
 Accepts the same `{:case …}` opt as `bind`; `local-signal` returns
 just the namespaced wire key, useful if you need to build a Datastar
 expression by hand.
+
+### `(s/signal-mirror signal)` / `(s/signal-mirror signal {:case …})`
+
+Returns attrs for a hidden two-way-bound `<input>` that gives a
+client-side behavior a write seam for `signal`:
+
+```clojure
+[:input (s/signal-mirror :edit-markdown)]
+```
+
+Emits `<input type="hidden" data-bind:<wire>
+data-stube-signal-mirror="<wire>">` with the wire name resolved
+through the same casing rules as `s/bind`. The marker attribute is
+what the `behaviors.js` bridge looks up when a behavior calls
+`ctx.setSignal(<wire>, value)` — the bridge sets the input's
+`.value` and dispatches `input`, and Datastar's `data-bind` handler
+propagates into the signal store. This is the canonical write path
+for widget-owning behaviors (CodeMirror, Chart.js, drag-and-drop)
+because it uses only Datastar's public `data-bind` attribute API —
+no coupling to any Datastar-internal handle.
+
+Render one mirror per signal a behavior wants to write. If a
+behavior calls `ctx.setSignal` for a signal with no matching mirror
+in scope, the bridge logs a `console.warn` pointing at the missing
+helper call rather than silently no-op'ing.
 
 ### `(s/$ signal)` / `(s/signal event signal)` / `(s/signal-wire-name signal)`
 
