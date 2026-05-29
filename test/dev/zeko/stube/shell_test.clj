@@ -1,6 +1,7 @@
 (ns dev.zeko.stube.shell-test
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [dev.onionpancakes.chassis.core :as chassis]
             [dev.zeko.stube.registry :as registry]
             [dev.zeko.stube.shell :as shell]))
 
@@ -125,7 +126,7 @@
   ;; would HTML-escape the body by default; chassis/raw bypasses that.
   (let [tags  (shell/head-tags {:ui-css? false
                                 :eager-scripts ["window.X={\"k\":\"v\"};"]})
-        html  (str (dev.onionpancakes.chassis.core/html tags))]
+        html  (str (chassis/html tags))]
     (is (str/includes? html "{\"k\":\"v\"}")
         "JSON quotes must render literally; if `&quot;` appears the host script will SyntaxError")
     (is (not (str/includes? html "&quot;")))))
