@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.3.4
+
 Driven by the fourth wave of kasten post-migration notes
 (`kasten/stube_notes.md`, §"Open rough edges against Stube 0.3.3").
 **0.3.3's `ctx.setSignal` fix was based on a misread of Datastar v1
