@@ -137,6 +137,26 @@
         cid (embed/mint-conversation! k :isolation/no-principal {} {})]
     (is (nil? (:conv/principal (rt/conversation k cid))))))
 
+(deftest signal-case-kernel-default-binds-render-helpers
+  (let [k-kebab (embed/make-kernel)
+        k-camel (embed/make-kernel {:signal-case :camel})]
+    (is (= :kebab (:signal-case k-kebab))
+        "default is :kebab so existing hosts keep their wire shape")
+    (is (= :camel (:signal-case k-camel)))
+    (rt/with-kernel-bindings k-camel "cv-x"
+      (fn []
+        (is (= {(keyword "data-bind:edit-markdown") true}
+               (s/bind :edit-markdown))
+            "bind picks the kernel default casing when no per-call opt is given")
+        (is (= "$editMarkdown" (s/$ :edit-markdown))
+            "$ ref uses the same kernel default")
+        (is (= "v" (s/signal {:signals {:editMarkdown "v"}} :edit-markdown))
+            "signal lookup translates the keyword under the kernel default")))
+    (rt/with-kernel-bindings k-kebab "cv-x"
+      (fn []
+        (is (= {(keyword "data-bind:edit-markdown__case.kebab") true}
+               (s/bind :edit-markdown)))))))
+
 (deftest ring-routes-use-kernel-base-path
   (let [k      (embed/make-kernel {:base-path "/widget"})
         paths  (set (map first (ring-adapter/ring-routes k)))]

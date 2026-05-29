@@ -1,6 +1,6 @@
 (ns dev.zeko.stube.http-test
   (:require [clojure.java.io :as io]
-            [clojure.test :refer [deftest is use-fixtures]]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [dev.zeko.stube.fragments :as fragments]
             [dev.zeko.stube.http :as http]
             [dev.zeko.stube.registry :as registry]
@@ -60,7 +60,14 @@
 (deftest behaviors-js-handler-serves-bridge
   (let [resp (http/behaviors-js-handler {})]
     (is (= 200 (:status resp)))
-    (is (re-find #"stube behaviors bridge" (:body resp)))))
+    (is (re-find #"stube behaviors bridge" (:body resp)))
+    (testing "writes go through Datastar's documented external-write event, not globalThis.ds"
+      ;; Datastar v1 does not expose `globalThis.ds`; poking it silently
+      ;; no-ops.  The bridge must dispatch `datastar-signal-patch` instead
+      ;; so behaviors that call ctx.setSignal / ctx.patchSignals reach the
+      ;; signal store.
+      (is (re-find #"datastar-signal-patch" (:body resp)))
+      (is (re-find #"document\.dispatchEvent" (:body resp))))))
 
 (deftest stale-event-returns-410
   (let [resp (http/event-handler {:path-params {:cid "cv-missing"

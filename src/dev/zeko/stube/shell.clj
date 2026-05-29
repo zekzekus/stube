@@ -116,7 +116,14 @@
   8. Optional halos tooling when `:dev?` is true.
 
   Standalone [[html]] uses this directly; embedders normally call the
-  public `dev.zeko.stube.embed/head-tags` wrapper for their kernel."
+  public `dev.zeko.stube.embed/head-tags` wrapper for their kernel.
+
+  Renderer constraint: the returned tree only renders correctly through
+  chassis.  Inline `<script>` / `<style>` bodies are wrapped in chassis
+  `RawString` so quotes and JSON literals survive verbatim; hosts using
+  hiccup2 / rum / reagent SSR must re-wrap those instances in their
+  renderer's own raw primitive before emitting, or the bodies will be
+  HTML-escaped and the scripts will fail to parse."
   [{:keys [dev? ui-css? base-css eager-scripts base-path root-selector]
     :or {ui-css? true base-css [] eager-scripts [] base-path "" root-selector "#root"}}]
   (binding [render/*base-path* base-path

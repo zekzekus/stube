@@ -48,6 +48,7 @@
             :base-css          []
             :eager-scripts     []
             :halos?            false
+            :signal-case       :kebab
             ;; SSE comment-frame heartbeat that keeps reverse-proxy idle
             ;; timers happy.  15s sits under the common 30/60s thresholds
             ;; (nginx, ALB).  Set to nil or 0 to disable.
@@ -91,6 +92,15 @@
     frame 1, before the deferred ESM module graph finishes.  Snippets
     are emitted verbatim and concatenated into a single `<script>`
     block; the host is responsible for the contents (no escaping).
+  * `:signal-case` — `:kebab` (default) or `:camel`.  Picks the wire
+    casing for every signal helper that renders a `data-bind:<key>`
+    attribute, builds an inline-expression `$ref`, or reads a signal
+    off a posted event ([[dev.zeko.stube.render/bind]],
+    [[dev.zeko.stube.render/local-bind]], [[dev.zeko.stube.render/$]],
+    [[dev.zeko.stube.render/signal]]).  Per-call `{:case ...}` opts
+    still win.  Choose `:camel` when any inline Datastar expression
+    references a signal (JS identifiers can't contain dashes);
+    `:kebab` when all signal access is pure-Clojure.
   * `:sse-keepalive-ms` — interval in milliseconds for the SSE
     heartbeat that keeps reverse-proxy idle timers happy.  Defaults
     to 15000.  Set to nil or 0 to disable (e.g. when the host's proxy
@@ -160,6 +170,7 @@
     (binding [render/*cid* cid
               render/*base-path* (:base-path k)
               render/*root-selector* (:root-selector k)
+              render/*signal-case* (or (:signal-case k) :kebab)
               pure/*current-kernel* k
               pure/*current-app* (:app k)
               pure/*current-principal* principal
@@ -180,6 +191,7 @@
     (binding [render/*cid* cid
               render/*base-path* (:base-path k)
               render/*root-selector* (:root-selector k)
+              render/*signal-case* (or (:signal-case k) :kebab)
               pure/*current-app* (:app k)
               pure/*current-principal* principal]
       (f))))

@@ -203,17 +203,64 @@
       (is (str/includes? html "data-init=\"mount(el)\"")))))
 
 (deftest bind-builds-data-bind-attribute
-  (is (= {(keyword "data-bind:answer__case.kebab") true}
-         (render/bind :answer)))
-  (is (= {(keyword "data-bind:answer-ix-000002__case.kebab") true}
-         (render/bind :answer-ix-000002))
-      "Datastar's default bind key casing is camel; keep Clojure kebab-case signal names on the wire"))
+  (testing "default :kebab keeps the wire key identical to the kebab keyword"
+    (is (= {(keyword "data-bind:answer__case.kebab") true}
+           (render/bind :answer)))
+    (is (= {(keyword "data-bind:answer-ix-000002__case.kebab") true}
+           (render/bind :answer-ix-000002))))
+  (testing "explicit :case :camel drops the __case.kebab modifier so Datastar's default camel-casing applies"
+    (is (= {(keyword "data-bind:edit-markdown") true}
+           (render/bind :edit-markdown {:case :camel}))))
+  (testing "explicit :case :kebab matches the default"
+    (is (= (render/bind :edit-markdown)
+           (render/bind :edit-markdown {:case :kebab}))))
+  (testing "kernel-bound *signal-case* picks the wire shape when no per-call opt is given"
+    (binding [render/*signal-case* :camel]
+      (is (= {(keyword "data-bind:edit-markdown") true}
+             (render/bind :edit-markdown))))
+    (binding [render/*signal-case* :kebab]
+      (is (= {(keyword "data-bind:edit-markdown__case.kebab") true}
+             (render/bind :edit-markdown)))))
+  (testing "per-call opt wins over kernel-bound *signal-case*"
+    (binding [render/*signal-case* :camel]
+      (is (= {(keyword "data-bind:edit-markdown__case.kebab") true}
+             (render/bind :edit-markdown {:case :kebab}))))))
 
 (deftest local-bind-scopes-signal-to-instance
   (let [self {:instance/id "ix-000002"}]
     (is (= :answer-ix-000002 (render/local-signal self :answer)))
     (is (= {(keyword "data-bind:answer-ix-000002__case.kebab") true}
-           (render/local-bind self :answer)))))
+           (render/local-bind self :answer)))
+    (testing "casing opt propagates through local-bind"
+      (is (= {(keyword "data-bind:answer-ix-000002") true}
+             (render/local-bind self :answer {:case :camel}))))))
+
+(deftest dollar-ref-builds-inline-expression-reference
+  (testing ":kebab keeps the kebab keyword on the wire"
+    (is (= "$create-title" (render/$ :create-title))))
+  (testing ":camel translates dashes to camelCase so the ref is a valid JS identifier"
+    (is (= "$createTitle" (render/$ :create-title {:case :camel})))
+    (is (= "$editMarkdown" (render/$ :edit-markdown {:case :camel}))))
+  (testing "kernel-bound *signal-case* picks the casing"
+    (binding [render/*signal-case* :camel]
+      (is (= "$editMarkdown" (render/$ :edit-markdown))))))
+
+(deftest signal-reads-posted-signal-in-active-casing
+  (let [event-kebab {:signals {:edit-markdown "hello"}}
+        event-camel {:signals {:editMarkdown "hello"}}]
+    (is (= "hello" (render/signal event-kebab :edit-markdown)))
+    (is (= "hello" (render/signal event-camel :edit-markdown {:case :camel})))
+    (testing "kernel-bound default picks the lookup keyword"
+      (binding [render/*signal-case* :camel]
+        (is (= "hello" (render/signal event-camel :edit-markdown))))
+      (binding [render/*signal-case* :kebab]
+        (is (= "hello" (render/signal event-kebab :edit-markdown)))))))
+
+(deftest signal-wire-name-translates-keyword-to-wire-string
+  (is (= "edit-markdown" (render/signal-wire-name :edit-markdown)))
+  (is (= "editMarkdown" (render/signal-wire-name :edit-markdown {:case :camel})))
+  (is (= "foo" (render/signal-wire-name :foo {:case :camel}))
+      "single-segment names are unchanged under :camel"))
 
 (deftest back-button-posts-to-conversation-back-route
   (binding [render/*cid* "cv-001"]

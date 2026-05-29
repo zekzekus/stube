@@ -126,8 +126,32 @@
     return out;
   };
 
-  // Walk a dotted-path of nested Datastar signal nodes
-  // (e.g. `edit.markdown`) down `ds.signals.value`.
+  // Writes go through Datastar's documented external-write event so we
+  // don't depend on any internal runtime handle (Datastar v1 does not
+  // expose `globalThis.ds`).  Dotted paths in the signal name are
+  // expanded into a nested-shape detail object — `"edit.markdown"`
+  // dispatches `{edit: {markdown: <value>}}`, matching Datastar's
+  // signal-namespacing convention.
+  const expandDottedDetail = (name, value) => {
+    const parts = String(name).split(".");
+    let detail = value;
+    for (let i = parts.length - 1; i >= 0; i--) detail = { [parts[i]]: detail };
+    return detail;
+  };
+
+  const dispatchSignalPatch = (detail) => {
+    if (!detail || typeof detail !== "object") return;
+    try {
+      document.dispatchEvent(
+        new CustomEvent("datastar-signal-patch", { detail })
+      );
+    } catch (_e) {}
+  };
+
+  // Reads remain best-effort against `globalThis.ds` — Datastar v1 does
+  // not document a runtime read handle.  Behaviors that need the latest
+  // value should read it off the DOM (bound input's `.value`) or POST
+  // through `ctx.fetch` and let the server respond with the truth.
   const resolveSignalNode = (name) => {
     const ds = globalThis.ds;
     let node = ds?.signals?.value;
@@ -137,7 +161,6 @@
       if (node == null) return undefined;
       node = node[parts[i]];
       if (node && typeof node === "object" && "value" in node && i < parts.length - 1) {
-        // descend into the inner value for the next path segment
         node = node.value;
       }
     }
@@ -152,19 +175,12 @@
       } catch (_e) { return undefined; }
     },
     set(name, value) {
-      try {
-        const sig = resolveSignalNode(name);
-        if (sig && typeof sig === "object" && "value" in sig) sig.value = value;
-      } catch (_e) {}
+      if (typeof name !== "string" || !name) return;
+      dispatchSignalPatch(expandDottedDetail(name, value));
     },
     patch(values) {
       if (!values || typeof values !== "object") return;
-      for (const [k, v] of Object.entries(values)) {
-        try {
-          const sig = resolveSignalNode(k);
-          if (sig && typeof sig === "object" && "value" in sig) sig.value = v;
-        } catch (_e) {}
-      }
+      dispatchSignalPatch(values);
     },
   });
 

@@ -5,7 +5,53 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+Driven by the third wave of kasten post-migration notes
+(`kasten/stube_notes.md`, §"Open rough edges against Stube 0.3.2").
+
+- **Behavior `ctx.setSignal` / `ctx.patchSignals` reach the signal
+  store again** (bugfix). The 0.3.1 helpers assumed Datastar exposed
+  its signal store on `globalThis.ds`. Datastar v1.0.1 exposes no
+  such global, so every write silently no-op'd: the canonical
+  "behavior owns a widget and mirrors its internal state into a bound
+  signal" pattern (CodeMirror, Chart.js, drag-and-drop) called out by
+  the 0.3.1 changelog never actually worked. The bridge now dispatches
+  a `CustomEvent("datastar-signal-patch", {detail})` on `document` —
+  Datastar v1's documented external-write entry point — and behaviors
+  can drop the hidden-input-plus-`data-bind` workaround. Reads
+  (`ctx.signals.get`) remain best-effort against `globalThis.ds`;
+  behaviors that need the latest value should read it off the DOM or
+  round-trip through `ctx.fetch`.
+
+- **`:signal-case` on `make-kernel`.** `:kebab` (default — preserves
+  existing wire shape) or `:camel`. Picks the casing every signal
+  helper uses: `s/bind`, `s/local-bind`, the new `s/$` /
+  `s/signal` / `s/signal-wire-name`. Hosts that use inline Datastar
+  expressions (`data-on:input="$createSlug = ..."`) need `:camel`,
+  because JS identifiers can't contain dashes; pure-Clojure hosts can
+  keep `:kebab`. Per-call `{:case ...}` opts on the same helpers still
+  win. Replaces the previous "framework picks for you" stance baked
+  into `s/bind`'s hard-coded `__case.kebab`.
+
+- **`s/$`, `s/signal`, `s/signal-wire-name`** (new). The casing-aware
+  helpers that pair with `s/bind`: `(s/$ :create-title)` returns the
+  Datastar `$ref` string in the active casing for use in inline
+  expressions; `(s/signal event :edit-markdown)` reads a posted signal
+  off the event in the same casing the wire uses, so the read side
+  mirrors `s/bind` without each handler having to know which
+  convention is active. `s/signal-wire-name` is the underlying
+  translation, exposed for hosts that build wire keys by hand.
+
+- **`s/bind` and `s/local-bind` accept `{:case ...}`** (new arity).
+  Per-call override of the kernel-bound casing default.
+
+- **`embed/head-tags` renderer constraint documented** (docs). The
+  returned Hiccup tree carries chassis `RawString` markers around
+  `<script>` / `<style>` bodies so quotes and JSON literals survive
+  verbatim. Rendering through chassis (the documented integration) is
+  unchanged; hosts using hiccup2 / rum / reagent SSR must re-wrap
+  those instances in their renderer's own raw primitive or the
+  bodies are HTML-escaped and inline scripts fail to parse. Spelled
+  out in the docstrings of `embed/head-tags` and `shell/head-tags`.
 
 ## 0.3.2
 

@@ -80,17 +80,17 @@ These come up periodically. Each has a working path today; don't add
 the framework feature unless the documented alternative proves
 insufficient under real load.
 
-- **Signal naming / binding / lookup toolkit.** Flagged across kasten's
-  post-migration notes (0.1.7 → 0.4.0) as the biggest remaining shared
-  pattern. The concrete pain — Datastar's `data-bind:<key>` camel-casing
-  colliding with kebab-case Clojure — is already covered by `s/bind`'s
-  `__case.kebab` workaround. The rest (a named registry, `(s/$ k)` refs,
-  `(s/signal event k)` lookups, scoped indicator names) is an
-  app-architecture pattern, not a framework one: apps that need it can
-  keep their own map. Kasten — the only host that built such a registry
-  — is now shrinking it, so the second datapoint is moving further away,
-  not closer. Revisit only if a second host independently re-invents the
-  registry shape under real load.
+- **Signal-name registry / scoped indicator helper.** The casing
+  problem itself landed in `Unreleased` (kernel-level `:signal-case`
+  plus `s/$` / `s/signal` / `s/signal-wire-name` helpers — see
+  `kasten/stube_notes.md §3`). What stays parked is the broader
+  registry: a single declaration of every signal a component owns,
+  with init defaults, and scoped indicator names. That's an
+  app-architecture pattern, not a framework one — apps that want it
+  can keep their own map. Kasten — the only host that built such a
+  registry — is now shrinking it, so the second datapoint is moving
+  away, not closer. Revisit only if a second host independently
+  re-invents the registry shape under real load.
 
 - **`try` / `catch` across `s/await` in `defflow`.** Cloroutine
   restricts forms across yield points, and we never spiked the exact

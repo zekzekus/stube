@@ -49,7 +49,21 @@
 (defn head-tags
   "Return Hiccup nodes for the assets required by [[shell-for]].  Host
   pages should include these in `<head>`: optional stock CSS,
-  preserve.js, Datastar, and optional halos tooling."
+  preserve.js, Datastar, and optional halos tooling.
+
+  **Renderer constraint.**  The returned tree carries chassis
+  `RawString` markers around `<script>` / `<style>` bodies (e.g. for
+  `:eager-scripts` and inline `:styles`) so that quotes and other
+  syntax inside the body aren't HTML-escaped.  Rendering the tree
+  through chassis emits the bodies verbatim; rendering through any
+  other Hiccup-shaped renderer (hiccup2, rum, reagent SSR, …) will fall
+  back to the wrapper's `toString` and then HTML-escape it, silently
+  breaking inline scripts.
+
+  Hosts using a non-chassis renderer must re-wrap the chassis
+  `RawString` instances in the renderer's own raw primitive before
+  emitting — e.g. a small walker that turns
+  `dev.onionpancakes.chassis.core.RawString` into `hiccup2.core/raw`."
   [k]
   (rt/head-tags k))
 

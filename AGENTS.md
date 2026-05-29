@@ -54,6 +54,27 @@ The editor uses **Parinfer**, which infers parenthesis structure from indentatio
 - The standard pre-PR check is `make test` (which runs lint first).
 - If `clj-kondo` flags something that is genuinely a false positive, add a `#_:clj-kondo/ignore` reader-conditional in front of the offending form with a one-line comment explaining what the linter is missing. Never tweak `.clj-kondo/config.edn` to silence a category globally.
 
+## Framework conventions
+
+- **Signal wire casing is a kernel-wide choice.** Always reach for
+  `s/bind` / `s/local-bind` / `s/$` / `s/signal` rather than hand-rolling
+  `data-bind:…` attributes or reading `:signals` off events directly.
+  Hosts pick `:signal-case` once on `make-kernel` (`:kebab` default,
+  `:camel` when inline Datastar expressions reference signals) and the
+  helpers stay in lock-step. Per-call `{:case ...}` opts override for
+  one site.
+- **Behaviors write signals via `ctx.setSignal` / `ctx.patchSignals`**,
+  which dispatch Datastar's documented `datastar-signal-patch`
+  `CustomEvent`. Do not poke `globalThis.ds` — Datastar v1 does not
+  expose it. Reads (`ctx.signals.get`) are best-effort; prefer reading
+  from the DOM or round-tripping through `ctx.fetch` when the latest
+  value matters.
+- **`embed/head-tags` is chassis-flavoured.** The returned tree carries
+  chassis `RawString` markers around `<script>` / `<style>` bodies.
+  Hosts using a non-chassis renderer (hiccup2, rum, reagent SSR) must
+  re-wrap those instances in the renderer's own raw primitive before
+  emitting.
+
 ## General Working Style
 
 - Keep changes small and focused; don't refactor adjacent code unprompted.

@@ -508,6 +508,21 @@ Every callback is optional. `ctx` is one blessed shape:
 | `ctx.patchSignals(map)` | alias for `ctx.signals.patch` — write many signals at once |
 | `ctx.fetch(eventUrl, opts?)` | POST to a stube event URL (`event-url` on the server side) |
 
+Writes (`set` / `patch` / `setSignal` / `patchSignals`) dispatch
+Datastar's documented `datastar-signal-patch` `CustomEvent` on
+`document`, so they reach the signal store without touching any
+Datastar-internal global. Reads (`get`) are best-effort against
+`globalThis.ds`; Datastar v1 does not document a runtime read handle,
+so behaviors that need the latest value should read it from the DOM
+(a bound input's `.value`) or POST through `ctx.fetch` and let the
+server reply with the truth.
+
+The signal name follows the kernel's `:signal-case` choice — `:kebab`
+hosts write `ctx.setSignal("edit-markdown", v)`, `:camel` hosts write
+`ctx.setSignal("editMarkdown", v)`. Dotted paths
+(`ctx.setSignal("edit.markdown", v)`) expand into a nested-shape
+detail (`{edit: {markdown: v}}`).
+
 `args` values stringify on the way out (`name` for keywords, `str`
 for numbers/booleans, `pr-str` for anything else). Pass small scalars
 that mirror the server's view of the element — avoid round-tripping
@@ -646,7 +661,7 @@ bubbles `false`, so attach the listener on `document`.
 
 ## More Hiccup helpers
 
-### `(s/bind signal)`
+### `(s/bind signal)` / `(s/bind signal {:case …})`
 
 Two-way binding for an input. Datastar updates the signal
 client-side as the user types; the next event ships the value back
@@ -659,6 +674,24 @@ to the server.
 Combine with `:keep #{:draft}` so the value is merged onto `self`
 before `:handle` runs.
 
+**Wire casing.** Two valid casings, picked once per host on
+`make-kernel`'s `:signal-case` option:
+
+- `:kebab` (default) keeps Clojure kebab keywords identical on the
+  wire — `(s/bind :edit-markdown)` sends `edit-markdown` and the
+  handler reads it back as `:edit-markdown`.
+- `:camel` lets Datastar's default camel-casing apply —
+  `(s/bind :edit-markdown)` sends `editMarkdown` and the handler
+  reads it back as `:editMarkdown`. Pick this when any inline
+  Datastar expression references the signal
+  (`data-on:input="$editMarkdown = ..."`), because JS identifiers
+  can't contain dashes.
+
+A per-call `{:case :camel}` / `{:case :kebab}` opt overrides the
+kernel default for one binding; otherwise the kernel default
+applies. The same resolution covers `s/local-bind`, `s/$`, and
+`s/signal`, so the read and write sides stay in lock-step.
+
 ### `(s/local-bind self signal)`  /  `(s/local-signal self signal)`
 
 Like `bind`, but the wire signal name is suffixed with the instance
@@ -668,8 +701,35 @@ forms, etc.). Read the value back from `self` under the *logical*
 name — `:keep #{:answer}` lifts the local signal onto `:answer`
 for you.
 
-`local-signal` returns just the namespaced wire key, useful if you
-need to build a Datastar expression by hand.
+Accepts the same `{:case …}` opt as `bind`; `local-signal` returns
+just the namespaced wire key, useful if you need to build a Datastar
+expression by hand.
+
+### `(s/$ signal)` / `(s/signal event signal)` / `(s/signal-wire-name signal)`
+
+Casing-aware companions for the signal helpers above. All three
+follow the same per-call → kernel-default → `:kebab` resolution as
+`s/bind`.
+
+- `(s/$ :create-title)` returns the Datastar `$ref` string —
+  `"$create-title"` under `:kebab`, `"$createTitle"` under `:camel`
+  — for use in inline expressions:
+
+  ```clojure
+  [:input {:data-on:input (str (s/$ :create-slug) " = slugify("
+                               (s/$ :create-title) ".value)")}]
+  ```
+
+- `(s/signal event :edit-markdown)` reads a posted signal off an
+  event in the active casing — `:edit-markdown` under `:kebab`,
+  `:editMarkdown` under `:camel`. Use it in `:handle` so the read
+  side mirrors `s/bind` without each handler having to know which
+  casing is active.
+
+- `(s/signal-wire-name :edit-markdown)` is the underlying
+  translation: returns the wire-side string. Mostly useful when a
+  host has to build an attribute key or a Datastar expression by
+  hand.
 
 ### `(s/render-slot self slot-key)`
 
@@ -960,6 +1020,7 @@ Options:
 | `:ui-css?` | `true` | link the stock `/ui.css` |
 | `:base-css` | `[]` | extra stylesheet URLs `head-tags` emits on every shell |
 | `:eager-scripts` | `[]` | inline JS snippets emitted as a synchronous `<script>` before any module |
+| `:signal-case` | `:kebab` | wire casing for `s/bind` / `s/local-bind` / `s/$` / `s/signal`; pick `:camel` if any inline Datastar expression references a signal |
 | `:halos?` | `false` | enable dev halos (per-conv via `?halos=1`) |
 | `:app` | `nil` | host-app value returned by `(s/app)` |
 | `:principal-fn` | `nil` | `(fn [request] principal)` stamped at mint time and returned by `(s/principal)` |
@@ -1012,8 +1073,8 @@ Stable functions:
 
 `opts` supports `:context-fn`, `:app`, `:principal-fn`, `:store`,
 `:base-path`, `:session-id-fn`, `:on-conv-mint`, `:on-error`,
-`:ui-css?`, `:base-css`, `:eager-scripts`, `:halos?`, and
-`:root-selector`. Values
+`:ui-css?`, `:base-css`, `:eager-scripts`, `:signal-case`, `:halos?`,
+and `:root-selector`. Values
 returned by `:context-fn` are available to handlers and lifecycle
 hooks with `(s/context self)`. For when to pick which primitive,
 see [Reading
@@ -1062,6 +1123,44 @@ For most apps neither option is needed: the per-component
 stylesheet convention and the `:modules` declaration on
 `defcomponent` are the preferred seams.  Reach for these when the
 component-scoped placement isn't expressive enough.
+
+**Renderer constraint.** `embed/head-tags` returns a Hiccup tree
+whose `<script>` / `<style>` bodies (`:eager-scripts`, inline
+`:styles`) are wrapped in chassis `RawString`. Hosts that render
+through chassis get the bodies emitted verbatim. Hosts that render
+through hiccup2 / rum / reagent SSR must re-wrap those instances in
+their own raw primitive before emitting, or the bodies are
+HTML-escaped and inline scripts fail to parse.
+
+### Signal wire casing: `:signal-case`
+
+Datastar's `data-bind:<key>` attribute normalises the wire key
+(`<key>` is case-insensitive HTML), so the framework has to pick a
+canonical form. `:signal-case` picks it once for the whole kernel
+instead of leaking the decision into every `s/bind` call.
+
+```clojure
+(embed/make-kernel
+  {:signal-case :camel})           ; or :kebab (default)
+```
+
+- `:kebab` (default) keeps Clojure kebab-case keywords identical on
+  the wire — `(s/bind :edit-markdown)` ships `edit-markdown` and the
+  handler reads it back as `:edit-markdown`. Pick this when all
+  signal access is from Clojure.
+- `:camel` lets Datastar's default camel-casing apply —
+  `(s/bind :edit-markdown)` ships `editMarkdown` and the handler
+  reads it back as `:editMarkdown`. **Pick this when any inline
+  Datastar expression references a signal**
+  (`data-on:input="$editMarkdown = ..."`), because JS identifiers
+  can't contain dashes.
+
+The same casing covers `s/local-bind`, `s/$` (inline-expression
+`$ref`), and `s/signal` (event lookup). A per-call `{:case ...}` opt
+on any of those helpers wins over the kernel default for that one
+call. See [`s/bind`](#sbind-signal--sbind-signal-case-) and
+[`s/$` / `s/signal`](#s-signal--ssignal-event-signal--ssignal-wire-name-signal)
+for the read-side helpers that mirror it.
 
 ### Application boundaries: `:app` and `:principal-fn`
 

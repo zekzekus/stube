@@ -52,6 +52,27 @@
   vars."
   nil)
 
+(def ^:dynamic *signal-case*
+  "Default casing for Datastar signal wire keys.  Bound by the kernel
+  from `:signal-case` on [[dev.zeko.stube.runtime/make-kernel]].
+
+  Two valid values:
+
+  * `:kebab` (default) — `(s/bind :edit-markdown)` emits
+    `data-bind:edit-markdown__case.kebab`, so Datastar keeps the signal
+    keyed `edit-markdown` on the wire and handlers read it back as the
+    same kebab keyword.  Pick this if all signal access is from Clojure.
+
+  * `:camel` — `(s/bind :edit-markdown)` emits `data-bind:edit-markdown`
+    (no modifier), so Datastar's default `__case.camel` makes the wire
+    key `editMarkdown`.  Pick this if any inline Datastar expression
+    references the signal (e.g. `data-on:input=\"$editMarkdown = ...\"`),
+    since JS identifiers can't contain dashes.
+
+  Per-call `{:case :camel}` / `{:case :kebab}` opts on [[bind]] /
+  [[local-bind]] / [[$]] / [[signal]] override this default."
+  :kebab)
+
 (defn html
   "Render hiccup `tree` to an HTML string."
   ^String [tree]
@@ -610,6 +631,31 @@
       slug         (assoc :data-stube-component slug)
       merged-class (assoc :class merged-class))))
 
+(defn- kebab->camel
+  "Translate a kebab-cased string to camelCase: `\"edit-markdown\"` →
+  `\"editMarkdown\"`.  Leaves the leading segment intact and upper-cases
+  the first character after each `-`."
+  [^String s]
+  (string/replace s #"-([a-zA-Z0-9])" (fn [[_ c]] (string/upper-case c))))
+
+(defn- resolve-case
+  "Resolve the effective signal casing: a per-call `{:case ...}` opt wins
+  over the kernel-bound default in [[*signal-case*]]."
+  [opts]
+  (or (:case opts) *signal-case* :kebab))
+
+(defn signal-wire-name
+  "Translate logical signal keyword `k` to the string Datastar uses on
+  the wire under `casing` (`:kebab` or `:camel`).  Useful when a host
+  needs to build wire keys by hand, but most code should reach for
+  [[bind]], [[$]], or [[signal]] instead."
+  ([k] (signal-wire-name k nil))
+  ([k opts]
+   (let [s (name k)]
+     (if (= (resolve-case opts) :camel)
+       (kebab->camel s)
+       s))))
+
 (defn bind
   "Return an attribute map that two-way binds the named signal to the
   current element.
@@ -619,12 +665,21 @@
   Datastar's signal-defining attributes use the colon form
   (`data-bind:foo`); the dash form would not be recognised.
 
-  Datastar 1.0 camel-cases `data-bind:<key>` by default.  Clojure code
-  conventionally names signals with kebab-case keywords and reads the
-  POSTed signals back by the same keyword, so force Datastar's no-op
-  kebab case modifier to keep the wire key unchanged."
-  [signal]
-  {(keyword (str "data-bind:" (name signal) "__case.kebab")) true})
+  Casing is resolved as: per-call `{:case ...}` opt → kernel-bound
+  [[*signal-case*]] → `:kebab` default.  Under `:kebab`, the
+  `__case.kebab` modifier keeps the wire key identical to the supplied
+  keyword (so handlers read it back as the same kebab keyword).  Under
+  `:camel`, no modifier is emitted so Datastar's default applies and
+  `:edit-markdown` lands on the wire as `editMarkdown` (which inline
+  expressions like `data-on:input=\"$editMarkdown = ...\"` can address)."
+  ([signal] (bind signal nil))
+  ([signal opts]
+   (let [casing  (resolve-case opts)
+         dbind   (str "data-bind:" (name signal))
+         attr-kw (if (= casing :kebab)
+                   (keyword (str dbind "__case.kebab"))
+                   (keyword dbind))]
+     {attr-kw true})))
 
 (def ^{:doc "See [[dev.zeko.stube.conversation/local-signal]]."}
   local-signal conv/local-signal)
@@ -635,10 +690,45 @@
       :keep #{:answer}
       [:input (s/local-bind self :answer)]
 
-  The browser sends `:answer-<iid>`; the conversation layer lifts that
-  value back onto `:answer` before the handler runs."
-  [self signal]
-  (bind (local-signal self signal)))
+  The browser sends a per-instance wire key; the conversation layer lifts
+  that value back onto `:answer` before the handler runs.  Casing follows
+  the same resolution as [[bind]]."
+  ([self signal] (local-bind self signal nil))
+  ([self signal opts]
+   (bind (local-signal self signal) opts)))
+
+(defn $
+  "Return the Datastar inline-expression reference string for logical
+  signal `k`, e.g. `(s/$ :create-title)` → `\"$create-title\"` under
+  `:kebab`, `\"$createTitle\"` under `:camel`.
+
+  Use this when building inline JS expressions that read or write a
+  signal:
+
+      [:input {:data-on:input (str (s/$ :create-slug) \" = slugify(\"
+                                   (s/$ :create-title) \".value)\")}]
+
+  Casing follows the same resolution as [[bind]]."
+  ([k] ($ k nil))
+  ([k opts]
+   (str "$" (signal-wire-name k opts))))
+
+(defn signal
+  "Look up logical signal `k` on a posted event in the active wire
+  casing — `(s/signal event :edit-markdown)` reads `:edit-markdown` under
+  `:kebab` or `:editMarkdown` under `:camel`.
+
+  Use this in `:handle` callbacks so the read side mirrors whatever
+  casing [[bind]] used to write it:
+
+      (defn handle [self event]
+        (case (:event/key event)
+          :save (save! self (s/signal event :edit-markdown))))
+
+  Casing follows the same resolution as [[bind]]."
+  ([event k] (signal event k nil))
+  ([event k opts]
+   (get-in event [:signals (keyword (signal-wire-name k opts))])))
 
 ;; ---------------------------------------------------------------------------
 ;; Slots: rendering an embedded child inline
