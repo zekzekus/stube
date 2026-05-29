@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.3.3
+
 Driven by the third wave of kasten post-migration notes
 (`kasten/stube_notes.md`, §"Open rough edges against Stube 0.3.2").
 
