@@ -858,6 +858,16 @@ conversation — re-mint after login or logout. See the same
 dependencies](#reading-dependencies--app-vs-context-vs-principal) for
 how it compares to `s/app` / `s/context`.
 
+### `(s/conversation-id)`
+
+Return the id of the conversation currently being dispatched or
+rendered, or nil outside a runtime binding (e.g. `core/replay` with
+no kernel attached). Useful when a component needs to namespace a
+pub/sub topic or asset URL by the active conversation without
+threading the cid through `:children` args. Pairs with
+[`(s/publish-local! topic msg)`](#spublish-local-topic-msg) for
+intra-conversation messaging.
+
 ### `(s/back-button label)` / `(s/back-button label attrs)`
 
 A small button wired to the conversation-level `[:back]`. Pops one

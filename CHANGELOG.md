@@ -17,6 +17,15 @@ deep-adoption work").
   framework-managed `:instance/*` keys directly. Pairs with the new
   `s/dispatch-to` for parent→child notifications by iid.
 
+- **`s/conversation-id`** (new). Returns the id of the conversation
+  currently being dispatched or rendered, or `nil` outside a runtime
+  binding. Reads the same dynamic var the runtime already bound for
+  URL helpers; component code no longer has to thread the cid through
+  `:children` args when it needs to namespace pub/sub topics or asset
+  paths by conversation. Pairs with the new `s/publish-local!` for
+  intra-conversation messaging without leaking parent iids into topic
+  vocabulary.
+
 ## 0.3.4
 
 Driven by the fourth wave of kasten post-migration notes

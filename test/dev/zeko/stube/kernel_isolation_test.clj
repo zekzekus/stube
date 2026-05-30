@@ -137,6 +137,32 @@
         cid (embed/mint-conversation! k :isolation/no-principal {} {})]
     (is (nil? (:conv/principal (rt/conversation k cid))))))
 
+(deftest conversation-id-is-visible-to-component-code
+  (let [seen (atom [])]
+    (registry/register!
+      {:component/id     :isolation/cid-aware
+       :component/init   (constantly {})
+       :component/render (fn [self]
+                           (swap! seen conj [:render (s/conversation-id)])
+                           [:div (s/root-attrs self)])
+       :component/handle (fn [self _]
+                           (swap! seen conj [:handle (s/conversation-id)])
+                           self)})
+    (let [k   (embed/make-kernel)
+          cid (embed/mint-conversation! k :isolation/cid-aware {} {})]
+      (rt/apply-conv! k cid
+        (fn [c] (kernel/run-effects c (kernel/boot (rt/pending-root k cid)))))
+      (let [iid (conv/top-id (rt/conversation k cid))]
+        (embed/dispatch! k cid {:instance-id iid :event :ping :signals {}}))
+      (is (every? (fn [[_ id]] (= cid id)) @seen)
+          ":render and :handle both see the active cid")
+      (is (= 2 (count (filter (fn [[k _]] (= k :render)) @seen)))
+          "render fires for boot and for the dispatch redraw")
+      (is (= 1 (count (filter (fn [[k _]] (= k :handle)) @seen)))
+          "handle fires once for the dispatched event")))
+  (is (nil? (s/conversation-id))
+      "returns nil outside a runtime binding"))
+
 (deftest signal-case-kernel-default-binds-render-helpers
   (let [k-kebab (embed/make-kernel)
         k-camel (embed/make-kernel {:signal-case :camel})]

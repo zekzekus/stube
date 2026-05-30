@@ -359,6 +359,18 @@
   []
   kernel/*current-principal*)
 
+(defn conversation-id
+  "Return the id of the conversation currently being dispatched or
+  rendered, or `nil` outside a runtime binding (e.g. pure [[replay]]
+  with no kernel attached).
+
+  Useful when a component needs to namespace a pub/sub topic or asset
+  URL by the current conversation without having to thread the cid
+  through `:children` args.  Pairs with [[publish-local!]] for
+  intra-conversation messaging."
+  []
+  render/*cid*)
+
 (defmacro with-app
   "Run `body` with `(s/app)` returning `app-value`.  Intended for
   component-author tests that exercise handler/render code through
