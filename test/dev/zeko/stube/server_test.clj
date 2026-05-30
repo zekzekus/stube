@@ -116,6 +116,41 @@
   (server/reset-state!)
   (is (empty? (rt/subscriptions (server/default-kernel)))))
 
+(deftest publish-local-scopes-delivery-to-one-conversation
+  (registry/register!
+    {:component/id :test/local-sub
+     :component/render (fn [s] [:div {:id (:instance/id s)} (pr-str (:seen s))])
+     :component/handle (fn [s {:keys [event payload]}]
+                         (case event
+                           :published [(assoc s :seen payload) []]
+                           [s []]))})
+  (let [k    (server/default-kernel)
+        cid-a (rt/create-conversation! k :test/local-sub nil)
+        cid-b (rt/create-conversation! k :test/local-sub nil)
+        iid-a "ix-a"
+        iid-b "ix-b"]
+    (install-instance! cid-a {:instance/id iid-a
+                              :instance/type :test/local-sub
+                              :instance/children {}
+                              :instance/rendered? true
+                              :seen nil})
+    (install-instance! cid-b {:instance/id iid-b
+                              :instance/type :test/local-sub
+                              :instance/children {}
+                              :instance/rendered? true
+                              :seen nil})
+    (rt/subscribe! k {:cid cid-a :instance-id iid-a :topic :scoped :event :published})
+    (rt/subscribe! k {:cid cid-b :instance-id iid-b :topic :scoped :event :published})
+    (is (= 1 (rt/publish-local! k cid-a :scoped {:msg "to-a"}))
+        "publish-local! reports only the in-cid subscriber count")
+    (is (eventually #(= {:msg "to-a"}
+                        (:seen (get-in (server/conversation cid-a)
+                                       [:conv/instances iid-a])))))
+    (Thread/sleep 30)
+    (is (nil? (:seen (get-in (server/conversation cid-b)
+                             [:conv/instances iid-b])))
+        "other conversations' subscribers stay silent")))
+
 (deftest dispatch-to-delivers-event-to-named-instance
   (registry/register!
     {:component/id :test/peer

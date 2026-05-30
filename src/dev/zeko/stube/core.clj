@@ -567,6 +567,18 @@
   kernel; outside a dispatch it targets the standalone server kernel.
   Returns the number of subscribers targeted.")
 
+(defalias publish-local! server/publish-local!
+  "Like [[publish!]] but only delivers to subscribers in the *current
+  conversation* — every other conversation's subscribers on the same
+  topic stay silent.
+
+  Use this for parent/child or sibling channels that must not leak
+  across browser tabs or users (e.g. a notes shell telling its open
+  columns that an edit landed).  Reads the active cid from the
+  runtime binding; throws when called outside a dispatch/render
+  context (where there is no current conversation).  Returns the
+  number of subscribers targeted.")
+
 ;; ---------------------------------------------------------------------------
 ;; Linear flows (slice 1)
 ;; ---------------------------------------------------------------------------

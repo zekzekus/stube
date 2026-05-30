@@ -102,3 +102,13 @@
   dispatch; component code can call [[dev.zeko.stube.core/publish!]]."
   [k topic msg]
   (rt/publish! k topic msg))
+
+(defn publish-local!
+  "Like [[publish!]] but only delivers to subscribers in conversation
+  `cid`.  Use this from host code that already has a cid in hand
+  (e.g. after [[mint-conversation!]]) and needs to keep a topic from
+  leaking across browser tabs / users.  Component code can call
+  [[dev.zeko.stube.core/publish-local!]] without naming the cid —
+  the runtime resolves it from the active conversation."
+  [k cid topic msg]
+  (rt/publish-local! k cid topic msg))

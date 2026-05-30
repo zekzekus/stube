@@ -559,6 +559,21 @@
         (dispatch! k cid (published-event-map iid route-event msg))))
     (count targets)))
 
+(defn publish-local!
+  "Like [[publish!]], but only delivers to subscribers in conversation
+  `cid`.  Use this for parent/child or sibling channels that must
+  stay within one browser tab; other conversations' subscribers on
+  the same topic do not see the message.
+
+  Returns the number of subscribers targeted."
+  [k cid topic msg]
+  (let [targets (->> (get @(:!subscriptions k) topic)
+                     (filter (fn [[[sub-cid _iid] _route]] (= sub-cid cid))))]
+    (doseq [[[c iid] route-event] targets]
+      (future
+        (dispatch! k c (published-event-map iid route-event msg))))
+    (count targets)))
+
 ;; ---------------------------------------------------------------------------
 ;; Dev tooling helpers
 ;; ---------------------------------------------------------------------------

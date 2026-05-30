@@ -338,6 +338,34 @@ server kernel. Delivers `msg` asynchronously to every live subscriber
 of `topic`. Returns the number of subscribers targeted. Stale
 subscribers are ignored.
 
+### `(s/publish-local! topic msg)`
+
+Like `s/publish!` but only delivers to subscribers in the **current
+conversation** — every other conversation's subscribers on the same
+topic stay silent. Reads the active cid from the runtime binding;
+throws when called outside a dispatch/render context.
+
+Use this for parent/child or sibling channels that must not leak
+across browser tabs or users — for example, a notes shell that
+publishes `:note-changed` so its open columns can refresh, without
+shouting at every other open browser tab on the same kernel:
+
+```clojure
+(s/defcomponent :notes/shell
+  :handle (fn [self {:keys [event]}]
+            (case event
+              :save (do (db/save! …)
+                        (s/publish-local! :note-changed (:note-id self))
+                        self))))
+
+(s/defcomponent :notes/column
+  :start (fn [self] [self [(s/subscribe :note-changed :on-note-changed)]])
+  :on-note-changed (fn [self _ev] (assoc self :stale? true)))
+```
+
+Returns the number of subscribers targeted in the current
+conversation. Stale subscribers are ignored, same as `s/publish!`.
+
 ### `(s/embed type)`  /  `(s/embed type args)`
 
 Returns an embed spec map: `{:embed/type type :embed/args args}`.

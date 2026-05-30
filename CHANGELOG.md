@@ -26,6 +26,16 @@ deep-adoption work").
   intra-conversation messaging without leaking parent iids into topic
   vocabulary.
 
+- **`s/publish-local!`** (new). Like `s/publish!` but only delivers
+  to subscribers in the *current conversation* — every other
+  conversation's subscribers on the same topic stay silent. The
+  matching `embed/publish-local!` accepts an explicit `cid` for host
+  code that already has one in hand (e.g. just after
+  `mint-conversation!`). Closes the inter-tab-isolation gap that
+  forced hosts to bake the parent's iid into topic vocabulary
+  (`[:my-topic parent-iid]`) just to keep pub/sub from leaking across
+  browser tabs.
+
 - **`s/dispatch-to`** (new effect). `(s/dispatch-to target route-event)`
   schedules an asynchronous dispatch of `route-event` to `target`
   (an instance map or iid string) in the same conversation. The

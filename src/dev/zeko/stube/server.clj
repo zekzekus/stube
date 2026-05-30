@@ -23,6 +23,7 @@
             [dev.zeko.stube.fragments    :as f]
             [dev.zeko.stube.halos        :as halos]
             [dev.zeko.stube.kernel       :as kernel]
+            [dev.zeko.stube.render       :as render]
             [dev.zeko.stube.runtime      :as rt]
             [dev.zeko.stube.store        :as store])
   (:import (java.time Duration)))
@@ -86,6 +87,18 @@
   outside a dispatch it falls back to the standalone default kernel."
   [topic msg]
   (rt/publish! (or kernel/*current-kernel* (default-kernel)) topic msg))
+
+(defn publish-local!
+  "Publish `msg` only to subscribers in the current conversation.
+  Must be called from inside a runtime dispatch/render binding —
+  outside one there is no current cid, so this throws.  Returns the
+  number of subscribers targeted."
+  [topic msg]
+  (let [k   (or kernel/*current-kernel* (default-kernel))
+        cid (or render/*cid*
+                (throw (ex-info "publish-local! requires an active conversation"
+                                {:topic topic})))]
+    (rt/publish-local! k cid topic msg)))
 
 (def ^{:doc "Push kernel fragments to an open Datastar SSE generator."}
   push-fragments! f/push!)
