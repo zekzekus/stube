@@ -58,6 +58,17 @@
                (render/instance-id {}))
       "throws with a clear message rather than handing back nil"))
 
+(deftest child-iid-helper-reads-fixed-children-slot
+  (let [self {:instance/id "ix-parent"
+              :instance/children {:slot/search "ix-search"
+                                  :slot/editor "ix-editor"}}]
+    (is (= "ix-search" (render/child-iid self :slot/search)))
+    (is (= "ix-editor" (render/child-iid self :slot/editor)))
+    (is (nil? (render/child-iid self :slot/missing))
+        "unknown slot returns nil rather than throwing")
+    (is (nil? (render/child-iid {:instance/id "ix-orphan"} :slot/search))
+        "instance with no :instance/children returns nil")))
+
 (deftest on-accepts-event-modifiers
   (binding [render/*cid* "cv-001"]
     (testing "valued modifier produces __key.value suffix on the attribute name"

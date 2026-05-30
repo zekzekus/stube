@@ -103,6 +103,21 @@
       (throw (ex-info "dev.zeko.stube.render/instance-id requires an instance map"
                       {:got self}))))
 
+(defn child-iid
+  "Return the iid of the child instance mounted under `slot-key` on
+  `self`, or nil when the slot is unknown.
+
+  `slot-key` is one of the keys declared in the component's `:children`
+  map.  Same data as `(get-in self [:instance/children slot-key])` —
+  this helper just documents the contract so callers do not have to
+  reach into framework-managed instance keys directly.
+
+  Useful when a parent needs to address its embedded child by id, e.g.
+  to target a `(s/dispatch-to)` effect or to build an event URL through
+  `s/event-url` / `s/on-target`."
+  [self slot-key]
+  (get-in self [:instance/children slot-key]))
+
 (defn- ->iid
   "Coerce `target` to an instance id.  Accepts either a bare iid string
   or an instance map (so `(s/on-target self :click :as :foo)` works as

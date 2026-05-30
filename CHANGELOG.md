@@ -5,7 +5,17 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+Driven by the fifth wave of kasten post-migration notes
+(`kasten/stube_notes.md`, §"Notes for Stube from the Kasten
+deep-adoption work").
+
+- **`s/child-iid`** (new). `(s/child-iid self :slot/search)` returns
+  the iid of the child instance currently mounted under the named
+  slot, or nil when the slot is unknown. Same data as
+  `(get-in self [:instance/children :slot/search])` — the helper just
+  documents the stable contract so callers don't have to reach into
+  framework-managed `:instance/*` keys directly. Pairs with the new
+  `s/dispatch-to` for parent→child notifications by iid.
 
 ## 0.3.4
 

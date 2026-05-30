@@ -432,6 +432,27 @@ absent. Use this in pure rendering helpers that pass an iid out instead
 of destructuring `:instance/id` directly — the framework owns the wire
 shape, and the public name is the stable seam.
 
+### `(s/child-iid self slot-key)`
+
+Return the iid of the embedded child mounted under `slot-key` on
+`self`, or nil when the slot is unknown. Reads the same data as
+`(get-in self [:instance/children slot-key])` but documents the
+contract so call sites don't have to reach into framework-managed
+instance keys directly.
+
+Useful when a parent needs to address its child by id — for example,
+to route a `(s/dispatch-to)` effect at a known slot child or to build
+an `s/event-url` / `s/on-target` against it:
+
+```clojure
+:render
+(fn [self]
+  (let [search-iid (s/child-iid self :slot/search)]
+    [:div (s/root-attrs self)
+     [:button (s/on-target search-iid :click :as :focus) "Find"]
+     (s/render-slot self :slot/search)]))
+```
+
 ### `(s/event-url iid route-event)`
 
 Low-level helper used by `on` and `on-target`. It returns the URL that
