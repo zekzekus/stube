@@ -762,6 +762,39 @@ bubbles `false`, so attach the listener on `document`.
   (e.g. CM6 cursor position) to a signal before destruction. The
   flush lands on the *next* event, not this one.
 
+### After-render hooks
+
+Stube does not ship a framework-level `:on-patched` / `:after-render`
+hook. The same three jobs each shape of "after render, do X" wants
+have stable answers already:
+
+| job | use |
+|---|---|
+| Focus an input the moment a slot becomes visible | `s/on-mount self :focus-target "el.querySelector('input')?.focus()"` |
+| Run third-party widget setup, surviving morphs | `s/behavior` with the widget's `mount(el, ctx)` / `patched(el, ctx)` lifecycle |
+| Re-run an expression every time a *signal* changes | Datastar's `data-effect="…"` attribute |
+
+`data-effect` is the closest match to "after this render, do X" for
+the cases where X is driven by a signal value. Datastar re-evaluates
+the expression whenever any signal it reads changes, after the morph
+has landed:
+
+```clojure
+[:section (s/root-attrs self
+                        ;; Re-scroll to the bottom whenever a new
+                        ;; column lands — the signal flips when
+                        ;; (s/set-keyed-children …) reconciles.
+                        {:data-effect "$columnCount && el.scrollTo(el.scrollWidth, 0)"})
+ (s/keyed-children self :slot/cols)]
+```
+
+For one-off post-render glue from inside a handler (not driven by a
+signal), emit `(s/execute-script "…")`. The script lands after the
+elements fragment, so by the time it runs the morph has already
+applied. Reach for `execute-script` sparingly — it is the same
+escape hatch as `:on-mount` written from a handler instead of a
+render fn.
+
 ## More Hiccup helpers
 
 ### `(s/bind signal)` / `(s/bind signal {:case …})`

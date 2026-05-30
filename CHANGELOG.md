@@ -63,6 +63,16 @@ deep-adoption work").
   …])` fragments next to `set-keyed-children` for every region of
   the parent that depends on the reconciled set.
 
+- **After-render recipe in `docs/api.md`** (docs).  Calls out
+  Datastar's `data-effect` as the recommended substitute for an
+  `:on-patched` / `:after-render` lifecycle hook, with `s/on-mount`
+  / `s/behavior` / `s/execute-script` next to it as the other
+  three answers to "after render, do X." The framework deliberately
+  does not ship a separate render-completion callback; the
+  three documented seams cover focus, third-party widget setup,
+  signal-driven side effects, and one-off post-render glue from
+  inside a handler.
+
 - **`embed/rendered-shell-for!`** (new). Mints a conversation,
   boots it server-side, and returns `{:cid <cid> :shell <hiccup>}`
   whose `<div id="root">` already contains the rendered first
