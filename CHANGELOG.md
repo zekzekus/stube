@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.4.0
+
 Driven by the fifth wave of kasten post-migration notes
 (`kasten/stube_notes.md`, §"Notes for Stube from the Kasten
 deep-adoption work").
