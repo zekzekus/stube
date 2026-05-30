@@ -124,12 +124,22 @@
 (defn set-keyed-children
   "Reconcile the keyed-child set of `slot` to the ordered `pairs`
   `[[stable-key embed-spec] ...]`.  See `dev.zeko.stube.keyed/reconcile!`
-  for the diff semantics."
-  [slot pairs]
-  [:set-keyed-children slot (vec pairs)])
+  for the diff semantics.
+
+  `opts` (optional) may contain:
+
+  * `:rerender-parent?` — when truthy, the kernel re-renders the
+    parent frame after the keyed-children diff has applied.  Use
+    this when the parent's hiccup outside the keyed-children
+    container depends on the just-reconciled state (`(s/keyed-children
+    self slot)` reads stale state during the handler because the
+    update lands during the effect fold, not before it)."
+  ([slot pairs]      [:set-keyed-children slot (vec pairs)])
+  ([slot pairs opts] [:set-keyed-children slot (vec pairs) opts]))
 
 (defn keyed-children-slot  [eff] (nth eff 1))
 (defn keyed-children-pairs [eff] (nth eff 2))
+(defn keyed-children-opts  [eff] (nth eff 3 nil))
 
 ;; ---------------------------------------------------------------------------
 ;; Output effects

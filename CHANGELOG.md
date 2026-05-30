@@ -50,6 +50,19 @@ deep-adoption work").
   pub/sub topic per parent/child pair or chaining a second POST in
   `data-on:click`.
 
+- **`set-keyed-children` learns `:rerender-parent?`.** New optional
+  3-arity `(s/set-keyed-children slot pairs {:rerender-parent? true})`
+  asks the kernel to render the parent frame on top of the reconcile,
+  with the just-updated `:instance/keyed-slots` in scope. Without
+  this, the parent's `:render` reads stale slot state (the update
+  lands during the effect fold, not before it) and the kernel's
+  `rendered-output?` check skips the auto-render because per-child
+  `:elements` fragments already counted as output. The opt is a
+  no-op on the parent's first paint, so it is always safe to pass.
+  Removes the workaround of emitting hand-rolled `(s/patch [:div
+  …])` fragments next to `set-keyed-children` for every region of
+  the parent that depends on the reconciled set.
+
 ## 0.3.4
 
 Driven by the fourth wave of kasten post-migration notes

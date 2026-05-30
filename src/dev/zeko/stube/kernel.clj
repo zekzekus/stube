@@ -520,12 +520,40 @@
 
 (defmethod step :set-keyed-children
   [conv eff]
-  (let [slot     (e/keyed-children-slot eff)
-        pairs    (e/keyed-children-pairs eff)
-        parent-id (or (effect-origin conv)
-                      (throw (ex-info ":set-keyed-children needs an emitting parent"
-                                      {:slot slot})))]
-    (keyed/reconcile! conv parent-id slot pairs run-effects)))
+  (let [slot       (e/keyed-children-slot eff)
+        pairs      (e/keyed-children-pairs eff)
+        opts       (e/keyed-children-opts eff)
+        parent-id  (or (effect-origin conv)
+                       (throw (ex-info ":set-keyed-children needs an emitting parent"
+                                       {:slot slot})))
+        [conv' frags] (keyed/reconcile! conv parent-id slot pairs run-effects)]
+    ;; By default the per-child :elements/:remove fragments emitted by
+    ;; the reconcile satisfy `rendered-output?` and the kernel skips
+    ;; the parent's auto-render.  That is the right call when the
+    ;; parent's hiccup outside the keyed-slot container has not
+    ;; changed.  When a handler updates parent state alongside the
+    ;; reconcile (topbar counts, an empty-state vs ledger toggle, …)
+    ;; opt in to the extra render via :rerender-parent? so the
+    ;; just-reconciled keyed-slot state is in scope while the parent
+    ;; renders.
+    (if (:rerender-parent? opts)
+      (let [parent (conv/instance conv' parent-id)]
+        (cond
+          (nil? parent)
+          [conv' frags]
+
+          ;; Parent has never rendered yet (first :start before any
+          ;; frame paint).  The kernel's normal render-frame on the
+          ;; way out picks up the populated state in one shot;
+          ;; emitting an :outer here would create a second container
+          ;; for nothing.
+          (not (:instance/rendered? parent))
+          [conv' frags]
+
+          :else
+          (let [[conv'' frag] (render-frame conv' parent-id)]
+            [conv'' (conj (vec frags) frag)])))
+      [conv' frags])))
 
 (defmethod step :patch
   [conv eff]

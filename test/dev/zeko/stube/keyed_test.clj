@@ -206,6 +206,88 @@
            (s/context (conv/instance c child-iid))))
     (is (str/includes? (:fragment/html (first frags)) "from-context"))))
 
+;; ---------------------------------------------------------------------------
+;; :rerender-parent? option
+;; ---------------------------------------------------------------------------
+
+(defn- register-parent-with-topbar! []
+  ;; A parent whose hiccup outside the keyed-slot depends on the
+  ;; just-reconciled state (a topbar that counts the open columns).
+  ;; Without :rerender-parent?, the topbar text would stay stale
+  ;; because the kernel skips the parent's auto-render when the
+  ;; reconcile already emitted :elements fragments.
+  (registry/register!
+    {:component/id     :t/topbar-parent
+     :start            (fn [self]
+                         [self [(s/set-keyed-children :slot/cols
+                                                      [[:c1 (s/embed :t/counter {:start 1})]
+                                                       [:c2 (s/embed :t/counter {:start 2})]])]])
+     :component/render (fn [self]
+                         (let [slot (get-in self [:instance/keyed-slots :slot/cols])
+                               n    (count (:order slot))]
+                           [:section {:id (:instance/id self)}
+                            [:header {:class "topbar"} (str n " open")]
+                            (s/keyed-children self :slot/cols)]))
+     :component/handle (fn [self {:keys [event payload]}]
+                         (case event
+                           :set       [self [(s/set-keyed-children :slot/cols payload)]]
+                           :set+redraw [self [(s/set-keyed-children :slot/cols payload
+                                                                    {:rerender-parent? true})]]
+                           [self []]))}))
+
+(deftest set-keyed-children-rerender-parent-emits-extra-parent-fragment
+  (register-counter!)
+  (register-parent-with-topbar!)
+  (let [[c0 _]   (boot :t/topbar-parent)
+        new-pairs [[:c1 (s/embed :t/counter {:start 1})]
+                   [:c2 (s/embed :t/counter {:start 2})]
+                   [:c3 (s/embed :t/counter {:start 3})]]
+        [_c1 default-frags]
+        (kernel/dispatch c0 {:instance-id (top-iid c0)
+                             :event       :set
+                             :payload     new-pairs
+                             :signals     {}})
+        [c2 redraw-frags]
+        (kernel/dispatch c0 {:instance-id (top-iid c0)
+                             :event       :set+redraw
+                             :payload     new-pairs
+                             :signals     {}})
+        elements (filter #(= :elements (:fragment/kind %)) redraw-frags)
+        parent-iid (top-iid c2)]
+    (testing "default (no opts) keeps the current behaviour — only the per-child diff"
+      (is (= [:append] (patch-modes default-frags))))
+    (testing ":rerender-parent? true adds a fragment for the parent itself"
+      (is (= 2 (count elements))
+          "one for the keyed-children append, one for the parent re-render")
+      (is (some (fn [f] (= parent-iid (-> (re-find #"id=\"([^\"]+)\""
+                                                   (:fragment/html f))
+                                          second)))
+                elements)
+          "the second fragment carries the parent's id")
+      (is (some (fn [f] (str/includes? (:fragment/html f) "3 open"))
+                elements)
+          "the parent's topbar reflects the reconciled state, not the stale count"))))
+
+(deftest set-keyed-children-rerender-parent-noop-on-first-render
+  (register-counter!)
+  ;; First render path: :start emits the reconcile before the parent has
+  ;; ever painted, so the kernel's normal render-frame on the way out
+  ;; picks up the populated state in one shot.  The option must not
+  ;; double-render.
+  (registry/register!
+    {:component/id     :t/first-render-parent
+     :start            (fn [self]
+                         [self [(s/set-keyed-children :slot/cols
+                                                      [[:c1 (s/embed :t/counter {:start 1})]]
+                                                      {:rerender-parent? true})]])
+     :component/render (fn [self]
+                         [:section {:id (:instance/id self)}
+                          (s/keyed-children self :slot/cols)])})
+  (let [[_c frags] (boot :t/first-render-parent)
+        elements   (filter #(= :elements (:fragment/kind %)) frags)]
+    (is (= 1 (count elements))
+        "first render still produces one fragment, not two")))
+
 (deftest changed-keyed-embed-rebuilds-subtree-and-preserves-root-iid
   (registry/register!
     {:component/id     :t/leaf-a

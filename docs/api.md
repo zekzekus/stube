@@ -897,6 +897,25 @@ one child fragment, a removed key removes that child subtree, changed
 embed args re-initialise the child in place while preserving its root
 iid, and a pure reorder emits one outer patch for the container.
 
+**`:rerender-parent?` opt.** By default the reconcile's per-child
+fragments satisfy the kernel's "this dispatch already rendered" check
+and the parent's auto-render is skipped — the right call when the
+parent's hiccup outside the container has not changed. When the
+parent also displays state that depends on the reconciled set
+(a topbar count, an empty-state vs ledger toggle, a "save"
+button's enabled state), pass `{:rerender-parent? true}` so the
+kernel renders the parent on top of the reconcile with the updated
+slot state in scope:
+
+```clojure
+[self [(s/set-keyed-children :slot/cols pairs
+                             {:rerender-parent? true})]]
+```
+
+This is a no-op on the parent's very first paint — the normal
+render-frame on the way out already picks up the populated slot
+state in one shot — so it is always safe to pass.
+
 **Restore-from-URL** lives at the intersection of keyed-children and
 `:init-args-fn`. Because the slot doesn't exist until a
 `:set-keyed-children` effect fires, components that re-create columns
