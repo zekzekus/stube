@@ -526,6 +526,40 @@
 (defalias unsubscribe effects/unsubscribe
   "Effect: remove this instance's topic subscription(s).")
 
+(defn- target->iid [target]
+  (cond
+    (string? target) target
+    (map? target)    (render/instance-id target)
+    :else
+    (throw (ex-info "stube target must be an instance map or an instance-id string"
+                    {:got target}))))
+
+(defn dispatch-to
+  "Effect: asynchronously deliver `route-event` to the live instance
+  named by `target` (either an instance map or an iid string), in the
+  same conversation as the emitting handler.
+
+      [self [(s/dispatch-to parent :open)]]
+      [self [(s/dispatch-to (s/child-iid self :slot/search) :focus)]]
+      [self [(s/dispatch-to peer-iid [:open note-id])]]
+
+  `route-event` follows the same shape as `(s/on … :as route-event)` —
+  either a keyword or a `[event & payload]` vector.  The event lands
+  on the target's `:handle` exactly as if the user had clicked a
+  button wired with `(s/on-target target :click :as route-event)`.
+
+  The runtime schedules the dispatch on a background thread so the
+  current handler completes first; this keeps the per-cid lock
+  non-reentrant and avoids fan-out amplification.  If the target
+  instance is gone by the time the future runs the event is dropped
+  silently (the standard stale-event path).
+
+  Pairs with [[child-iid]] for parent→child notifications and with
+  [[publish-local!]] when more than one peer should hear about the
+  change."
+  [target route-event]
+  (effects/dispatch-to (target->iid target) route-event))
+
 (defalias publish! server/publish!
   "Publish `msg` to every live instance subscribed to `topic`.
   Delivery is asynchronous and cid/iid-scoped; stale subscribers are

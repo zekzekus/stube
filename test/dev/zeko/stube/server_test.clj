@@ -115,3 +115,30 @@
                                        [:conv/instances iid]))))))
   (server/reset-state!)
   (is (empty? (rt/subscriptions (server/default-kernel)))))
+
+(deftest dispatch-to-delivers-event-to-named-instance
+  (registry/register!
+    {:component/id :test/peer
+     :component/render (fn [s] [:div {:id (:instance/id s)} (pr-str (:seen s))])
+     :component/handle (fn [s {:keys [event payload]}]
+                         (case event
+                           :poke   [(update s :pokes (fnil inc 0)) []]
+                           :seen-it [(assoc s :seen payload) []]
+                           [s []]))})
+  (let [k   (server/default-kernel)
+        cid (rt/create-conversation! k :test/peer nil)
+        iid "ix-peer"]
+    (install-instance! cid {:instance/id iid
+                            :instance/type :test/peer
+                            :instance/children {}
+                            :instance/rendered? true})
+    (rt/dispatch-to! k {:cid cid :target-iid iid :event :poke})
+    (is (eventually #(= 1 (:pokes (get-in (server/conversation cid)
+                                          [:conv/instances iid])))))
+    (rt/dispatch-to! k {:cid cid :target-iid iid :event [:seen-it 42]})
+    (is (eventually #(= 42 (:seen (get-in (server/conversation cid)
+                                          [:conv/instances iid])))))
+    (rt/dispatch-to! k {:cid cid :target-iid "ix-missing" :event :poke})
+    (is (eventually #(= 1 (:pokes (get-in (server/conversation cid)
+                                          [:conv/instances iid]))))
+        "dispatch to a vanished iid is dropped silently (no throw)")))

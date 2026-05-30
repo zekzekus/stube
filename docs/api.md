@@ -220,6 +220,7 @@ vectors too, but the constructors are clearer.
 | `(s/subscribe topic event)` | `[:subscribe topic event]` | subscribe this instance to `topic`; messages arrive as `event` |
 | `(s/unsubscribe)` / `(s/unsubscribe topic)` | `[:unsubscribe]` etc. | remove subscription(s) for this instance |
 | `(s/set-keyed-children slot pairs)` | `[:set-keyed-children slot pairs]` | reconcile an ordered set of keyed child instances |
+| `(s/dispatch-to target event)` | `[:dispatch-to iid event]` | asynchronously deliver `event` to a known instance in the same conversation — see [Direct cross-instance dispatch](#direct-cross-instance-dispatch) |
 | `(s/back)` | `[:back]` | walk one step backward through the conversation's `:conv/history` |
 | `(s/end value)` | `[:end v]` | terminate the conversation with a final value; closes SSE |
 
@@ -280,6 +281,54 @@ Other notes:
 - Cancellation and "user said no" do not need `answer-error`. Stick
   with `s/cancel` and a boolean from `s/confirm` for those cases —
   they're not exceptional, just one branch of normal flow.
+
+### Direct cross-instance dispatch
+
+`(s/dispatch-to target route-event)` is the small primitive for "this
+child wants the parent (or some other known peer) to do something."
+`target` is either an instance map or an iid string;
+`route-event` follows the same shape as `(s/on … :as route-event)` —
+a keyword or `[event & payload]` vector. The event lands on the
+target's `:handle` exactly as if a button wired with
+`(s/on-target target :click :as route-event)` had been clicked.
+
+```clojure
+(s/defcomponent :notes/search-result
+  :render
+  (fn [self]
+    [:li (s/root-attrs self)
+     [:button (s/on self :click :as [:pick (:note-id self)]) (:title self)]])
+
+  :handle
+  (fn [self {:keys [event payload]}]
+    (case event
+      ;; The child closes itself *and* tells the parent to open
+      ;; the chosen note — both in one handler, no global pub/sub,
+      ;; no fake DOM siblings, no second POST chained in data-on:click.
+      :pick [(s/answer :closed)
+             (s/dispatch-to (:instance/parent self) [:open payload])])))
+```
+
+Why an effect instead of a synchronous function call? The runtime
+schedules the dispatch on a background thread so the current handler
+completes first; this keeps the per-cid lock non-reentrant and avoids
+fan-out amplification under contention. If the target instance is
+gone by the time the future runs the event is dropped silently (the
+standard stale-event path) — no special-casing needed.
+
+Pick the right tool:
+
+- `s/answer` — pop this frame and deliver a value up the call stack.
+  The cleanest answer-up channel; use it when the caller `(s/call …)`-ed
+  this frame and is waiting for the result.
+- `s/dispatch-to` — notify a *known* peer (parent or sibling) in the
+  same conversation without unmounting. Use [`s/child-iid`](#schild-iid-self-slot-key)
+  to find the iid of a fixed slot child, `:instance/parent` for the
+  parent.
+- `s/publish-local!` — notify zero-or-many anonymous peers in the same
+  conversation; the sender does not know (or care) who is listening.
+- `s/publish!` — like the local form, but every subscriber of `topic`
+  on the *kernel* hears it (across conversations).
 
 ### `(s/publish! topic msg)`
 

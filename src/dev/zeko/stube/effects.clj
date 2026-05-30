@@ -15,6 +15,7 @@
       [:after <ms> <event>]
       [:subscribe <topic> <event>]
       [:unsubscribe] | [:unsubscribe <topic>]
+      [:dispatch-to <iid> <route-event>]
       [:back]
       [:end <value>]
 
@@ -191,6 +192,22 @@
   ([topic] [:unsubscribe topic]))
 
 (defn unsubscribe-topic [eff] (nth eff 1 nil))
+
+(defn dispatch-to
+  "Asynchronously deliver `route-event` to the live instance named by
+  `target-iid`, exactly as if it had been POSTed from a button wired
+  with `(s/on-target target-iid :click :as route-event)`.
+
+  `route-event` is the same shape as `(s/on … :as …)` accepts: either
+  a keyword (`:open`) or a vector `[event & payload]` (`[:open id]`).
+  Pure kernels leave this effect inert; the runtime fires the
+  dispatch on a background thread so the current handler completes
+  first and re-entrancy through the per-cid lock is impossible."
+  [target-iid route-event]
+  [:dispatch-to target-iid route-event])
+
+(defn dispatch-to-iid    [eff] (nth eff 1))
+(defn dispatch-to-event  [eff] (nth eff 2))
 
 ;; ---------------------------------------------------------------------------
 ;; URL history effects

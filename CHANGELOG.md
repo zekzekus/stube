@@ -26,6 +26,20 @@ deep-adoption work").
   intra-conversation messaging without leaking parent iids into topic
   vocabulary.
 
+- **`s/dispatch-to`** (new effect). `(s/dispatch-to target route-event)`
+  schedules an asynchronous dispatch of `route-event` to `target`
+  (an instance map or iid string) in the same conversation. The
+  event lands on the target's `:handle` exactly as if a button wired
+  with `(s/on-target target :click :as route-event)` had been
+  clicked. The kernel hands the work off to a background future so
+  the current handler completes first and the per-cid lock stays
+  non-reentrant; a stale target is dropped silently, same as a stale
+  POST. Surfaces the kernel's existing `dispatch!` entry point as a
+  proper effect so a child can do "close myself *and* tell the
+  parent to open something" in one handler — without inventing a
+  pub/sub topic per parent/child pair or chaining a second POST in
+  `data-on:click`.
+
 ## 0.3.4
 
 Driven by the fourth wave of kasten post-migration notes

@@ -49,6 +49,9 @@
       [:after ms event]             schedule a future event for this instance
       [:subscribe topic event]      subscribe this instance to published messages
       [:unsubscribe topic?]         remove this instance's topic subscription(s)
+      [:dispatch-to iid event]      asynchronously deliver `event` to a
+                                    sibling/parent instance in the same
+                                    conversation
       [:back]                       restore the previous conversation
                                     from `:conv/history` (slice 3)
       [:end <value>]                terminate the conversation
@@ -126,6 +129,13 @@
 
 (def ^:dynamic *unsubscribe!*
   "Optional side-effect hook bound by the server for `[:unsubscribe …]`."
+  nil)
+
+(def ^:dynamic *dispatch-to!*
+  "Optional side-effect hook bound by the runtime for `[:dispatch-to …]`.
+  Receives `{:cid <cid> :target-iid <iid> :event <route-event>}` and
+  schedules an asynchronous dispatch.  Pure folds leave the effect
+  inert so replay does not re-fire cross-instance events."
   nil)
 
 (def ^:dynamic *run-io!*
@@ -566,6 +576,19 @@
     (unsubscribe! {:cid         (:conv/id conv)
                    :instance-id (effect-origin conv)
                    :topic       (e/unsubscribe-topic eff)}))
+  [conv []])
+
+(defmethod step :dispatch-to
+  [conv eff]
+  ;; Programmatic cross-instance event injection.  We do not invoke
+  ;; the kernel recursively here: the runtime schedules the dispatch
+  ;; on a background thread so the current handler completes first
+  ;; and the per-cid lock does not have to be reentrant.  Pure folds
+  ;; leave the effect inert.
+  (when-let [dispatch-to! *dispatch-to!*]
+    (dispatch-to! {:cid        (:conv/id conv)
+                   :target-iid (e/dispatch-to-iid eff)
+                   :event      (e/dispatch-to-event eff)}))
   [conv []])
 
 (defmethod step :back

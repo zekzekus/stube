@@ -71,3 +71,23 @@
         eff (s/answer-error ex)]
     (is (= [:answer-error ex] eff))
     (is (identical? ex (e/answer-error-value eff)))))
+
+;; ---------------------------------------------------------------------------
+;; dispatch-to
+;; ---------------------------------------------------------------------------
+
+(deftest dispatch-to-builds-expected-wire-vector
+  (testing "accepts an iid string"
+    (is (= [:dispatch-to "ix-007" :open]
+           (s/dispatch-to "ix-007" :open))))
+  (testing "accepts an instance map and pulls :instance/id from it"
+    (is (= [:dispatch-to "ix-007" [:open 42]]
+           (s/dispatch-to {:instance/id "ix-007"} [:open 42]))))
+  (testing "rejects bogus targets with a clear message"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"instance map or an instance-id string"
+                          (s/dispatch-to :not-a-target :open))))
+  (testing "accessors return iid and route-event"
+    (let [eff (s/dispatch-to "ix-007" [:open :a])]
+      (is (= "ix-007" (e/dispatch-to-iid eff)))
+      (is (= [:open :a] (e/dispatch-to-event eff))))))

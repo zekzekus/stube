@@ -18,7 +18,8 @@
   (:import (java.time Duration Instant)
            (java.util UUID)))
 
-(declare dispatch! schedule-event! stop-keepalive! subscribe! unsubscribe!)
+(declare dispatch! dispatch-to! schedule-event! stop-keepalive!
+         subscribe! unsubscribe!)
 
 ;; ---------------------------------------------------------------------------
 ;; Kernel values
@@ -177,6 +178,7 @@
               pure/*schedule-event!* #(schedule-event! k %)
               pure/*subscribe!* #(subscribe! k %)
               pure/*unsubscribe!* #(unsubscribe! k %)
+              pure/*dispatch-to!* #(dispatch-to! k %)
               pure/*run-io!* #(future
                                 (try (%)
                                      (catch Throwable t
@@ -500,6 +502,20 @@
     (reset! !self fut)
     (swap! (:!timers k) update cid (fnil conj #{}) fut)
     fut))
+
+(defn dispatch-to!
+  "Asynchronously deliver `event` to `target-iid` in conversation `cid`
+  under kernel `k`.  Fired by the `:dispatch-to` effect; runs on a
+  background future so the current handler can complete first.  The
+  matching event is dropped (the standard stale-event path) if the
+  target instance is gone by the time the future runs."
+  [k {:keys [cid target-iid event]}]
+  (future
+    (try
+      (dispatch! k cid (route-event->event-map target-iid event))
+      (catch Throwable t
+        (binding [*out* *err*]
+          (println "dev.zeko.stube.runtime: dispatch-to threw —" (ex-message t)))))))
 
 (defn subscribe!
   "Subscribe cid/iid to `topic` within kernel `k`."
