@@ -445,6 +445,61 @@
                        :base-path (:base-path k)
                        :root-selector (:root-selector k)}))
 
+(defn- first-elements-html
+  "Pick the HTML body of the first `:elements`-kind fragment in `frags`,
+  or nil.  The boot fragment a freshly-instantiated root produces lands
+  with `:selector #root, :patch-mode :inner`, so its body is exactly
+  what should live inside the shell's `<div id=\"root\">`."
+  [frags]
+  (some (fn [f]
+          (when (= :elements (:fragment/kind f))
+            (:fragment/html f)))
+        frags))
+
+(defn rendered-shell-for!
+  "Mint a conversation for `root-id`, boot it server-side, and return a
+  Hiccup shell whose `#root` already contains the rendered first
+  paint.
+
+  Pairs with [[shell-for]] for cases where the host needs a readable
+  GET response (static `/about` pages, SEO-visible content, no-JS
+  fallbacks) instead of an empty `<div id=\"root\">` that fills in
+  over the SSE connection.
+
+  Returns `{:cid <cid> :shell <hiccup>}`.  The shell carries the same
+  `data-init` that opens the SSE stream, so once the browser
+  connects the conversation is fully interactive — but the initial
+  HTML is already there at first paint.
+
+  Marks the conversation `:conv/server-rendered? true`; the SSE
+  handler reads this flag and skips the resume-render that path 2
+  would otherwise fire (which would re-emit the same HTML and run
+  `:wakeup` hooks meant for crash-resume, not for first attach).
+  The flag is cleared on the first SSE attach, so subsequent
+  reattaches (a network blip, a hot reload) behave like the normal
+  restore path.
+
+  Limitations: if the root component's `:start` emits more than one
+  visible fragment (e.g. a `call-in-slot` during boot), only the
+  primary `#root inner` fragment is inlined; the extras would be
+  pushed over SSE on attach, the same way they are today."
+  ([k root-id request]
+   (rendered-shell-for! k root-id {} request))
+  ([k root-id init-args request]
+   (let [cid     (mint-conversation! k root-id init-args request)
+         pending (pending-root k cid)
+         [_conv frags]
+         (apply-conv! k cid
+           (fn [c]
+             (let [[c' fs] (pure/run-effects c (pure/boot pending))]
+               [(assoc c' :conv/server-rendered? true) fs])))
+         html    (or (first-elements-html frags) "")]
+     {:cid   cid
+      :shell (shell/rendered-fragment cid html
+                                      {:dev?          (halos? k)
+                                       :base-path     (:base-path k)
+                                       :root-selector (:root-selector k)})})))
+
 (defn head-tags
   "Return Hiccup head nodes required by [[shell-for]] for kernel `k`."
   [k]

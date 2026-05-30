@@ -63,6 +63,22 @@ deep-adoption work").
   …])` fragments next to `set-keyed-children` for every region of
   the parent that depends on the reconciled set.
 
+- **`embed/rendered-shell-for!`** (new). Mints a conversation,
+  boots it server-side, and returns `{:cid <cid> :shell <hiccup>}`
+  whose `<div id="root">` already contains the rendered first
+  paint. The shell still carries the `data-init` that opens the SSE
+  stream, so once the browser connects the conversation is fully
+  interactive — but the initial HTML is there at first paint,
+  without waiting for the SSE attach. Use this for routes that
+  need a readable GET response (static `/about` pages, SEO-visible
+  content, no-JS fallbacks) instead of [[shell-for]]'s empty
+  `#root` placeholder. The conversation is marked
+  `:conv/server-rendered? true`; the SSE handler reads the flag,
+  clears it, and skips the resume-render that the restore path
+  would otherwise fire — so the browser never sees a "no-op"
+  re-paint on first attach, and subsequent reattaches still behave
+  like the normal restore path.
+
 ## 0.3.4
 
 Driven by the fourth wave of kasten post-migration notes

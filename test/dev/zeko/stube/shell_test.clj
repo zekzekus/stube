@@ -130,3 +130,18 @@
     (is (str/includes? html "{\"k\":\"v\"}")
         "JSON quotes must render literally; if `&quot;` appears the host script will SyntaxError")
     (is (not (str/includes? html "&quot;")))))
+
+(deftest rendered-fragment-inlines-pre-rendered-html-verbatim
+  (let [body  "<section id=\"ix-1\"><p>hello &amp; goodbye</p></section>"
+        frag  (shell/rendered-fragment "cv-001" body {:base-path "/widget"})
+        html  (chassis/html frag)]
+    (is (str/includes? html body)
+        "the pre-rendered HTML lands literally inside #root — no double-escaping")
+    (is (str/includes? html "data-init")
+        "the data-init that opens the SSE stream is still on the wrapper")
+    (is (str/includes? html "/widget/sse/cv-001")
+        "the SSE URL honours the kernel's :base-path"))
+  (testing "nil/empty body still produces a valid empty #root"
+    (let [frag (shell/rendered-fragment "cv-001" nil {})
+          html (chassis/html frag)]
+      (is (str/includes? html "<div id=\"root\">")))))

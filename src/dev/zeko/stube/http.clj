@@ -371,6 +371,15 @@
                     (rt/apply-conv! k cid
                       (fn [c] (kernel/run-effects c (kernel/boot pending))))
 
+                    ;; Path 1b — fresh conversation, but boot already ran
+                    ;; server-side via rendered-shell-for!.  The browser
+                    ;; already has the right HTML; we just clear the flag
+                    ;; so a *future* reattach (network blip, hot reload)
+                    ;; falls through to the normal resume path.
+                    (and (some? live) (:conv/server-rendered? live))
+                    (rt/apply-conv! k cid
+                      (fn [c] [(dissoc c :conv/server-rendered?) []]))
+
                     ;; Path 2 — re-attach to a conversation that survives in
                     ;; memory (loaded from the persistence store at startup,
                     ;; or carried across a hot reload of the http layer).

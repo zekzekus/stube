@@ -46,6 +46,26 @@
   [k cid]
   (rt/shell-for k cid))
 
+(defn rendered-shell-for!
+  "Mint a conversation, boot it server-side, and return both the cid
+  and a Hiccup shell whose `#root` placeholder already contains the
+  rendered first paint.
+
+  Use this for routes that need a readable GET response — static
+  `/about` pages, SEO-visible content, no-JS fallbacks — instead of
+  the empty `<div id=\"root\">` [[shell-for]] returns.  The shell
+  carries the same `data-init` that opens the SSE stream, so once
+  the browser connects the conversation is fully interactive.
+
+  Returns `{:cid <cid> :shell <hiccup>}`.
+
+  See [[dev.zeko.stube.runtime/rendered-shell-for!]] for the contract
+  details and limitations."
+  ([k root-id request]
+   (rt/rendered-shell-for! k root-id request))
+  ([k root-id init-args request]
+   (rt/rendered-shell-for! k root-id init-args request)))
+
 (defn head-tags
   "Return Hiccup nodes for the assets required by [[shell-for]].  Host
   pages should include these in `<head>`: optional stock CSS,

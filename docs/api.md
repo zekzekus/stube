@@ -1219,7 +1219,8 @@ Stable functions:
 |---|---|
 | `(stube/make-kernel opts)` | Create an isolated runtime instance. |
 | `(stube/mint-conversation! k root-id init-args request)` | Register a new conversation and return its cid. |
-| `(stube/shell-for k cid)` | Return a Hiccup fragment for the host layout. |
+| `(stube/shell-for k cid)` | Return a Hiccup fragment for the host layout (empty `#root`; populated over SSE). |
+| `(stube/rendered-shell-for! k root-id init-args request)` | Mint + boot in one call; returns `{:cid <cid> :shell <hiccup>}` whose `#root` already contains the first paint. See [Server-rendered first paint](#server-rendered-first-paint). |
 | `(stube/head-tags k)` | Return the CSS/script Hiccup nodes required by `shell-for`. |
 | `(stube/dispatch! k cid event)` | Dispatch into live state and return produced fragments. |
 | `(stube/publish! k topic msg)` | Publish from host code into this runtime kernel. |
@@ -1288,6 +1289,50 @@ through chassis get the bodies emitted verbatim. Hosts that render
 through hiccup2 / rum / reagent SSR must re-wrap those instances in
 their own raw primitive before emitting, or the bodies are
 HTML-escaped and inline scripts fail to parse.
+
+### Server-rendered first paint
+
+By default `shell-for` returns an empty `<div id="root">` and the
+component HTML arrives moments later over the SSE connection. That
+is the right shape for interactive surfaces — the page is
+JavaScript-driven anyway. It is the wrong shape for routes that
+should be readable without waiting for the SSE attach: static
+`/about` pages, SEO-visible content, no-JS fallbacks, RSS-like
+documents.
+
+`embed/rendered-shell-for!` mints the conversation, runs `boot`
+server-side, and returns a shell whose `<div id="root">` already
+contains the rendered first paint:
+
+```clojure
+(defn about-handler [request]
+  (let [{:keys [shell]} (embed/rendered-shell-for! k :site/about {} request)]
+    {:status 200
+     :headers {"Content-Type" "text/html"}
+     :body (str "<!DOCTYPE html>"
+                (chassis/html
+                  [:html
+                   (into [:head [:title "About"]] (embed/head-tags k))
+                   [:body shell]]))}))
+```
+
+The shell still carries the `data-init` that opens the SSE stream,
+so once the browser connects the conversation is fully interactive
+— but the initial HTML is already there at first paint.
+
+Mechanics:
+
+- The conversation is marked `:conv/server-rendered? true`. On the
+  first SSE attach the handler reads the flag, clears it, and skips
+  the resume-render that the restore path would otherwise fire
+  (which would re-emit the same HTML and run `:wakeup` hooks meant
+  for crash-resume, not for first attach).
+- A subsequent reattach (network blip, hot reload) falls through to
+  the normal resume path because the flag was cleared.
+- Limitation: if the root's `:start` emits more than one visible
+  fragment (a `call-in-slot` during boot, etc.) only the primary
+  `#root inner` fragment is inlined; the extras still arrive over
+  SSE. For the static-page use case this is moot.
 
 ### Signal wire casing: `:signal-case`
 

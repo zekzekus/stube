@@ -1,6 +1,7 @@
 (ns dev.zeko.stube.kernel-isolation-test
   (:require [clojure.string :as str]
-            [clojure.test :refer [deftest is use-fixtures]]
+            [clojure.test :refer [deftest is testing use-fixtures]]
+            [dev.onionpancakes.chassis.core :as chassis]
             [dev.zeko.stube.adapter.ring :as ring-adapter]
             [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.core :as s]
@@ -162,6 +163,39 @@
           "handle fires once for the dispatched event")))
   (is (nil? (s/conversation-id))
       "returns nil outside a runtime binding"))
+
+(deftest rendered-shell-for-runs-boot-server-side
+  (registry/register!
+    {:component/id     :isolation/static
+     :component/init   (constantly {:greeting "hello server"})
+     :component/render (fn [self]
+                         [:section (s/root-attrs self)
+                          [:h1 (:greeting self)]])})
+  (let [k    (embed/make-kernel)
+        {:keys [cid shell]} (embed/rendered-shell-for! k :isolation/static {})
+        rendered-html (chassis/html shell)
+        conv (rt/conversation k cid)
+        iid  (conv/top-id conv)]
+    (is (str/includes? rendered-html "hello server")
+        "the rendered first paint contains the component's HTML")
+    (is (str/includes? rendered-html "<div id=\"root\">")
+        "the SSE morph target is still in place")
+    (is (str/includes? rendered-html "data-init")
+        "the data-init that opens the SSE stream is preserved")
+    (is (true? (:conv/server-rendered? conv))
+        "the flag is set so the SSE handler can skip the first re-render")
+    (is (true? (get-in conv [:conv/instances iid :instance/rendered?]))
+        "the root instance is marked rendered")
+    (testing "host can still dispatch events afterwards — the conv is fully alive"
+      (registry/register!
+        {:component/id     :isolation/static
+         :component/init   (constantly {:greeting "hello server"})
+         :component/render (fn [self] [:div (s/root-attrs self) (:greeting self)])
+         :component/handle (fn [self _] (assoc self :greeting "after dispatch"))})
+      (embed/dispatch! k cid {:instance-id iid :event :ping :signals {}})
+      (is (= "after dispatch"
+             (:greeting (get-in (rt/conversation k cid)
+                                [:conv/instances iid])))))))
 
 (deftest signal-case-kernel-default-binds-render-helpers
   (let [k-kebab (embed/make-kernel)

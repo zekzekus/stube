@@ -31,6 +31,29 @@
             dev? (assoc :data-stube-cid cid))
      [:div {:id (root-id root-selector)}]]))
 
+(defn rendered-fragment
+  "Like [[fragment]], but inlines `pre-rendered-html` inside the
+  `<div id=root>` placeholder so the host can serve a readable first
+  paint without waiting for the SSE connection to deliver patches.
+
+  `pre-rendered-html` is treated as a raw HTML string (wrapped in
+  `chassis/raw`); callers must hand back HTML the server itself
+  produced, not user input.  The shell's `data-init` is unchanged,
+  so once the browser connects the conversation is fully interactive.
+
+  See [[dev.zeko.stube.runtime/rendered-shell-for!]] for the helper
+  that mints the conversation, runs boot, and assembles the shell in
+  one call."
+  [cid pre-rendered-html
+   {:keys [dev? base-path root-selector]
+    :or {base-path "" root-selector "#root"}}]
+  (binding [render/*base-path* base-path
+            render/*root-selector* root-selector]
+    [:div (cond-> {:data-init (str "@get('" (render/sse-url cid) "')")
+                   :data-stube-base-path base-path}
+            dev? (assoc :data-stube-cid cid))
+     [:div {:id (root-id root-selector)} (chassis/raw (or pre-rendered-html ""))]]))
+
 (defn- component-stylesheet-resource [type-kw]
   (str "stube_styles/" (namespace type-kw) "/" (name type-kw) ".css"))
 
