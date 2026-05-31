@@ -680,16 +680,46 @@
   the baseline is a flow id, replay boots a fresh conversation first.
   Event maps may omit `:instance-id` to target the current top frame and
   may omit `:signals` to use `{}`.  An event may also be a function of
-  the current conversation returning such a map."
+  the current conversation returning such a map.
+
+  The 3-arg arity accepts an opts map:
+
+    {:app fake-app :principal fake-principal}
+
+  to bind the same dynamic vars the http runtime binds during normal
+  dispatch.  Use this when the components under test call `(s/app)`
+  or `(s/principal)` from `:render`/`:handle` — those return nil under
+  pure replay otherwise.  Equivalent to wrapping the call in
+  [[with-app]] and [[with-principal]]."
   ([events]
    (replay (conv/new-conversation) events))
   ([baseline events]
-   (let [[c0 boot-frags] (replay-start baseline)]
-     (reduce (fn [[c frags] event]
-               (let [[c' more] (kernel/dispatch c (conv/replay-event c event))]
-                 [c' (into frags more)]))
-             [c0 (vec boot-frags)]
-             events))))
+   (replay baseline events nil))
+  ([baseline events opts]
+   (let [run #(let [[c0 boot-frags] (replay-start baseline)]
+                (reduce (fn [[c frags] event]
+                          (let [[c' more] (kernel/dispatch c (conv/replay-event c event))]
+                            [c' (into frags more)]))
+                        [c0 (vec boot-frags)]
+                        events))
+         has-app?       (contains? opts :app)
+         has-principal? (contains? opts :principal)]
+     (cond
+       (and has-app? has-principal?)
+       (binding [kernel/*current-app*       (:app opts)
+                 kernel/*current-principal* (:principal opts)]
+         (run))
+
+       has-app?
+       (binding [kernel/*current-app* (:app opts)]
+         (run))
+
+       has-principal?
+       (binding [kernel/*current-principal* (:principal opts)]
+         (run))
+
+       :else
+       (run)))))
 
 (defalias dispatch kernel/dispatch
   "Pure event dispatch — `(dispatch conv event) → [conv' fragments]`.

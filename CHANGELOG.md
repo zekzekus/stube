@@ -7,6 +7,14 @@ development entry.
 
 ### Added
 
+- `s/replay` gains a 3-arg arity that takes an opts map seeding the
+  `(s/app)` / `(s/principal)` bindings for the duration of the
+  replay: `(s/replay :my/flow events {:app {:db stub} :principal
+  {:user-id 1}})`.  Components that call `(s/app)` or
+  `(s/principal)` from `:render` / `:handle` no longer return nil
+  under pure replay just because the test thread didn't wrap the
+  call in [[with-app]] / [[with-principal]].
+  ([kasten/stube_notes.md §2.J](kasten/stube_notes.md))
 - `s/child-iid` gains a 3-arg arity for keyed slots:
   `(s/child-iid self :slot/columns :note-42)` returns the iid of the
   keyed child under `:slot/columns` with application key `:note-42`,

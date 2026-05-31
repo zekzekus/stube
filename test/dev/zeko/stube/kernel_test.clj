@@ -297,6 +297,36 @@
     (is (= 2 (:n (conv/top-instance c))))
     (is (= 2 (count (:conv/history c))))))
 
+(deftest replay-binds-app-and-principal-from-opts
+  ;; Components that call (s/app) / (s/principal) from :render or
+  ;; :handle return nil under pure replay unless the test thread binds
+  ;; the kernel dyn vars.  The 3-arg replay arity accepts those
+  ;; bindings inline so test code doesn't have to wrap every call in
+  ;; with-app / with-principal.
+  (registry/register!
+    {:component/id     :t/needs-deps
+     :component/init   (constantly {:greeted nil :who nil})
+     :component/render (fn [s] [:div {:id (:instance/id s)}])
+     :component/handle (fn [s _]
+                         [(assoc s :greeted (s/app)
+                                   :who     (s/principal))
+                          []])})
+  (testing "default replay: app/principal are nil"
+    (let [[c _] (s/replay :t/needs-deps [{:event :probe}])]
+      (is (nil? (:greeted (conv/top-instance c))))
+      (is (nil? (:who     (conv/top-instance c))))))
+  (testing "3-arg replay opts seed the bindings for the duration of replay"
+    (let [[c _] (s/replay :t/needs-deps
+                          [{:event :probe}]
+                          {:app       {:db :stub}
+                           :principal {:user "ada"}})]
+      (is (= {:db :stub} (:greeted (conv/top-instance c))))
+      (is (= {:user "ada"} (:who (conv/top-instance c))))))
+  (testing "bindings are torn down after replay returns"
+    (s/replay :t/needs-deps [{:event :probe}] {:app {:db :stub}})
+    (is (nil? (s/app))
+        "outer scope is untouched")))
+
 ;; ---------------------------------------------------------------------------
 ;; Side effects: :patch, :patch-signals, :execute-script
 ;; ---------------------------------------------------------------------------

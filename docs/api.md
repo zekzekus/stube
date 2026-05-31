@@ -1562,7 +1562,7 @@ Returns the initial effects vector for a fresh conversation rooted at
 `flow-id`. Pure; used by the http layer on first SSE connect and by
 `s/replay`.
 
-### `(s/replay events)`  /  `(s/replay baseline events)`
+### `(s/replay events)`  /  `(s/replay baseline events)`  /  `(s/replay baseline events opts)`
 
 Walk a sequence of events through a baseline, returning
 `[conv' fragments]`. `baseline` is either an existing conversation
@@ -1579,6 +1579,21 @@ Event maps may omit `:instance-id` (current top frame) and
 `:signals` (`{}` by default). An event may be a function of the
 current conv returning such a map, which is handy when you need to
 read an iid that didn't exist until the previous event ran.
+
+The 3-arg arity accepts an opts map that binds the same runtime
+dynamic vars the http layer binds during normal dispatch:
+
+```clojure
+(s/replay :kasten/desk events
+          {:app       {:db stub-conn :mail stub-mailer}
+           :principal {:user-id 42}})
+```
+
+Use this when the components under test call `(s/app)` or
+`(s/principal)` from `:render` / `:handle` — those return nil under
+pure replay otherwise.  Equivalent to wrapping the call in
+[[with-app]] / [[with-principal]] but a single line of test code.
+The bindings are torn down when `replay` returns.
 
 ---
 
