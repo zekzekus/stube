@@ -5,7 +5,19 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Fixed
+
+- `merge-kept-signals` now honours `:signal-case :camel`.  Under
+  `make-kernel {:signal-case :camel}`, Datastar stores `s/local-bind`
+  signals with camelCase wire keys (e.g. `editTitleIx1`), so the
+  per-event lookup that lifts kept signals back onto the instance
+  missed and any user edit silently vanished on save.  The lookup now
+  resolves the kernel-bound `render/*signal-case*` and checks the
+  wire-cased variant of both the local-signal key and the logical
+  kept key, falling back to the kebab forms for back-compat with
+  per-call `{:case :kebab}` opts.  Embedders that worked around this
+  by forcing `:kebab` on every signal helper can drop those overrides.
+  ([kasten/stube_notes.md §2.B](kasten/stube_notes.md))
 
 ## 0.4.0
 

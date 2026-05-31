@@ -30,7 +30,8 @@
   and can both read instance metadata (`:instance/id`) and their own
   domain fields by simple keyword lookup.  Handlers must not clobber the
   `:instance/*` keys."
-  (:require [dev.zeko.stube.registry :as registry]))
+  (:require [clojure.string          :as string]
+            [dev.zeko.stube.registry :as registry]))
 
 ;; ---------------------------------------------------------------------------
 ;; Id minting
@@ -382,6 +383,20 @@
 ;; Signal merging
 ;; ---------------------------------------------------------------------------
 
+(defn- kebab->camel ^String [^String s]
+  (string/replace s #"-([a-zA-Z0-9])"
+                  (fn [[_ c]] (string/upper-case c))))
+
+(defn- camel-key [k]
+  (keyword (kebab->camel (name k))))
+
+(defn- current-signal-case
+  "Resolve `dev.zeko.stube.render/*signal-case*` lazily so this namespace
+  stays independent of render.  Returns nil when the var has not been
+  bound (pure tests, REPL evaluation without runtime bindings)."
+  []
+  (some-> (resolve 'dev.zeko.stube.render/*signal-case*) deref))
+
 (defn merge-kept-signals
   "Lift the entries of `signals` whose keys appear in `keep-keys` onto the
   instance map.  This is the per-event two-way binding step: the user
@@ -392,24 +407,39 @@
   If the browser sends a per-instance key produced by [[local-signal]],
   that value is lifted onto the logical kept key.  Local values win over
   same-named global values so a component can safely say `:keep #{:answer}`
-  and render `(s/local-bind self :answer)`."
+  and render `(s/local-bind self :answer)`.
+
+  When the kernel runs under `:signal-case :camel`, Datastar stores
+  signals with camelCase wire keys (`editTitleIx1` rather than
+  `:edit-title-ix-1`).  This lookup checks the wire-cased variant of
+  both the local-signal key and the logical key first, then falls back
+  to the kebab forms — so the same `:keep #{:edit-title}` declaration
+  works under either kernel casing without the host having to force a
+  per-call `{:case :kebab}` opt."
   [inst signals keep-keys]
   (if (empty? keep-keys)
     inst
-    (reduce (fn [acc k]
-              (let [local-k (when (:instance/id inst)
-                              (local-signal inst k))]
-                (cond
-                  (and local-k (contains? signals local-k))
-                  (assoc acc k (get signals local-k))
-
-                  (contains? signals k)
-                  (assoc acc k (get signals k))
-
-                  :else
-                  acc)))
-            inst
-            keep-keys)))
+    (let [casing (or (current-signal-case) :kebab)
+          camel? (= casing :camel)]
+      (reduce (fn [acc k]
+                (let [local-k        (when (:instance/id inst)
+                                       (local-signal inst k))
+                      local-wire-k   (when (and local-k camel?)
+                                       (camel-key local-k))
+                      global-wire-k  (when camel?
+                                       (camel-key k))
+                      hit (or (when (and local-wire-k (contains? signals local-wire-k))
+                                local-wire-k)
+                              (when (and local-k (contains? signals local-k))
+                                local-k)
+                              (when (and global-wire-k (contains? signals global-wire-k))
+                                global-wire-k)
+                              (when (contains? signals k)
+                                k))]
+                  (cond-> acc
+                    hit (assoc k (get signals hit)))))
+              inst
+              keep-keys))))
 
 (defn merged-self
   "Look up `iid` in `conv`, find its component definition, and return the

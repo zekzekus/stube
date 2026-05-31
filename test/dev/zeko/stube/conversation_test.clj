@@ -1,7 +1,8 @@
 (ns dev.zeko.stube.conversation-test
   (:require [clojure.test       :refer [deftest is testing use-fixtures]]
             [dev.zeko.stube.conversation :as conv]
-            [dev.zeko.stube.registry     :as registry]))
+            [dev.zeko.stube.registry     :as registry]
+            [dev.zeko.stube.render       :as render]))
 
 (use-fixtures :each (fn [t]
                       (registry/clear!)
@@ -74,3 +75,30 @@
                                      :answer-ix-1 "local"}
                                     #{:answer}))
         "local signal keys map back to their logical kept key and win")))
+
+(deftest merge-kept-signals-honours-camel-signal-case
+  (testing "under :signal-case :camel, local-bound signals arrive camelized"
+    (binding [render/*signal-case* :camel]
+      (let [inst {:instance/id "ix-1" :edit-title "old"}]
+        (is (= {:instance/id "ix-1" :edit-title "new"}
+               (conv/merge-kept-signals inst
+                                        {:editTitleIx1 "new"}
+                                        #{:edit-title}))
+            "browser sends camelCased local-wire key; lifts back to the logical kept key"))))
+  (testing "under camel, the global wire key is also camel"
+    (binding [render/*signal-case* :camel]
+      (is (= {:edit-title "v"}
+             (conv/merge-kept-signals {} {:editTitle "v"} #{:edit-title})))))
+  (testing "camel mode still accepts kebab payloads (per-call :case :kebab opt path)"
+    (binding [render/*signal-case* :camel]
+      (let [inst {:instance/id "ix-1"}]
+        (is (= {:instance/id "ix-1" :edit-title "kebab-local"}
+               (conv/merge-kept-signals inst
+                                        {:edit-title-ix-1 "kebab-local"}
+                                        #{:edit-title}))))))
+  (testing "kebab mode is unchanged"
+    (binding [render/*signal-case* :kebab]
+      (is (= {:instance/id "ix-1" :answer "local"}
+             (conv/merge-kept-signals {:instance/id "ix-1"}
+                                      {:answer-ix-1 "local"}
+                                      #{:answer}))))))
