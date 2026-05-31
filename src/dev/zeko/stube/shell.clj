@@ -105,6 +105,25 @@
        (filter seq)
        (map (fn [href] [:link {:rel "stylesheet" :href href}]))))
 
+(defn- css-layer-order-block
+  "Build a top-level `@layer name1, name2, …;` declaration that fixes
+  the cascade order across the per-component stylesheets `head-tags`
+  emits.  Because CSS layers honour the *first* declaration order in
+  the document, emitting this before any per-component `<link>` is
+  enough to make their `@layer` rules cascade in the host-chosen order
+  even though the links themselves are appended alphabetically."
+  [layers]
+  (let [names (->> layers
+                   (keep (fn [x]
+                           (cond
+                             (keyword? x) (name x)
+                             (string? x)  (let [t (str/trim x)]
+                                            (when (seq t) t))
+                             :else        nil))))]
+    (when (seq names)
+      [:style {:type "text/css"}
+       (chassis/raw (str "@layer " (str/join ", " names) ";"))])))
+
 (defn- eager-script-block [snippets]
   (let [chunks (->> snippets
                     (filter string?)
@@ -121,22 +140,26 @@
   fragment, in this order:
 
   1. Optional stock `ui.css`.
-  2. Kernel-level `:base-css` `<link>`s (host-wide stylesheets that
+  2. Kernel-level `:css-layer-order` declaration (a single
+     `<style>@layer …;</style>` block that pins the cascade order for
+     every per-component layer that follows), emitted before any
+     `<link>` so the layer order is established by *first* declaration.
+  3. Kernel-level `:base-css` `<link>`s (host-wide stylesheets that
      should appear regardless of which components are registered).
-  3. One `<link>` per registered component that ships a stylesheet at
+  4. One `<link>` per registered component that ships a stylesheet at
      `resources/stube_styles/<ns>/<name>.css` (discovered via
      `io/resource`).
-  4. One `<style>` block holding inline `:styles` from every registered
+  5. One `<style>` block holding inline `:styles` from every registered
      component, with each chunk's `&` prefix scoped to the matching
      `[data-stube-component=\"ns/name\"]` selector.
-  5. Kernel-level `:eager-scripts` as a single synchronous `<script>`
+  6. Kernel-level `:eager-scripts` as a single synchronous `<script>`
      block — emitted *before* any `type=\"module\"` script so inline
      Datastar expressions can rely on the globals it sets up.
-  6. Datastar and the framework bridges (`preserve.js`, `behaviors.js`).
-  7. One `<script type=\"module\">` per distinct module id declared by a
+  7. Datastar and the framework bridges (`preserve.js`, `behaviors.js`).
+  8. One `<script type=\"module\">` per distinct module id declared by a
      component's `:modules` vector, served from
      `resources/stube_modules/<id>.js`.
-  8. Optional halos tooling when `:dev?` is true.
+  9. Optional halos tooling when `:dev?` is true.
 
   Standalone [[html]] uses this directly; embedders normally call the
   public `dev.zeko.stube.embed/head-tags` wrapper for their kernel.
@@ -147,7 +170,7 @@
   hiccup2 / rum / reagent SSR must re-wrap those instances in their
   renderer's own raw primitive before emitting, or the bodies will be
   HTML-escaped and the scripts will fail to parse."
-  [{:keys [dev? ui-css? base-css eager-scripts base-path root-selector]
+  [{:keys [dev? ui-css? base-css css-layer-order eager-scripts base-path root-selector]
     :or {ui-css? true base-css [] eager-scripts [] base-path "" root-selector "#root"}}]
   (binding [render/*base-path* base-path
             render/*root-selector* root-selector]
@@ -155,10 +178,12 @@
           inline-styles    (collect-inline-styles)
           module-scripts   (collect-module-scripts)
           base-links       (base-css-links base-css)
+          layer-block      (css-layer-order-block css-layer-order)
           eager-block      (eager-script-block eager-scripts)]
       (cond-> []
         ui-css? (conj [:link {:rel "stylesheet" :href (render/ui-css-url)}])
 
+        layer-block            (conj layer-block)
         (seq base-links)       (into base-links)
         (seq stylesheet-links) (into stylesheet-links)
         inline-styles          (conj inline-styles)
@@ -181,7 +206,7 @@
   started with `:halos? true`), inject the halos overlay script and the
   `data-stube-cid` hook so the floating pill can activate the overlay."
   [cid opts-or-dev?]
-  (let [{:keys [dev? ui-css? base-css eager-scripts base-path root-selector]
+  (let [{:keys [dev? ui-css? base-css css-layer-order eager-scripts base-path root-selector]
          :or {ui-css? true base-css [] eager-scripts [] base-path "" root-selector "#root"}}
         (if (map? opts-or-dev?)
           opts-or-dev?
@@ -198,6 +223,7 @@
             assets (head-tags {:dev? dev?
                                :ui-css? ui-css?
                                :base-css base-css
+                               :css-layer-order css-layer-order
                                :eager-scripts eager-scripts
                                :base-path base-path
                                :root-selector root-selector})]

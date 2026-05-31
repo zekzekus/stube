@@ -82,6 +82,53 @@
         hrefs (vec (keep href-of tags))]
     (is (= ["/ok.css"] hrefs))))
 
+(deftest head-tags-emits-css-layer-order-declaration
+  (registry/register! {:component/id :test-style/yes})
+  (testing "vector of layer names produces a single @layer declaration before any component <link>"
+    (let [tags         (shell/head-tags {:ui-css? false
+                                         :css-layer-order ["tokens" "base" "layout"
+                                                           "components"]})
+          style-blocks (filter (fn [t]
+                                 (and (vector? t)
+                                      (= :style (first t))))
+                               tags)
+          layer-block  (some (fn [t]
+                               (let [body (str (last t))]
+                                 (when (str/includes? body "@layer ") t)))
+                             style-blocks)
+          link-idx     (.indexOf ^java.util.List (vec tags)
+                                 (some (fn [t]
+                                         (when (= :link (and (vector? t) (first t)))
+                                           t))
+                                       tags))
+          layer-idx    (.indexOf ^java.util.List (vec tags) layer-block)]
+      (is (some? layer-block)
+          "a <style> with the @layer declaration is present")
+      (is (str/includes? (str (last layer-block))
+                         "@layer tokens, base, layout, components;")
+          "layer names appear comma-separated in declaration order")
+      (is (and (>= link-idx 0) (>= layer-idx 0)
+               (< layer-idx link-idx))
+          "@layer block precedes the first component stylesheet <link>")))
+  (testing "nil / empty / blank layer order emits nothing"
+    (doseq [order [nil [] [nil "" "  "]]]
+      (let [tags (shell/head-tags {:ui-css? false :css-layer-order order})]
+        (is (not-any? (fn [t]
+                        (and (vector? t)
+                             (= :style (first t))
+                             (str/includes? (str (last t)) "@layer")))
+                      tags)
+            (str "no @layer block for " (pr-str order))))))
+  (testing "keyword names are accepted"
+    (let [tags  (shell/head-tags {:ui-css? false
+                                  :css-layer-order [:tokens :base]})
+          block (some (fn [t]
+                        (when (and (vector? t) (= :style (first t))
+                                   (str/includes? (str (last t)) "@layer "))
+                          t))
+                      tags)]
+      (is (str/includes? (str (last block)) "@layer tokens, base;")))))
+
 (deftest head-tags-emits-eager-scripts-before-module-scripts
   (let [tags    (shell/head-tags {:ui-css? false
                                   :eager-scripts ["window.Foo = {a:1};"

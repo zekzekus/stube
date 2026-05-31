@@ -47,6 +47,7 @@
             :on-error          nil
             :ui-css?           true
             :base-css          []
+            :css-layer-order   nil
             :eager-scripts     []
             :halos?            false
             :signal-case       :kebab
@@ -85,6 +86,15 @@
     `stube_styles/<ns>/<name>.css` is not enough).  URLs are emitted
     verbatim; relative URLs resolve against the host page, absolute
     URLs are passed through unchanged.
+  * `:css-layer-order` — optional vector of CSS layer names (strings or
+    keywords).  When provided, [[head-tags]] emits a top-level
+    `@layer name1, name2, …;` declaration before any
+    component-derived stylesheet `<link>`.  Because CSS layers honour
+    the *first* declaration order in the document, this fixes the
+    cascade order across the per-component stylesheets that
+    `head-tags` auto-emits alphabetically from
+    `resources/stube_styles/<ns>/<name>.css` — host CSS no longer has
+    to live in a single ordered file just to control layer order.
   * `:eager-scripts` — vector of inline JS snippets (strings)
     [[head-tags]] should emit as synchronous `<script>` blocks in
     `<head>` *before* any `type=\"module\"` script.  Use this to seed
@@ -506,6 +516,7 @@
   (shell/head-tags {:dev? (halos? k)
                     :ui-css? (ui-css? k)
                     :base-css (:base-css k)
+                    :css-layer-order (:css-layer-order k)
                     :eager-scripts (:eager-scripts k)
                     :base-path (:base-path k)
                     :root-selector (:root-selector k)}))

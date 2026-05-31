@@ -69,6 +69,20 @@
     (is (nil? (render/child-iid {:instance/id "ix-orphan"} :slot/search))
         "instance with no :instance/children returns nil")))
 
+(deftest child-iid-3-arg-reads-keyed-slot
+  (let [self {:instance/id "ix-desk"
+              :instance/keyed-slots
+              {:slot/columns
+               {:order    [:n-a :n-b]
+                :children {:n-a {:iid "ix-col-a" :embed {}}
+                           :n-b {:iid "ix-col-b" :embed {}}}}}}]
+    (is (= "ix-col-a" (render/child-iid self :slot/columns :n-a)))
+    (is (= "ix-col-b" (render/child-iid self :slot/columns :n-b)))
+    (is (nil? (render/child-iid self :slot/columns :n-missing))
+        "missing application key returns nil")
+    (is (nil? (render/child-iid self :slot/missing :n-a))
+        "missing slot returns nil")))
+
 (deftest on-accepts-event-modifiers
   (binding [render/*cid* "cv-001"]
     (testing "valued modifier produces __key.value suffix on the attribute name"
@@ -245,6 +259,22 @@
     (testing "casing opt propagates through local-bind"
       (is (= {(keyword "data-bind:answer-ix-000002") true}
              (render/local-bind self :answer {:case :camel}))))))
+
+(deftest local-signal-ref-builds-per-instance-inline-reference
+  (let [self {:instance/id "ix-000007"}]
+    (is (= "$save-submitting-ix-000007" (render/local-signal-ref self :save-submitting)))
+    (is (= "$saveSubmittingIx000007"    (render/local-signal-ref self :save-submitting {:case :camel})))
+    (testing "kernel-bound *signal-case* picks the casing"
+      (binding [render/*signal-case* :camel]
+        (is (= "$saveSubmittingIx000007" (render/local-signal-ref self :save-submitting)))))))
+
+(deftest local-indicator-mounts-per-instance-data-indicator
+  (let [self {:instance/id "ix-000008"}]
+    (is (= {(keyword "data-indicator:save-submitting-ix-000008") true}
+           (render/local-indicator self :save-submitting)))
+    (testing ":camel emits the camelCased wire name"
+      (is (= {(keyword "data-indicator:saveSubmittingIx000008") true}
+             (render/local-indicator self :save-submitting {:case :camel}))))))
 
 (deftest dollar-ref-builds-inline-expression-reference
   (testing ":kebab keeps the kebab keyword on the wire"

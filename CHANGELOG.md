@@ -5,6 +5,37 @@ development entry.
 
 ## Unreleased
 
+### Added
+
+- `s/child-iid` gains a 3-arg arity for keyed slots:
+  `(s/child-iid self :slot/columns :note-42)` returns the iid of the
+  keyed child under `:slot/columns` with application key `:note-42`,
+  or nil when absent.  Lets hosts read framework-managed keyed-slot
+  state through the same public seam as the fixed-slot 2-arg form
+  instead of reaching into `:instance/keyed-slots` directly.
+  ([kasten/stube_notes.md §2.D](kasten/stube_notes.md))
+- `make-kernel` accepts `:css-layer-order [layer-name …]`.  When
+  provided, `head-tags` emits a top-level `<style>@layer name1, name2,
+  …;</style>` declaration before any per-component stylesheet `<link>`,
+  pinning the cascade order across the per-component CSS files
+  `head-tags` auto-emits alphabetically from
+  `resources/stube_styles/<ns>/<name>.css`.  Lets hosts migrate to
+  per-component stylesheets without losing control of the cascade.
+  Layer names can be strings or keywords; blanks are dropped; an
+  empty / nil order is a no-op.
+  ([kasten/stube_notes.md §2.A](kasten/stube_notes.md))
+- `s/local-indicator` and `s/local-signal-ref`: per-instance
+  companions to Datastar's `data-indicator` attribute.
+  `(s/local-indicator self :save-submitting)` emits
+  `data-indicator:save-submitting-ix-N=true` (camelCased under
+  `:signal-case :camel`), so two embedded copies of the same
+  component don't share the same "in-flight" boolean.
+  `(s/local-signal-ref self :save-submitting)` returns the matching
+  inline-expression reference (`$save-submitting-ix-N` /
+  `$saveSubmittingIxN`) for paired `data-show` / `:disabled`
+  expressions.
+  ([kasten/stube_notes.md §2.C](kasten/stube_notes.md))
+
 ### Changed
 
 - `s/render-slot` now returns `nil` when no child is mounted under the

@@ -509,13 +509,22 @@ absent. Use this in pure rendering helpers that pass an iid out instead
 of destructuring `:instance/id` directly — the framework owns the wire
 shape, and the public name is the stable seam.
 
-### `(s/child-iid self slot-key)`
+### `(s/child-iid self slot-key)`  /  `(s/child-iid self slot key)`
 
 Return the iid of the embedded child mounted under `slot-key` on
 `self`, or nil when the slot is unknown. Reads the same data as
 `(get-in self [:instance/children slot-key])` but documents the
 contract so call sites don't have to reach into framework-managed
 instance keys directly.
+
+The 3-arg form looks in `:instance/keyed-slots` for a specific keyed
+child by application key:
+
+```clojure
+(s/child-iid self :slot/columns :note-42)
+;; => iid of the keyed child under :slot/columns with key :note-42,
+;;    or nil when absent.
+```
 
 Useful when a parent needs to address its child by id — for example,
 to route a `(s/dispatch-to)` effect at a known slot child or to build
@@ -835,11 +844,34 @@ id. Use this whenever the same logical signal name might appear in
 two instances on the same page (the editor pattern, multi-row
 forms, etc.). Read the value back from `self` under the *logical*
 name — `:keep #{:answer}` lifts the local signal onto `:answer`
-for you.
+for you (across `:kebab` and `:camel` casings alike).
 
 Accepts the same `{:case …}` opt as `bind`; `local-signal` returns
 just the namespaced wire key, useful if you need to build a Datastar
 expression by hand.
+
+### `(s/local-indicator self signal)`  /  `(s/local-signal-ref self signal)`
+
+Per-instance companions to Datastar's `data-indicator` attribute.
+`local-indicator` returns attrs that mount a per-instance
+`data-indicator:<signal>-<iid>` on an element, so two embedded copies
+of the same component don't share the same in-flight boolean.
+`local-signal-ref` returns the matching inline-expression reference
+(`$<signal>-<iid>` / `$<signalIid>` under `:camel`) for paired
+`data-show` / `:disabled` expressions:
+
+```clojure
+[:button (merge (s/on-target self :save)
+                (s/local-indicator self :save-submitting)
+                {:data-show (str "!" (s/local-signal-ref
+                                      self :save-submitting))})
+ "Save"]
+```
+
+Datastar writes `true` to the per-instance signal while the
+round-trip is in flight and `false` when it completes.  Both helpers
+accept the same `{:case …}` opt as `bind` and follow the kernel-bound
+casing default.
 
 ### `(s/signal-mirror signal)` / `(s/signal-mirror signal {:case …})`
 
@@ -1224,6 +1256,7 @@ Options:
 | `:store` | `(s/in-memory-store)` | persistence backend |
 | `:ui-css?` | `true` | link the stock `/ui.css` |
 | `:base-css` | `[]` | extra stylesheet URLs `head-tags` emits on every shell |
+| `:css-layer-order` | `nil` | vector of CSS layer names (strings or keywords) pinned by a top-level `@layer …;` before any per-component `<link>` |
 | `:eager-scripts` | `[]` | inline JS snippets emitted as a synchronous `<script>` before any module |
 | `:signal-case` | `:kebab` | wire casing for `s/bind` / `s/local-bind` / `s/$` / `s/signal`; pick `:camel` if any inline Datastar expression references a signal |
 | `:halos?` | `false` | enable dev halos (per-conv via `?halos=1`) |
@@ -1292,7 +1325,7 @@ to add shell routes beside the adapter endpoints. `:base-path` prefixes
 the generated stube endpoints/assets (`/sse`, `/event`, `/ui.css`,
 etc.); mount paths are left exactly as supplied by the host app.
 
-### Host-level head injection: `:base-css` and `:eager-scripts`
+### Host-level head injection: `:base-css`, `:css-layer-order`, and `:eager-scripts`
 
 Use these when the host has assets that must be on the page from the
 first byte — independent of which components happen to be registered.
@@ -1308,6 +1341,22 @@ through `embed/head-tags`), so head-tags alone can't cover both.
 (embed/make-kernel
   {:base-css ["/css/notes.css"]
    :base-path "/notes"})
+```
+
+`:css-layer-order` is a vector of CSS layer names (strings or
+keywords). When provided, `head-tags` emits a single top-level
+`<style>@layer name1, name2, …;</style>` block before any
+per-component stylesheet `<link>`. Because CSS layers honour the
+*first* declaration order in the document, this is enough to pin the
+cascade order across the per-component stylesheets `head-tags` emits
+alphabetically from `resources/stube_styles/<ns>/<name>.css` — host
+CSS no longer has to live in a single ordered file just to control
+which layers win.
+
+```clojure
+(embed/make-kernel
+  {:css-layer-order ["tokens" "base" "utils" "layout"
+                     "components" "responsive" "theme-dark"]})
 ```
 
 `:eager-scripts` is a vector of inline JS snippets. They are

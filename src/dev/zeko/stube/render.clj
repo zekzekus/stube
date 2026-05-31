@@ -107,16 +107,21 @@
   "Return the iid of the child instance mounted under `slot-key` on
   `self`, or nil when the slot is unknown.
 
-  `slot-key` is one of the keys declared in the component's `:children`
-  map.  Same data as `(get-in self [:instance/children slot-key])` —
-  this helper just documents the contract so callers do not have to
-  reach into framework-managed instance keys directly.
+  The 2-arg form looks in `:instance/children` — slots declared by
+  `:children` on the component definition or filled by a
+  `[:call-in-slot …]` effect.  The 3-arg form looks in
+  `:instance/keyed-slots` for a specific child by application key:
+  `(s/child-iid self :slot/items :note-42)` returns the iid of the
+  keyed child under `:slot/items` with key `:note-42`, or nil if
+  there is no such entry.
 
   Useful when a parent needs to address its embedded child by id, e.g.
   to target a `(s/dispatch-to)` effect or to build an event URL through
   `s/event-url` / `s/on-target`."
-  [self slot-key]
-  (get-in self [:instance/children slot-key]))
+  ([self slot-key]
+   (get-in self [:instance/children slot-key]))
+  ([self slot key]
+   (get-in self [:instance/keyed-slots slot :children key :iid])))
 
 (defn- ->iid
   "Coerce `target` to an instance id.  Accepts either a bare iid string
@@ -744,6 +749,47 @@
   ([event k] (signal event k nil))
   ([event k opts]
    (get-in event [:signals (keyword (signal-wire-name k opts))])))
+
+(defn local-signal-ref
+  "Return the Datastar inline-expression reference for a per-instance
+  signal — `(s/local-signal-ref self :save-submitting)` →
+  `\"$save-submitting-ix-1\"` under `:kebab`, `\"$saveSubmittingIx1\"`
+  under `:camel`.
+
+  Use this when an inline JS expression needs to read a signal that
+  must be unique per component instance — most commonly the boolean
+  signal Datastar writes from `data-indicator`:
+
+      [:button (merge (s/local-indicator self :save-submitting)
+                      {:data-show (str \"!\" (s/local-signal-ref
+                                              self :save-submitting))})
+       \"Save\"]
+
+  Casing follows the same resolution as [[bind]]."
+  ([self signal] (local-signal-ref self signal nil))
+  ([self signal opts]
+   ($ (local-signal self signal) opts)))
+
+(defn local-indicator
+  "Return attrs that mount Datastar's `data-indicator` on this element
+  scoped to a per-instance signal — typically used to flip a 'submitting'
+  boolean while an `@post(…)` round-trip is in flight:
+
+      [:button (merge (s/on-target self :save)
+                      (s/local-indicator self :save-submitting))
+       \"Save\"]
+
+  Datastar writes `true` to the signal while the request is in flight
+  and back to `false` when it completes.  Because the signal name
+  includes the instance id, two embedded copies of the component don't
+  share the same indicator state.  Pair with [[local-signal-ref]] for
+  the matching `data-show` reference.  Casing follows the same
+  resolution as [[bind]]."
+  ([self signal] (local-indicator self signal nil))
+  ([self signal opts]
+   {(keyword (str "data-indicator:"
+                  (signal-wire-name (local-signal self signal) opts)))
+    true}))
 
 (defn signal-mirror
   "Return attrs for a hidden `<input>` that mirrors a Datastar signal,
