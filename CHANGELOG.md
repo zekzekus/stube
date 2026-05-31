@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.4.1
+
 ### Added
 
 - `s/replay` gains a 3-arg arity that takes an opts map seeding the
