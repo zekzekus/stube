@@ -313,10 +313,14 @@
 ;; render-slot validates inputs
 ;; ---------------------------------------------------------------------------
 
-(deftest render-slot-on-unknown-slot-becomes-error-frame
-  ;; Pre-S-5 this threw out of the render path and dropped the SSE
-  ;; stream.  The S-5 catch turns the same programming bug into a
-  ;; localized error banner.
+(deftest render-slot-on-empty-slot-is-noop
+  ;; A render-slot call against a slot that has no child mounted —
+  ;; either an unknown slot key, or a [:call-in-slot …] slot that has
+  ;; not been called into yet (or whose occupant has answered and
+  ;; popped) — produces nil so the host hiccup can include it
+  ;; unconditionally.  Pre-0.5 this threw and the kernel surfaced an
+  ;; error banner; the new contract removes the (when (s/child-iid …))
+  ;; guard hosts had to write around template-style render-slot calls.
   (registry/register!
     {:component/id :t/leaf
      :component/render (fn [s] [:span {:id (:instance/id s)} "x"])})
@@ -326,8 +330,12 @@
      :component/render (fn [self]
                          [:div {:id (:instance/id self)}
                           (s/render-slot self :slot/missing)])})
-  (let [[_ frags] (run-boot :t/parent)]
-    (is (some #(= :error (:fragment/kind %)) frags))))
+  (let [[_ frags] (run-boot :t/parent)
+        elements  (filter #(= :elements (:fragment/kind %)) frags)]
+    (is (not (some #(= :error (:fragment/kind %)) frags))
+        "no longer routes to the error banner — empty slot is a no-op")
+    (is (some #(str/includes? (:fragment/html %) "<div id=\"") elements)
+        "parent renders normally")))
 
 (deftest render-slot-needs-conv-bound
   (let [self {:instance/id "ix-x" :instance/children {:slot/x "ix-y"}}]

@@ -901,7 +901,13 @@ Inline an embedded child inside the parent's render:
  …]
 ```
 
-The slot must be declared in `:children` (or by `call-in-slot`).
+The slot is typically declared in `:children` or filled by a
+`[:call-in-slot …]` effect.  Returns `nil` when no child is currently
+mounted under `slot-key`, so the parent's hiccup can embed a
+template-style `(s/render-slot self :slot/foo)` unconditionally — the
+call is a no-op when the slot has not been called into yet (or when
+its previous occupant has answered and popped).  No `(when (s/child-iid
+self :slot/foo) …)` guard is needed.
 
 ### `(s/keyed-children self slot)`  /  `(s/set-keyed-children slot pairs)`
 

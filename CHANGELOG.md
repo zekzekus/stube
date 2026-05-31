@@ -7,6 +7,18 @@ development entry.
 
 ### Changed
 
+- `s/render-slot` now returns `nil` when no child is mounted under the
+  slot key, instead of throwing.  The natural template-style embed
+  `[:section (s/render-slot self :slot/create-form)]` is therefore a
+  no-op when the slot is empty (a `[:call-in-slot …]` slot that hasn't
+  been called into yet, or one whose occupant has answered and popped)
+  — so hosts can drop the `(when (s/child-iid self :slot) …)` guards
+  they had to write around it.  An empty slot whose child *was*
+  declared on `:children` only happens transiently mid-construction;
+  the surrounding kernel paths still throw on missing instance maps,
+  so genuine state corruption is still caught.
+  ([kasten/stube_notes.md §2.F](kasten/stube_notes.md))
+
 - `s/set-keyed-children {:rerender-parent? true}` no longer emits the
   per-child `:elements` fragments alongside the parent re-render — the
   parent's own `s/keyed-children` call inlines the populated state

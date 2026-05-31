@@ -789,9 +789,19 @@
                 →  (instance *conv* child-iid)
                 →  child component definition's `:render`
 
-  Throws if `*conv*` is unbound or the slot is unknown.  Returns the
-  default hidden placeholder when the child component has no `:render`
-  of its own."
+  Returns `nil` when no child is currently mounted under `slot-key` —
+  typically a `[:call-in-slot …]` slot that hasn't been called into
+  yet, or one whose occupant has answered and popped.  The natural
+  template-style embed `(s/render-slot self :slot/foo)` is therefore a
+  no-op when empty, so the host hiccup can include it unconditionally
+  instead of guarding with `(when (s/child-iid self :slot/foo) …)`.
+
+  Throws if `*conv*` is unbound (the renderer was called outside a
+  dispatch / render cycle) or when the slot is filled but the
+  referenced child instance is missing from `:conv/instances`
+  (kernel-state corruption, not a user error).  Returns the default
+  hidden placeholder when the child component has no `:render` of its
+  own."
   ([self slot-key]
    (render-slot self slot-key
                 (or (resolve 'dev.zeko.stube.registry/lookup!)
@@ -801,19 +811,16 @@
                        (throw (ex-info "dev.zeko.stube.render/*conv* is unbound; render-slot cannot resolve children"
                                        {:slot slot-key
                                         :parent (:instance/id self)})))
-         child-iid (or (get-in self [:instance/children slot-key])
-                       (throw (ex-info "Unknown slot on parent"
-                                       {:slot          slot-key
-                                        :parent        (:instance/id self)
-                                        :known-slots   (vec (keys (:instance/children self)))})))
-         child     (or (get-in conv [:conv/instances child-iid])
-                       (throw (ex-info "Slot child instance is missing from conv"
-                                       {:slot      slot-key
-                                        :child-iid child-iid})))
-         lookup-fn (if (var? lookup!) @lookup! lookup!)
-         cdef      (lookup-fn (:instance/type child))
-         render-fn (or (:component/render cdef)
-                       (fn default [s]
-                         [:div {:id (:instance/id s) :hidden true}]))]
-     (cond-> (render-fn child)
-       (:conv/halos? conv) (halos/decorate-root child)))))
+         child-iid (get-in self [:instance/children slot-key])]
+     (when child-iid
+       (let [child     (or (get-in conv [:conv/instances child-iid])
+                           (throw (ex-info "Slot child instance is missing from conv"
+                                           {:slot      slot-key
+                                            :child-iid child-iid})))
+             lookup-fn (if (var? lookup!) @lookup! lookup!)
+             cdef      (lookup-fn (:instance/type child))
+             render-fn (or (:component/render cdef)
+                           (fn default [s]
+                             [:div {:id (:instance/id s) :hidden true}]))]
+         (cond-> (render-fn child)
+           (:conv/halos? conv) (halos/decorate-root child)))))))
