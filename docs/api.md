@@ -945,9 +945,18 @@ slot state in scope:
                              {:rerender-parent? true})]]
 ```
 
-This is a no-op on the parent's very first paint — the normal
-render-frame on the way out already picks up the populated slot
-state in one shot — so it is always safe to pass.
+Under this opt the per-child `:elements` fragments are suppressed
+and only the parent re-render is emitted: the parent's own
+`s/keyed-children` call inlines the populated state when it
+renders, so the per-child fragments would be redundant.  Skipping
+them also avoids an ordering hazard on empty→populated transitions
+where the parent's prior hiccup did not include the
+keyed-children container — without this, Datastar would log
+`PatchElementsNoTargetsFound` for each per-child fragment before
+the parent re-render landed the real container.  This is also a
+no-op on the parent's very first paint — the normal render-frame
+on the way out already picks up the populated slot state in one
+shot — so it is always safe to pass.
 
 **Restore-from-URL** lives at the intersection of keyed-children and
 `:init-args-fn`. Because the slot doesn't exist until a

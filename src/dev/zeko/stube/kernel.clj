@@ -536,11 +536,20 @@
     ;; opt in to the extra render via :rerender-parent? so the
     ;; just-reconciled keyed-slot state is in scope while the parent
     ;; renders.
+    ;;
+    ;; Under :rerender-parent? the parent render alone paints both the
+    ;; outer hiccup and the populated keyed-slot — the per-child
+    ;; fragments emitted by reconcile! become redundant.  Worse, on an
+    ;; empty→populated transition (the documented use case) the parent's
+    ;; previous render may not have included the keyed-children
+    ;; container, so the per-child fragments target a selector that
+    ;; doesn't exist yet and Datastar logs PatchElementsNoTargetsFound.
+    ;; Drop the per-child fragments and emit only the parent render.
     (if (:rerender-parent? opts)
       (let [parent (conv/instance conv' parent-id)]
         (cond
           (nil? parent)
-          [conv' frags]
+          [conv' []]
 
           ;; Parent has never rendered yet (first :start before any
           ;; frame paint).  The kernel's normal render-frame on the
@@ -548,11 +557,11 @@
           ;; emitting an :outer here would create a second container
           ;; for nothing.
           (not (:instance/rendered? parent))
-          [conv' frags]
+          [conv' []]
 
           :else
           (let [[conv'' frag] (render-frame conv' parent-id)]
-            [conv'' (conj (vec frags) frag)])))
+            [conv'' [frag]])))
       [conv' frags])))
 
 (defmethod step :patch

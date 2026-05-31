@@ -235,7 +235,7 @@
                                                                     {:rerender-parent? true})]]
                            [self []]))}))
 
-(deftest set-keyed-children-rerender-parent-emits-extra-parent-fragment
+(deftest set-keyed-children-rerender-parent-emits-only-parent-fragment
   (register-counter!)
   (register-parent-with-topbar!)
   (let [[c0 _]   (boot :t/topbar-parent)
@@ -256,17 +256,24 @@
         parent-iid (top-iid c2)]
     (testing "default (no opts) keeps the current behaviour — only the per-child diff"
       (is (= [:append] (patch-modes default-frags))))
-    (testing ":rerender-parent? true adds a fragment for the parent itself"
-      (is (= 2 (count elements))
-          "one for the keyed-children append, one for the parent re-render")
-      (is (some (fn [f] (= parent-iid (-> (re-find #"id=\"([^\"]+)\""
-                                                   (:fragment/html f))
-                                          second)))
-                elements)
-          "the second fragment carries the parent's id")
-      (is (some (fn [f] (str/includes? (:fragment/html f) "3 open"))
-                elements)
-          "the parent's topbar reflects the reconciled state, not the stale count"))))
+    (testing ":rerender-parent? true drops the per-child fragments and emits only the parent re-render"
+      ;; The parent's own render embeds (s/keyed-children …), which
+      ;; inlines the populated keyed-slot.  The per-child :elements
+      ;; fragments are redundant under this opt and previously created
+      ;; an ordering hazard on empty→populated transitions where the
+      ;; parent's prior hiccup did not include the keyed-children
+      ;; container — Datastar would log PatchElementsNoTargetsFound.
+      (is (= 1 (count elements))
+          "exactly one fragment: the parent re-render")
+      (let [[parent-frag] elements]
+        (is (= parent-iid (second (re-find #"id=\"([^\"]+)\""
+                                           (:fragment/html parent-frag))))
+            "the fragment carries the parent's id")
+        (is (str/includes? (:fragment/html parent-frag) "3 open")
+            "the parent's topbar reflects the reconciled state, not the stale count")
+        (is (every? #(str/includes? (:fragment/html parent-frag) %)
+                    [">1</div>" ">2</div>" ">3</div>"])
+            "the parent's hiccup inlines all three counters via s/keyed-children")))))
 
 (deftest set-keyed-children-rerender-parent-noop-on-first-render
   (register-counter!)

@@ -5,6 +5,22 @@ development entry.
 
 ## Unreleased
 
+### Changed
+
+- `s/set-keyed-children {:rerender-parent? true}` no longer emits the
+  per-child `:elements` fragments alongside the parent re-render — the
+  parent's own `s/keyed-children` call inlines the populated state
+  when it renders, so the per-child fragments were redundant.  They
+  also created an ordering hazard on empty→populated transitions
+  (the documented use case for this opt): the per-child fragments
+  target `#<parent-iid>--<slot>`, which may not exist in the parent's
+  prior hiccup, and Datastar would log `PatchElementsNoTargetsFound`
+  before the parent re-render landed the real container.  With the
+  per-child fragments gone, the only emitted fragment under this opt
+  is the parent re-render itself.  Hosts that worked around this with
+  a hidden `s/keyed-children` container in the empty-state branch can
+  remove the workaround.  ([kasten/stube_notes.md §2.E](kasten/stube_notes.md))
+
 ### Fixed
 
 - `merge-kept-signals` now honours `:signal-case :camel`.  Under
