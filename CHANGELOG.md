@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.5.0
+
 ### Added
 
 - Behaviors gain `ctx.dispatch(event, payload?, opts?)` — fire a
