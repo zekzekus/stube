@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.4.2
+
 ### Fixed
 
 - `kebab->camel` now matches Datastar's `camel` transform exactly
