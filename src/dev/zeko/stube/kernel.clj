@@ -518,6 +518,42 @@
       (let [[conv''' frag] (render-frame conv'' iid)]
         [conv''' (conj (into (vec stop-frags) start-frags) frag)]))))
 
+;; Dev-mode footgun nudge (S/§I).  A keyed reconcile emits surgical
+;; per-child patches by default and deliberately does *not* re-render the
+;; parent — that is the whole point of keyed children.  But when the
+;; parent's own `:render` shows state derived from the slot (a count, an
+;; empty-state toggle), skipping the parent render leaves that state
+;; stale.  We can't see whether a given `:render` reads the slot, so this
+;; is advisory: it fires once per [component-type slot] when the child
+;; *set* changes on an already-rendered parent without `:rerender-parent?`.
+;; Dev-mode only (the check is behind `dev/enabled?`), so production never
+;; pays for it and apps that don't show derived state can ignore it.
+(defonce ^:private keyed-stale-warned (atom #{}))
+
+(defn- keyed-set-changed? [conv parent-id slot pairs]
+  (let [old (set (keys (get-in (conv/instance conv parent-id)
+                               [:instance/keyed-slots slot :children])))
+        new (set (map first pairs))]
+    (not= old new)))
+
+(defn- warn-keyed-stale! [conv parent-id slot pairs]
+  (let [parent (conv/instance conv parent-id)]
+    (when (and parent
+               (:instance/rendered? parent)
+               (keyed-set-changed? conv parent-id slot pairs))
+      (let [ctype (:instance/type parent)
+            mark  [ctype slot]]
+        (when-not (contains? @keyed-stale-warned mark)
+          (swap! keyed-stale-warned conj mark)
+          (binding [*out* *err*]
+            (println
+              (str "stube: :set-keyed-children changed the child set of "
+                   ctype " " slot " without :rerender-parent?. If this "
+                   "component's :render shows state derived from the slot "
+                   "(a count, an empty-state toggle), pass "
+                   "{:rerender-parent? true} so it refreshes. "
+                   "(dev-mode notice, shown once per component+slot)"))))))))
+
 (defmethod step :set-keyed-children
   [conv eff]
   (let [slot       (e/keyed-children-slot eff)
@@ -526,6 +562,8 @@
         parent-id  (or (effect-origin conv)
                        (throw (ex-info ":set-keyed-children needs an emitting parent"
                                        {:slot slot})))
+        _          (when (and (dev/enabled?) (not (:rerender-parent? opts)))
+                     (warn-keyed-stale! conv parent-id slot pairs))
         [conv' frags] (keyed/reconcile! conv parent-id slot pairs run-effects)]
     ;; By default the per-child :elements/:remove fragments emitted by
     ;; the reconcile satisfy `rendered-output?` and the kernel skips

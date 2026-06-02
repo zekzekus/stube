@@ -223,11 +223,10 @@
     },
   });
 
-  // A small helper so behaviors can POST to a stube event URL the same
-  // way `s/on` does, without rebuilding the URL by hand.  `eventUrl` is
-  // expected to be the absolute path produced by `s/event-url` on the
-  // server side and passed in via `data-stube-arg-*`.
-  const buildFetch = () => async (eventUrl, opts) => {
+  // POST to a stube event URL the same way `s/on` does.  Shared by
+  // `ctx.fetch` (caller supplies the URL) and `ctx.dispatch` (we build
+  // the URL from the stamped event base).
+  const postEvent = async (url, opts) => {
     const init = {
       method: "POST",
       headers: {"Accept": "text/event-stream"},
@@ -237,7 +236,65 @@
       init.body = JSON.stringify(init.body);
       init.headers = {"Content-Type": "application/json", ...init.headers};
     }
-    return fetch(eventUrl, init);
+    return fetch(url, init);
+  };
+
+  // Mirrors of server-side constants in `dev.zeko.stube.render`:
+  // `s/behavior` stamps the dispatch target as `data-stube-event-base`
+  // (`/event/<cid>/<iid>`), and `event-url` rides structured payloads in
+  // the `_stube_payload` query param, read back with `edn/read-string`.
+  const eventBaseAttr = "data-stube-event-base";
+  const payloadParam = "_stube_payload";
+
+  // Encode a JS value as EDN for the payload query param.  Covers the
+  // JSON value subset the server's `edn/read-string` accepts: null→nil,
+  // strings, finite numbers, booleans, arrays→vectors, and plain
+  // objects→maps with keyword keys (`{a:1}` → `{:a 1}`).  Anything else
+  // (functions, symbols, NaN/Infinity) encodes as `nil`.  Note the
+  // object-key mapping: pass a plain object and the handler sees keyword
+  // keys, matching the Clojure-side expectation.
+  const toEdn = (v) => {
+    if (v === null || v === undefined) return "nil";
+    switch (typeof v) {
+      case "string":  return JSON.stringify(v);
+      case "number":  return Number.isFinite(v) ? String(v) : "nil";
+      case "boolean": return v ? "true" : "false";
+      case "object":
+        if (Array.isArray(v)) return "[" + v.map(toEdn).join(" ") + "]";
+        return "{" + Object.entries(v)
+          .map(([k, val]) => `:${k} ${toEdn(val)}`).join(" ") + "}";
+      default: return "nil";
+    }
+  };
+
+  // Fire a component event on the owning component without the host
+  // pre-building an `event-url`.  Resolves the dispatch target from the
+  // nearest `data-stube-event-base` (stamped on the behavior element by
+  // `s/behavior`).  Unlike Datastar's `@post`, this does not attach the
+  // current signals — pass anything the handler needs as `payload`.
+  const buildDispatch = (el) => async (event, payload, opts) => {
+    const baseEl = typeof el.closest === "function"
+      ? el.closest(`[${eventBaseAttr}]`)
+      : null;
+    const base = baseEl && baseEl.getAttribute(eventBaseAttr);
+    if (!base) {
+      try {
+        console.warn(
+          `stube: ctx.dispatch(${JSON.stringify(event)}) found no ` +
+          `[${eventBaseAttr}] in scope. Attach the behavior with ` +
+          `(s/behavior self …) inside a rendered component so the server ` +
+          `can stamp the dispatch target.`
+        );
+      } catch (_e) {}
+      return null;
+    }
+    const name = typeof event === "string" ? event
+      : (event == null ? "" : String(event));
+    let url = `${base}/${encodeURIComponent(name)}`;
+    if (payload !== undefined) {
+      url += `?${payloadParam}=${encodeURIComponent(toEdn(payload))}`;
+    }
+    return postEvent(url, opts);
   };
 
   const buildCtx = (el) => {
@@ -251,7 +308,8 @@
       // into `ctx.signals` for the common write paths.
       setSignal: signals.set,
       patchSignals: signals.patch,
-      fetch: buildFetch(),
+      fetch: postEvent,
+      dispatch: buildDispatch(el),
     };
   };
 

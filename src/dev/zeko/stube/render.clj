@@ -442,6 +442,29 @@
   (preserve-label label)
   {:data-stube-on-unmount expr})
 
+(defn preserve-scroll
+  "Return an attribute that keeps this element's scroll position stable
+  across Datastar morphs.
+
+      [:div.ledger-columns (merge {:id (s/child-iid self :slot/cols)}
+                                  (s/preserve-scroll self :ledger))
+       …]
+
+  A morph that replaces or re-renders a scroll container resets its
+  `scrollLeft` / `scrollTop` to 0.  The preserve bridge snapshots the
+  scroll offsets of every `data-stube-preserve-scroll` element just
+  before each morph and restores them by `label` immediately after, so
+  horizontally-scrolled ledgers and long lists don't jump on reconcile.
+
+  The label only needs to be unique among the scroll containers present
+  in one rendered patch.  Unlike [[preserve]], this does *not* protect
+  the subtree from morphing — it only restores the scroll offset of the
+  surviving (or re-created) container, so the children stay
+  server-owned and keyed diffs still apply."
+  [self label]
+  (require-instance-id! "dev.zeko.stube.render/preserve-scroll" self)
+  {:data-stube-preserve-scroll (preserve-label label)})
+
 (defn- kebab-case [s]
   (-> (str s)
       (string/replace #"_" "-")
@@ -509,6 +532,15 @@
   * `fetch(eventUrl, opts?)` — POST to a stube event URL the same
     shape `s/on` produces.  Pass the URL in via a `data-stube-arg-*`
     built with [[event-url]] on the server.
+  * `dispatch(event, payload?, opts?)` — fire a component event on the
+    owning component directly (`ctx.dispatch(\"save\")`,
+    `ctx.dispatch(\"pick\", {dayId})`), resolving the dispatch target
+    from the `data-stube-event-base` this helper stamps.  The handler
+    sees `{:event :save}` / `{:event :pick :payload {:dayId …}}`.
+    `payload` is encoded to EDN over the JSON value subset (strings,
+    numbers, booleans, vectors, and maps with keyword keys); unlike
+    Datastar's own `@post`, dispatch does *not* attach the current
+    signals, so pass anything the handler needs as the payload.
 
   Use [[preserve]] when the behavior owns DOM children outside the
   server's render tree, and [[on-unmount]] for one-off teardown that
@@ -516,13 +548,20 @@
   ([self behavior-id]
    (behavior self behavior-id {}))
   ([self behavior-id args]
-   (require-instance-id! "dev.zeko.stube.render/behavior" self)
-   (let [slug (behavior-slug behavior-id)
+   (let [iid  (require-instance-id! "dev.zeko.stube.render/behavior" self)
+         slug (behavior-slug behavior-id)
          arg-attrs (into {}
                          (map (fn [[k v]]
                                 [(behavior-arg-attr k) (behavior-arg-value v)]))
-                         args)]
-     (assoc arg-attrs :data-stube-behavior slug))))
+                         args)
+         ;; Stamp the dispatch target so the behavior can fire component
+         ;; events directly via `ctx.dispatch(event, payload?)` without
+         ;; the host pre-building an `event-url`.  Only possible inside a
+         ;; render (when *cid* is bound); harmless to omit otherwise — the
+         ;; bridge warns if a behavior calls dispatch without it.
+         base (when *cid* (path "/event/" *cid* "/" iid))]
+     (cond-> (assoc arg-attrs :data-stube-behavior slug)
+       base (assoc :data-stube-event-base base)))))
 
 (defn back-button
   "Return a small Hiccup button wired to the conversation-level `[:back]`

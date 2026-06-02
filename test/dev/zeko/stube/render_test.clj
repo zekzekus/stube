@@ -171,7 +171,22 @@
                  :data-stube-arg-opts))))
     (testing "missing :instance/id is a clear error"
       (is (thrown? clojure.lang.ExceptionInfo
-                   (render/behavior {} :notes/cm6-editor))))))
+                   (render/behavior {} :notes/cm6-editor))))
+    (testing "no :data-stube-event-base outside a render (no *cid* bound)"
+      (is (not (contains? (render/behavior self :notes/cm6-editor)
+                          :data-stube-event-base))))))
+
+(deftest behavior-stamps-event-base-when-cid-is-bound
+  (let [self {:instance/id "ix-42"}]
+    (binding [render/*cid* "cv-001"]
+      (testing "the dispatch target is /event/<cid>/<iid> so ctx.dispatch can build URLs"
+        (is (= "/event/cv-001/ix-42"
+               (:data-stube-event-base (render/behavior self :notes/cm6-editor)))))
+      (testing "event base honours the adapter base-path"
+        (binding [render/*base-path* "/widget"]
+          (is (= "/widget/event/cv-001/ix-42"
+                 (:data-stube-event-base
+                  (render/behavior self :notes/cm6-editor)))))))))
 
 (deftest component-asset-urls-honour-base-path
   (binding [render/*base-path* "/widget"]
@@ -199,6 +214,19 @@
                               (render/on-mount fresh :editor "mountEditor(el)"))])]
       (is (str/includes? html "data-stube-preserve=\"editor\""))
       (is (str/includes? html "data-init=\"mountEditor(el)\"")))))
+
+(deftest preserve-scroll-marks-scroll-container
+  (let [self {:instance/id "ix-7"}]
+    (is (= {:data-stube-preserve-scroll "ledger"}
+           (render/preserve-scroll self :ledger)))
+    (testing "string labels pass through"
+      (is (= {:data-stube-preserve-scroll "ledger"}
+             (render/preserve-scroll self "ledger"))))
+    (testing "empty / non-string-or-keyword labels are rejected"
+      (is (thrown? clojure.lang.ExceptionInfo (render/preserve-scroll self "")))
+      (is (thrown? clojure.lang.ExceptionInfo (render/preserve-scroll self 42))))
+    (testing "missing :instance/id is a clear error"
+      (is (thrown? clojure.lang.ExceptionInfo (render/preserve-scroll {} :ledger))))))
 
 (deftest on-unmount-emits-data-stube-on-unmount
   (let [fresh    {:instance/id "ix-42"}

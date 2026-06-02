@@ -5,6 +5,7 @@
             [clojure.string :as str]
             [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.core         :as s]
+            [dev.zeko.stube.dev          :as dev]
             [dev.zeko.stube.kernel       :as kernel]
             [dev.zeko.stube.registry     :as registry]))
 
@@ -312,6 +313,37 @@
           "the keyed diff's :append survives alongside the parent render"))
     (testing "more than one fragment total — both seams fire"
       (is (< 1 (count elements))))))
+
+(deftest set-keyed-children-dev-warns-on-stale-parent
+  (register-counter!)
+  (register-parent-with-topbar!)
+  (reset! @#'kernel/keyed-stale-warned #{})
+  (let [[c0 _] (boot :t/topbar-parent)
+        grow   [[:c1 (s/embed :t/counter {:start 1})]
+                [:c2 (s/embed :t/counter {:start 2})]
+                [:c3 (s/embed :t/counter {:start 3})]]
+        run    (fn [enabled? event]
+                 (let [err (java.io.StringWriter.)]
+                   (binding [dev/*enabled?* enabled?
+                             *err*          err]
+                     (kernel/dispatch c0 {:instance-id (top-iid c0)
+                                          :event       event
+                                          :payload     grow
+                                          :signals     {}}))
+                   (str err)))]
+    (testing "a set change without :rerender-parent? warns (dev only)"
+      (let [out (run true :set)]
+        (is (str/includes? out ":rerender-parent?"))
+        (is (str/includes? out ":t/topbar-parent"))
+        (is (str/includes? out ":slot/cols"))))
+    (testing "the warning is one-shot per [component-type slot]"
+      (is (str/blank? (run true :set))))
+    (testing ":rerender-parent? true never warns"
+      (reset! @#'kernel/keyed-stale-warned #{})
+      (is (str/blank? (run true :set+redraw))))
+    (testing "dev mode off — no warning, no cost"
+      (reset! @#'kernel/keyed-stale-warned #{})
+      (is (str/blank? (run false :set))))))
 
 (deftest set-keyed-children-rerender-parent-noop-on-first-render
   (register-counter!)

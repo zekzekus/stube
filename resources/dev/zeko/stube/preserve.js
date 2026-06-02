@@ -15,6 +15,7 @@
   globalThis[installedKey] = true;
 
   const preserveAttr = "data-stube-preserve";
+  const scrollAttr = "data-stube-preserve-scroll";
   const ignoreMorphAttr = "data-ignore-morph";
   const fetchEvent = "datastar-fetch";
   const patchElements = "datastar-patch-elements";
@@ -138,6 +139,40 @@
     return prepared;
   };
 
+  // ---------------------------------------------------------------
+  // s/preserve-scroll — keep a scroll container's offset stable across
+  // a morph.  A morph that replaces or re-renders the container resets
+  // its scrollLeft/scrollTop to 0; we snapshot every
+  // `data-stube-preserve-scroll` element's offsets just before the
+  // morph and restore them by label immediately after, so the
+  // (surviving or re-created) container doesn't jump.
+  // ---------------------------------------------------------------
+
+  const snapshotScroll = () => {
+    const snap = new Map();
+    let els;
+    try { els = document.querySelectorAll(`[${scrollAttr}]`); }
+    catch (_e) { return snap; }
+    for (const el of els) {
+      const key = el.getAttribute(scrollAttr);
+      if (key) snap.set(key, {left: el.scrollLeft, top: el.scrollTop});
+    }
+    return snap;
+  };
+
+  const restoreScroll = (snap) => {
+    if (!snap || !snap.size) return;
+    let els;
+    try { els = document.querySelectorAll(`[${scrollAttr}]`); }
+    catch (_e) { return; }
+    for (const el of els) {
+      const pos = snap.get(el.getAttribute(scrollAttr));
+      if (!pos) continue;
+      if (el.scrollLeft !== pos.left) el.scrollLeft = pos.left;
+      if (el.scrollTop !== pos.top) el.scrollTop = pos.top;
+    }
+  };
+
   // Public lifecycle event. Fired on `document` after every successful
   // Datastar `patch-elements` morph driven by an SSE patch. Apps that
   // need to run after a patch lands (scroll/focus restoration, title
@@ -178,12 +213,14 @@
     ) {
       const argsRaw = evt.detail.argsRaw;
       const prepared = preparePreservedElements(argsRaw);
+      const scrollSnap = snapshotScroll();
       try {
         return originalDispatchEvent(evt);
       } finally {
         for (const {oldEl, attrs} of prepared) {
           if (oldEl.isConnected) applyAttributes(oldEl, attrs);
         }
+        restoreScroll(scrollSnap);
         dispatchPatched(argsRaw);
       }
     }

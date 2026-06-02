@@ -614,6 +614,7 @@ Every callback is optional. `ctx` is one blessed shape:
 | `ctx.setSignal(name, value)` | alias for `ctx.signals.set` |
 | `ctx.patchSignals(map)` | alias for `ctx.signals.patch` — write many signals at once |
 | `ctx.fetch(eventUrl, opts?)` | POST to a stube event URL (`event-url` on the server side) |
+| `ctx.dispatch(event, payload?, opts?)` | fire a component event on the owning component — no server-built URL needed |
 
 Writes (`set` / `patch` / `setSignal` / `patchSignals`) flow through
 Datastar's **public attribute API** rather than any Datastar-internal
@@ -647,6 +648,32 @@ hidden-input shim. The signal must already exist on the page —
 either declare it on the server with `:signals` / `s/bind` or seed
 it from the same render that attaches the behavior.
 
+`ctx.dispatch(event, payload?, opts?)` fires a component event on the
+owning component directly — the obvious move for editor keymaps and
+other imperative gestures that should turn into server events:
+
+```js
+// inside a behavior: ⌘S saves through the component's :save handler
+view.dom.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+    e.preventDefault();
+    ctx.dispatch("save", { markdown: view.state.doc.toString() });
+  }
+});
+```
+
+The handler sees `{:event :save :payload {:markdown "…"}}`. `s/behavior`
+stamps the dispatch target (`data-stube-event-base="/event/<cid>/<iid>"`)
+on the element, so the bridge needs no server-built URL — it just
+appends the event name and an EDN-encoded payload. The payload covers
+the JSON value subset (strings, numbers, booleans, vectors, and maps
+whose keys become **keywords**); pass scalars and small maps, not class
+instances. Unlike Datastar's own `@post`, `ctx.dispatch` does **not**
+attach the current signals, so anything the handler needs should ride
+in `payload` (or be read from a signal the behavior already mirrored).
+`opts` is forwarded to `fetch` for headers/body overrides, exactly like
+`ctx.fetch`.
+
 ### `(s/preserve self label)` / `(s/on-mount self label expr)` / `(s/on-unmount self label expr)`
 
 `preserve` marks the host element with `data-stube-preserve`; stube's
@@ -671,6 +698,29 @@ For tiny escape-hatch widgets that don't deserve a behavior file:
              (s/on-mount   self :sparkline "renderSparkline(el)")
              (s/on-unmount self :sparkline "el.spark?.destroy()"))]
 ```
+
+### `(s/preserve-scroll self label)`
+
+Marks a scroll container with `data-stube-preserve-scroll="<label>"`.
+A morph that replaces or re-renders the container resets its
+`scrollLeft` / `scrollTop` to 0; the preserve bridge snapshots every
+marked element's offsets just before each morph and restores them by
+`label` immediately after, so a horizontally-scrolled ledger or a long
+list doesn't jump back to the start on every reconcile.
+
+```clojure
+[:div.ledger-columns (merge {:id (s/child-iid self :slot/cols)}
+                            (s/preserve-scroll self :ledger))
+ (s/keyed-children self :slot/cols)]
+```
+
+Unlike [`s/preserve`](#spreserve-self-label--son-mount-self-label-expr--son-unmount-self-label-expr),
+this does **not** shield the subtree from morphing — keyed-children
+diffs still apply normally; it only restores the surviving (or
+re-created) container's scroll offset. The label only needs to be
+unique among the scroll containers in one rendered patch. The restore
+runs synchronously right after the morph and before the `stube:patched`
+event, so it composes with behaviors that also listen for that event.
 
 ### CSS: component conventions
 
@@ -1007,6 +1057,16 @@ keyed container is marked `data-stube-preserve`: preserve makes morph
 skip the container subtree, so the parent re-render alone never lands
 adds/removes, and only the direct per-child patches do.  Like
 `:rerender-parent?`, this stays a no-op on the parent's first paint.
+
+**Dev-mode staleness nudge.** Forgetting `:rerender-parent?` on a
+parent that *does* show slot-derived state (an open-column count, an
+empty-state toggle) is an easy footgun — the children update but the
+count drifts. In dev mode (`-Dstube.dev=true` or `STUBE_DEV=true`),
+the kernel prints a one-time advisory — once per `[component-type slot]`
+— when a reconcile changes the child set on an already-rendered parent
+without `:rerender-parent?`. It's advisory only (it can't see whether
+your `:render` actually reads the slot); production never runs the
+check.
 
 **Restore-from-URL** lives at the intersection of keyed-children and
 `:init-args-fn`. Because the slot doesn't exist until a

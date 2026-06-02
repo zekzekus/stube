@@ -5,7 +5,43 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Added
+
+- Behaviors gain `ctx.dispatch(event, payload?, opts?)` — fire a
+  component event on the owning component directly, without the host
+  pre-building an `event-url`.  `s/behavior` now stamps the dispatch
+  target (`data-stube-event-base="/event/<cid>/<iid>"`) on the element
+  whenever it renders inside a conversation, and the bridge appends the
+  event name plus an EDN-encoded payload.  Payloads cover the JSON
+  value subset (strings, numbers, booleans, vectors, and maps whose
+  keys become keywords).  Unlike Datastar's `@post`, dispatch does not
+  attach the current signals — pass what the handler needs as the
+  payload.  This is the seam for editor keymaps and other imperative
+  gestures (e.g. ⌘S → `:save`).
+  ([kasten/stube_notes.md §2.G](kasten/stube_notes.md))
+- `s/preserve-scroll` keeps a scroll container's offset stable across
+  morphs.  A morph that replaces or re-renders the container resets its
+  `scrollLeft` / `scrollTop` to 0; the preserve bridge now snapshots
+  every `data-stube-preserve-scroll` element's offsets just before each
+  morph and restores them by label immediately after (before the
+  `stube:patched` event).  Unlike `s/preserve` it does not shield the
+  subtree — keyed-children diffs still apply — so a horizontally
+  scrolled ledger no longer jumps on reconcile, without a host-side
+  scroll-memory module.
+  ([kasten/stube_notes.md §2.H](kasten/stube_notes.md))
+
+### Changed
+
+- Dev mode (`-Dstube.dev=true` / `STUBE_DEV=true`) now prints a
+  one-time advisory — once per `[component-type slot]` — when a
+  `s/set-keyed-children` reconcile changes the child *set* on an
+  already-rendered parent without `:rerender-parent?`.  This is the
+  common footgun behind drifting counts / empty-state toggles: the
+  children update but the parent's derived markup goes stale.  The
+  notice is advisory (it can't tell whether your `:render` reads the
+  slot) and dev-only — production never runs the check, and the
+  surgical per-child-patch default is unchanged.
+  ([kasten/stube_notes.md §2.I](kasten/stube_notes.md))
 
 ## 0.4.2
 
