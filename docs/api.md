@@ -996,6 +996,18 @@ no-op on the parent's very first paint — the normal render-frame
 on the way out already picks up the populated slot state in one
 shot — so it is always safe to pass.
 
+**`:emit-per-child?` opt.** Only meaningful alongside
+`:rerender-parent? true`.  By default (above) the parent re-render
+replaces the redundant per-child fragments; pass
+`{:rerender-parent? true :emit-per-child? true}` to emit *both*.  The
+parent re-render paints the outer hiccup while the per-child
+`:elements`/`:remove` fragments — direct selector patches that bypass
+Datastar's morph — still apply the keyed diff.  You need this when the
+keyed container is marked `data-stube-preserve`: preserve makes morph
+skip the container subtree, so the parent re-render alone never lands
+adds/removes, and only the direct per-child patches do.  Like
+`:rerender-parent?`, this stays a no-op on the parent's first paint.
+
 **Restore-from-URL** lives at the intersection of keyed-children and
 `:init-args-fn`. Because the slot doesn't exist until a
 `:set-keyed-children` effect fires, components that re-create columns

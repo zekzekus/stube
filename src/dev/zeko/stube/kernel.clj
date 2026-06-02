@@ -544,7 +544,18 @@
     ;; previous render may not have included the keyed-children
     ;; container, so the per-child fragments target a selector that
     ;; doesn't exist yet and Datastar logs PatchElementsNoTargetsFound.
-    ;; Drop the per-child fragments and emit only the parent render.
+    ;; So by default we drop the per-child fragments and emit only the
+    ;; parent render.
+    ;;
+    ;; :emit-per-child? true keeps *both*: the parent re-render paints
+    ;; the outer hiccup, and the per-child :elements/:remove fragments
+    ;; (direct selector patches that bypass Datastar's morph) still
+    ;; apply the keyed diff.  Hosts that mark the keyed container with
+    ;; `data-stube-preserve` need this — preserve makes morph skip the
+    ;; container subtree, so the parent re-render alone never lands
+    ;; adds/removes.  We still emit parent-only while the parent is
+    ;; unrendered, since the per-child fragments would target a
+    ;; not-yet-existing selector in that window.
     (if (:rerender-parent? opts)
       (let [parent (conv/instance conv' parent-id)]
         (cond
@@ -561,7 +572,9 @@
 
           :else
           (let [[conv'' frag] (render-frame conv' parent-id)]
-            [conv'' [frag]])))
+            (if (:emit-per-child? opts)
+              [conv'' (into [frag] frags)]
+              [conv'' [frag]]))))
       [conv' frags])))
 
 (defmethod step :patch

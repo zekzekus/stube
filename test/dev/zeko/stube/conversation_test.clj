@@ -80,9 +80,13 @@
   (testing "under :signal-case :camel, local-bound signals arrive camelized"
     (binding [render/*signal-case* :camel]
       (let [inst {:instance/id "ix-1" :edit-title "old"}]
+        ;; Datastar stores the local-wire key as `editTitleIx-1` — its
+        ;; camel transform keeps the dash before the instance-id digit.
+        ;; The lookup must use the same form or the kept signal silently
+        ;; fails to round-trip (kasten edit-form "title comes back empty").
         (is (= {:instance/id "ix-1" :edit-title "new"}
                (conv/merge-kept-signals inst
-                                        {:editTitleIx1 "new"}
+                                        {:editTitleIx-1 "new"}
                                         #{:edit-title}))
             "browser sends camelCased local-wire key; lifts back to the logical kept key"))))
   (testing "under camel, the global wire key is also camel"

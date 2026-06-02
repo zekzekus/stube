@@ -133,7 +133,17 @@
     this when the parent's hiccup outside the keyed-children
     container depends on the just-reconciled state (`(s/keyed-children
     self slot)` reads stale state during the handler because the
-    update lands during the effect fold, not before it)."
+    update lands during the effect fold, not before it).
+
+  * `:emit-per-child?` — only meaningful alongside `:rerender-parent?
+    true`.  By default the parent re-render replaces the redundant
+    per-child fragments; set this truthy to emit *both*.  The parent
+    re-render paints the outer hiccup while the per-child
+    `:elements`/`:remove` fragments (direct selector patches that
+    bypass Datastar's morph) still apply the keyed diff.  Needed when
+    the keyed container is marked `data-stube-preserve` — preserve
+    makes morph skip the container, so the parent re-render alone
+    never lands adds/removes."
   ([slot pairs]      [:set-keyed-children slot (vec pairs)])
   ([slot pairs opts] [:set-keyed-children slot (vec pairs) opts]))
 

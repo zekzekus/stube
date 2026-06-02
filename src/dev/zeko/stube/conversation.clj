@@ -384,7 +384,10 @@
 ;; ---------------------------------------------------------------------------
 
 (defn- kebab->camel ^String [^String s]
-  (string/replace s #"-([a-zA-Z0-9])"
+  ;; Must match Datastar's `camel` transform (`/-[a-z]/g`) — only a
+  ;; lowercase letter after a dash folds, a dash before a digit stays.
+  ;; See the matching note in `dev.zeko.stube.render/kebab->camel`.
+  (string/replace s #"-([a-z])"
                   (fn [[_ c]] (string/upper-case c))))
 
 (defn- camel-key [k]
@@ -410,7 +413,7 @@
   and render `(s/local-bind self :answer)`.
 
   When the kernel runs under `:signal-case :camel`, Datastar stores
-  signals with camelCase wire keys (`editTitleIx1` rather than
+  signals with camelCase wire keys (`editTitleIx-1` rather than
   `:edit-title-ix-1`).  This lookup checks the wire-cased variant of
   both the local-signal key and the logical key first, then falls back
   to the kebab forms — so the same `:keep #{:edit-title}` declaration

@@ -656,7 +656,12 @@
   `\"editMarkdown\"`.  Leaves the leading segment intact and upper-cases
   the first character after each `-`."
   [^String s]
-  (string/replace s #"-([a-zA-Z0-9])" (fn [[_ c]] (string/upper-case c))))
+  ;; Mirror Datastar's `camel` transform exactly (`/-[a-z]/g`): only a
+  ;; lowercase letter after a dash is folded; a dash before a digit is
+  ;; left intact.  This matters for wire names ending in an instance id
+  ;; (`-ix-1` → `Ix-1`, not `Ix1`), where a `[a-zA-Z0-9]` class would
+  ;; disagree with what Datastar stores client-side.
+  (string/replace s #"-([a-z])" (fn [[_ c]] (string/upper-case c))))
 
 (defn- resolve-case
   "Resolve the effective signal casing: a per-call `{:case ...}` opt wins

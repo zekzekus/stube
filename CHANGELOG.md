@@ -5,7 +5,35 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Fixed
+
+- `kebab->camel` now matches Datastar's `camel` transform exactly
+  (`/-[a-z]/g`): only a lowercase letter after a dash is folded, and a
+  dash before a digit is left intact.  Previously the regex
+  (`-([a-zA-Z0-9])`) also folded dash-before-digit, so a wire name
+  ending in an instance id disagreed with what Datastar stored
+  client-side (`edit-title-ix-1` → `editTitleIx1` instead of
+  `editTitleIx-1`).  Under `:signal-case :camel` this silently broke
+  `merge-kept-signals` round-trips for `:keep` keys rendered with
+  `s/local-bind`, and made `s/local-indicator` / `s/local-signal-ref`
+  reference a signal Datastar never wrote.  Hosts that pinned
+  `{:case :kebab}` to work around this can drop the pin.
+  ([kasten/stube_notes.md §2.B, §2.C](kasten/stube_notes.md))
+
+### Added
+
+- `s/set-keyed-children` accepts `:emit-per-child?` alongside
+  `:rerender-parent? true`.  By default the parent re-render replaces
+  the reconcile's now-redundant per-child fragments; with this opt the
+  kernel emits *both* — the parent re-render paints the outer hiccup
+  while the per-child `:elements`/`:remove` fragments (direct selector
+  patches that bypass Datastar's morph) still apply the keyed diff.
+  Hosts that mark the keyed container with `data-stube-preserve` need
+  this: preserve makes morph skip the container, so the parent
+  re-render alone never lands adds/removes.  Restores the keyed diff
+  for preserve users without reintroducing the empty→populated
+  `PatchElementsNoTargetsFound` hazard that the default path avoids.
+  ([kasten/stube_notes.md §2.E](kasten/stube_notes.md))
 
 ## 0.4.1
 

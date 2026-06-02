@@ -233,6 +233,10 @@
                            :set       [self [(s/set-keyed-children :slot/cols payload)]]
                            :set+redraw [self [(s/set-keyed-children :slot/cols payload
                                                                     {:rerender-parent? true})]]
+                           :set+redraw+children
+                           [self [(s/set-keyed-children :slot/cols payload
+                                                        {:rerender-parent? true
+                                                         :emit-per-child?  true})]]
                            [self []]))}))
 
 (deftest set-keyed-children-rerender-parent-emits-only-parent-fragment
@@ -274,6 +278,40 @@
         (is (every? #(str/includes? (:fragment/html parent-frag) %)
                     [">1</div>" ">2</div>" ">3</div>"])
             "the parent's hiccup inlines all three counters via s/keyed-children")))))
+
+(deftest set-keyed-children-emit-per-child-keeps-both-fragments
+  (register-counter!)
+  (register-parent-with-topbar!)
+  ;; :emit-per-child? true alongside :rerender-parent? true emits BOTH the
+  ;; parent re-render and the per-child diff.  Hosts that mark the keyed
+  ;; container with `data-stube-preserve` need this: preserve makes morph
+  ;; skip the container, so the parent re-render alone never lands the
+  ;; add — the direct per-child :append fragment (which bypasses morph)
+  ;; does.
+  (let [[c0 _]    (boot :t/topbar-parent)
+        new-pairs [[:c1 (s/embed :t/counter {:start 1})]
+                   [:c2 (s/embed :t/counter {:start 2})]
+                   [:c3 (s/embed :t/counter {:start 3})]]
+        [c1 frags]
+        (kernel/dispatch c0 {:instance-id (top-iid c0)
+                             :event       :set+redraw+children
+                             :payload     new-pairs
+                             :signals     {}})
+        elements   (filter #(= :elements (:fragment/kind %)) frags)
+        parent-iid (top-iid c1)
+        parent?    (fn [f] (= parent-iid (second (re-find #"id=\"([^\"]+)\""
+                                                          (:fragment/html f)))))]
+    (testing "the parent re-render is present and reflects the reconciled state"
+      (let [pf (first (filter parent? elements))]
+        (is (some? pf) "a parent re-render fragment is emitted")
+        (is (str/includes? (:fragment/html pf) "3 open"))))
+    (testing "the per-child :append fragment for the added key is also emitted"
+      ;; The added third column lands as a direct :append on the container,
+      ;; ahead of any redundancy drop.
+      (is (some #{:append} (patch-modes frags))
+          "the keyed diff's :append survives alongside the parent render"))
+    (testing "more than one fragment total — both seams fire"
+      (is (< 1 (count elements))))))
 
 (deftest set-keyed-children-rerender-parent-noop-on-first-render
   (register-counter!)

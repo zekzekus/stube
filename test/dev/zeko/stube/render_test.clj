@@ -263,17 +263,20 @@
 (deftest local-signal-ref-builds-per-instance-inline-reference
   (let [self {:instance/id "ix-000007"}]
     (is (= "$save-submitting-ix-000007" (render/local-signal-ref self :save-submitting)))
-    (is (= "$saveSubmittingIx000007"    (render/local-signal-ref self :save-submitting {:case :camel})))
+    ;; Datastar's camel transform (`/-[a-z]/g`) leaves the dash before the
+    ;; instance-id digits intact, so the ref must too: `Ix-000007`, not
+    ;; `Ix000007`.  Disagreeing here builds a $ref Datastar never stored.
+    (is (= "$saveSubmittingIx-000007" (render/local-signal-ref self :save-submitting {:case :camel})))
     (testing "kernel-bound *signal-case* picks the casing"
       (binding [render/*signal-case* :camel]
-        (is (= "$saveSubmittingIx000007" (render/local-signal-ref self :save-submitting)))))))
+        (is (= "$saveSubmittingIx-000007" (render/local-signal-ref self :save-submitting)))))))
 
 (deftest local-indicator-mounts-per-instance-data-indicator
   (let [self {:instance/id "ix-000008"}]
     (is (= {(keyword "data-indicator:save-submitting-ix-000008") true}
            (render/local-indicator self :save-submitting)))
-    (testing ":camel emits the camelCased wire name"
-      (is (= {(keyword "data-indicator:saveSubmittingIx000008") true}
+    (testing ":camel emits the camelCased wire name (dash before the id digits kept)"
+      (is (= {(keyword "data-indicator:saveSubmittingIx-000008") true}
              (render/local-indicator self :save-submitting {:case :camel}))))))
 
 (deftest dollar-ref-builds-inline-expression-reference
@@ -301,7 +304,13 @@
   (is (= "edit-markdown" (render/signal-wire-name :edit-markdown)))
   (is (= "editMarkdown" (render/signal-wire-name :edit-markdown {:case :camel})))
   (is (= "foo" (render/signal-wire-name :foo {:case :camel}))
-      "single-segment names are unchanged under :camel"))
+      "single-segment names are unchanged under :camel")
+  (testing "matches Datastar's camel transform at a dash-before-digit boundary"
+    ;; Datastar folds `/-[a-z]/g` only — a dash before a digit survives.
+    ;; Wire names ending in an instance id (`-ix-N`) must agree so
+    ;; merge-kept-signals round-trips and data-indicator refs resolve.
+    (is (= "editTitleIx-1" (render/signal-wire-name :edit-title-ix-1 {:case :camel})))
+    (is (= "saveSubmittingIx-3" (render/signal-wire-name :save-submitting-ix-3 {:case :camel})))))
 
 (deftest signal-mirror-renders-hidden-input-with-marker
   (testing "default :kebab — wire name matches the keyword, marker carries it verbatim"
