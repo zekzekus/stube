@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.6.1
+
 ### Fixed
 
 - **Answering a stack `:call` now repaints the revealed parent.**  When a
