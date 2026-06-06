@@ -714,7 +714,6 @@ on the same desk." For real-time collaboration, lift the state into
 the app store (see chapter 6) and subscribe per cid.
 
 Worked example: `examples/dev/zeko/stube/examples/reading_list.clj`.
-A higher-fidelity demo is `examples/dev/zeko/stube/examples/kasten/`.
 
 ---
 

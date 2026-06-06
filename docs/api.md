@@ -1043,8 +1043,7 @@ seed lands under exactly the key the binding reads:
 ```
 
 Values must be JSON-encodable. This replaces hand-rolling the
-`data-signals` JSON plus the casing translation by hand — the one
-piece a real host (kasten) had to reinvent before this existed.
+`data-signals` JSON plus the casing translation by hand.
 
 ### `(s/local-signals self m)` / `(s/local-signals self m {:case …})`
 
@@ -1791,7 +1790,7 @@ The 3-arg arity accepts an opts map that binds the same runtime
 dynamic vars the http layer binds during normal dispatch:
 
 ```clojure
-(s/replay :kasten/desk events
+(s/replay :board/root events
           {:app       {:db stub-conn :mail stub-mailer}
            :principal {:user-id 42}})
 ```

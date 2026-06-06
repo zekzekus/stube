@@ -24,7 +24,6 @@
             [dev.zeko.stube.examples.error-frame]
             [dev.zeko.stube.examples.file-upload]
             [dev.zeko.stube.examples.guess]
-            [dev.zeko.stube.examples.kasten.desk]
             [dev.zeko.stube.examples.multicounter]
             [dev.zeko.stube.examples.paginated-list]
             [dev.zeko.stube.examples.preserved-widget]
@@ -99,9 +98,7 @@
    {:path "/columns"        :title "Keyed columns"             :group "Tier 3"
     :blurb "S-7: `s/keyed-children` adds/removes/replaces a column with one fragment per change."}
    {:path "/seaside-todo"   :title "Seaside book ToDo"         :group "Book app"
-    :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}
-   {:path "/kasten"         :title "Kasten notes desk"         :group "Book app"
-    :blurb "Port of the kasten notes UI: horizontal stack of open note columns, wiki-links, embedded children via :call-in-slot."}])
+    :blurb "The HPI tutorial app: login/register, filters, task editor, report, and notes."}])
 
 (def ^:private group-order
   ["Foundation" "Tier 1" "Tier 2" "Tier 3" "Book app"])

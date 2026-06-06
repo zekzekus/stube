@@ -350,7 +350,6 @@ first:
 | Tier 3     | `/error-frame`       | a throwing handler turns into a local banner, SSE intact |
 | Tier 3     | `/columns`           | `s/keyed-children` adds/removes/replaces a column |
 | Book app   | `/seaside-todo`      | a fuller port of the HPI *Introduction to Seaside* tutorial |
-| Book app   | `/kasten`            | horizontal stack of open note columns, wiki‑links, slot‑local editing |
 
 Install the [Datastar Inspector](https://data-star.dev/) browser
 extension to watch the SSE stream live; on the REPL side,

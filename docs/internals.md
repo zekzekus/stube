@@ -45,12 +45,13 @@ src/dev/zeko/stube/
   frame.clj         ← render one frame; render-slot-overlay
   keyed.clj         ← keyed-child reconciliation and rendering
   lifecycle.clj     ← run :start / :stop / :wakeup
-  kernel.clj        ← step / run-effects / dispatch (pure fold) plus
-                       the stable embedder façade (make-kernel,
-                       mint-conversation!, shell-for, head-tags,
-                       dispatch!, replay-with, publish!, halt!) that
-                       forwards into runtime via requiring-resolve
+  kernel.clj        ← step / run-effects / dispatch (the pure fold)
   runtime.clj       ← per-kernel mutable runtime state and hooks
+  embed.clj         ← stable embedder façade (make-kernel,
+                       mint-conversation!, shell-for,
+                       rendered-shell-for!, head-tags, dispatch!,
+                       replay-with, publish!, halt!) — thin wrappers
+                       over runtime.clj (see ADR 0006)
   flow.clj          ← defflow macro, cloroutine glue
   render.clj        ← hiccup → HTML; data-on / data-bind helpers
   ui.clj            ← stock confirm / prompt / choose / info components
@@ -131,6 +132,9 @@ Three observations:
  :instance/keyed-slots {:slot/cols {…}}     ; keyed-child framework state
  :instance/slot      :slot/main             ; iff this is a call-in-slot child
  :instance/previous  "ix-prev"              ; the displaced child to restore on answer
+ :instance/props     {:focused? true}       ; parent-supplied render inputs (s/embed props)
+ :stube/context      {…}                     ; adapter-supplied request/app context
+ :resume/context     {…}                     ; transient, parked during a resume
  …user state from (:component/init cdef)…}
 ```
 
@@ -139,6 +143,18 @@ a `:state` key. Handlers therefore see one merged map. The kernel
 calls `preserve-meta` after every handler return to make sure a
 mis-typed handler can't clobber the `:instance/*` keys, including
 framework-owned keyed-child metadata.
+
+A few keys are owned by the framework rather than the component:
+
+- `:instance/props` is the render-input map passed as the third arg to
+  `s/embed`. It is *excluded* from keyed-children identity, so changing
+  only the props re-renders a keyed child in place (its local state
+  survives); `merge-props` lifts it onto `self` for render and handle.
+- `:stube/context` is the adapter-supplied request/application context,
+  read through `s/context`.
+- `:resume/context` is the optional `ctx` value parked on a parent for
+  the duration of one resume (the `[resume-key ctx]` form of `s/call`),
+  then stripped — it never persists across frames.
 
 ### Resume keys, the right way around
 
