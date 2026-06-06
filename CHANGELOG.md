@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.6.0
+
 ### Added
 
 - **`s/keyed-children` `{:preserve …}` opt.**  A 3-arity
