@@ -7,7 +7,8 @@
             [dev.zeko.stube.core         :as s]
             [dev.zeko.stube.dev          :as dev]
             [dev.zeko.stube.kernel       :as kernel]
-            [dev.zeko.stube.registry     :as registry]))
+            [dev.zeko.stube.registry     :as registry]
+            [dev.zeko.stube.render       :as render]))
 
 (use-fixtures :each (fn [t] (registry/clear!) (t) (registry/clear!)))
 
@@ -64,6 +65,40 @@
                            :set [self [(s/set-keyed-children :slot/cols payload)]]
                            :replace-self {:replaced? true}
                            [self []]))}))
+
+(defn- register-focusable-counter! []
+  ;; Counter that renders a parent-owned :focused? prop and can mutate
+  ;; its own :n via :inc, so a props-only reconcile can be shown to
+  ;; preserve local state (a re-init would reset :n to :start).
+  (registry/register!
+    {:component/id     :t/focusable
+     :component/init   (fn [{:keys [start]}] {:n (or start 0)})
+     :component/handle (fn [self {:keys [event]}]
+                         (case event
+                           :inc (update self :n inc)
+                           self))
+     :component/render (fn [self]
+                         [:div {:id (:instance/id self)}
+                          (:n self)
+                          (when (:focused? self) [:span.focus "*"])])}))
+
+(defn- register-focus-parent! []
+  (registry/register!
+    {:component/id     :t/parent
+     :start            (fn [self]
+                         [self [(s/set-keyed-children :slot/cols
+                                                      [[:c1 (s/embed :t/focusable {:start 1})]
+                                                       [:c2 (s/embed :t/focusable {:start 2})]])]])
+     :component/render (fn [self]
+                         [:section {:id (:instance/id self)}
+                          (s/keyed-children self :slot/cols)])
+     :component/handle (fn [self {:keys [event payload]}]
+                         (case event
+                           :set [self [(s/set-keyed-children :slot/cols payload)]]
+                           [self []]))}))
+
+(defn- dispatch-to-child [c iid event]
+  (kernel/dispatch c {:instance-id iid :event event :payload nil :signals {}}))
 
 ;; ---------------------------------------------------------------------------
 ;; Tests
@@ -141,6 +176,119 @@
     (is (= c1-iid (get-in (slot-state c1 :slot/cols) [:children :c1 :iid])))
     (is (= 42 (:n (conv/instance c1 c1-iid)))
         ":init ran with the new args")))
+
+(deftest props-only-change-rerenders-in-place-preserving-state
+  (register-focusable-counter!)
+  (register-focus-parent!)
+  (let [[c0 _]   (boot :t/parent)
+        c1-iid   (get-in (slot-state c0 :slot/cols) [:children :c1 :iid])
+        ;; Mutate c1's own state so a re-init would be observable.
+        [c0b _]  (dispatch-to-child c0 c1-iid :inc)
+        _        (is (= 2 (:n (conv/instance c0b c1-iid))) ":inc bumped local state")
+        [c1 frags]
+        (dispatch-set c0b
+          [[:c1 (s/embed :t/focusable {:start 1} {:focused? true})]
+           [:c2 (s/embed :t/focusable {:start 2})]])]
+    (is (= [:outer] (patch-modes frags))
+        "props-only change ⇒ one :outer patch (re-render, not append)")
+    (is (= (str "#" c1-iid)
+           (get-in (first frags) [:fragment/opts :selector]))
+        "the patch targets the same iid")
+    (is (= c1-iid (get-in (slot-state c1 :slot/cols) [:children :c1 :iid]))
+        "iid preserved")
+    (is (= 2 (:n (conv/instance c1 c1-iid)))
+        "local state survived — :init did NOT re-run")
+    (is (= {:focused? true} (:instance/props (conv/instance c1 c1-iid)))
+        "props stored on the instance under :instance/props")
+    (is (str/includes? (:fragment/html (first frags)) "focus")
+        "rendered html reflects the new prop")))
+
+(deftest clearing-props-rerenders-and-drops-the-prop
+  (register-focusable-counter!)
+  (register-focus-parent!)
+  (let [[c0 _]  (boot :t/parent)
+        c1-iid  (get-in (slot-state c0 :slot/cols) [:children :c1 :iid])
+        [c1 _]  (dispatch-set c0
+                  [[:c1 (s/embed :t/focusable {:start 1} {:focused? true})]
+                   [:c2 (s/embed :t/focusable {:start 2})]])
+        [c2 frags]
+        (dispatch-set c1
+          [[:c1 (s/embed :t/focusable {:start 1})]
+           [:c2 (s/embed :t/focusable {:start 2})]])]
+    (is (= [:outer] (patch-modes frags)) "clearing props ⇒ :outer re-render")
+    (is (nil? (:instance/props (conv/instance c2 c1-iid))) "prop dropped from instance")
+    (is (not (str/includes? (:fragment/html (first frags)) "focus"))
+        "marker gone from rendered html")))
+
+(deftest identical-props-emit-no-child-rerender
+  (register-focusable-counter!)
+  (register-focus-parent!)
+  (let [[c0 _]  (boot :t/parent)
+        c1-iid  (get-in (slot-state c0 :slot/cols) [:children :c1 :iid])
+        [c1 _]  (dispatch-set c0
+                  [[:c1 (s/embed :t/focusable {:start 1} {:focused? true})]
+                   [:c2 (s/embed :t/focusable {:start 2})]])
+        [_c2 frags]
+        (dispatch-set c1
+          [[:c1 (s/embed :t/focusable {:start 1} {:focused? true})]
+           [:c2 (s/embed :t/focusable {:start 2})]])]
+    ;; A no-op :set handler still triggers the kernel's default parent
+    ;; render; what must NOT happen is a per-child :outer re-render —
+    ;; i.e. the props-only path is correctly skipped when nothing changed.
+    (is (not (some #(= (str "#" c1-iid) (get-in % [:fragment/opts :selector])) frags))
+        "re-emitting the same embed + props does not re-render the child")))
+
+(deftest args-change-still-reinits-even-with-props
+  (register-focusable-counter!)
+  (register-focus-parent!)
+  (let [[c0 _]  (boot :t/parent)
+        c1-iid  (get-in (slot-state c0 :slot/cols) [:children :c1 :iid])
+        [c0b _] (dispatch-to-child c0 c1-iid :inc)
+        [c1 frags]
+        (dispatch-set c0b
+          [[:c1 (s/embed :t/focusable {:start 9} {:focused? true})]
+           [:c2 (s/embed :t/focusable {:start 2})]])]
+    (is (= [:outer] (patch-modes frags)))
+    (is (= 9 (:n (conv/instance c1 c1-iid)))
+        "args changed ⇒ :init re-ran (state reset to :start), props notwithstanding")
+    (is (= {:focused? true} (:instance/props (conv/instance c1 c1-iid)))
+        "new props applied through the re-init path too")))
+
+(deftest keyed-children-preserve-opt-stamps-container
+  (register-counter!)
+  (register-parent-with-initial! [[:a (s/embed :t/counter {:start 1})]])
+  (let [[c _] (boot :t/parent)
+        self  (conv/instance c (top-iid c))
+        cid   (str (top-iid c) "--cols")]
+    (binding [render/*conv* c]
+      (testing "{:preserve true} stamps the container id as the preserve key"
+        (let [[tag attrs] (s/keyed-children self :slot/cols {:preserve true})]
+          (is (= :div tag))
+          (is (= cid (:data-stube-preserve attrs)))))
+      (testing "a string preserve value sets an explicit key"
+        (let [[_ attrs] (s/keyed-children self :slot/cols {:preserve "ledger-cols"})]
+          (is (= "ledger-cols" (:data-stube-preserve attrs)))))
+      (testing "2-arity is unchanged — no preserve marker"
+        (let [[_ attrs] (s/keyed-children self :slot/cols)]
+          (is (not (contains? attrs :data-stube-preserve))))))))
+
+(deftest props-on-initial-mint-render-from-first-paint
+  (register-focusable-counter!)
+  (registry/register!
+    {:component/id     :t/parent
+     :start            (fn [self]
+                         [self [(s/set-keyed-children :slot/cols
+                                                      [[:c1 (s/embed :t/focusable {:start 1} {:focused? true})]])]])
+     :component/render (fn [self]
+                         [:section {:id (:instance/id self)}
+                          (s/keyed-children self :slot/cols)])})
+  (let [[c frags] (boot :t/parent)
+        c1-iid    (get-in (slot-state c :slot/cols) [:children :c1 :iid])
+        elements  (filter #(= :elements (:fragment/kind %)) frags)]
+    (is (= {:focused? true} (:instance/props (conv/instance c c1-iid)))
+        "mint carries :embed/props onto the instance")
+    (is (str/includes? (:fragment/html (first elements)) "focus")
+        "first paint already includes the prop-driven content")))
 
 (deftest reorder-only-emits-one-container-outer-patch
   (register-counter!)

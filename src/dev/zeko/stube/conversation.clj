@@ -63,9 +63,21 @@
 ;; a closure) means flows are still pure and serialisable.
 
 (defn embed
-  "Return an embed spec for component `type` initialised with `args`."
-  ([type]      (embed type {}))
-  ([type args] {:embed/type type :embed/args args}))
+  "Return an embed spec for component `type` initialised with `args`.
+
+  The 3-arity adds `props`: a map of *render inputs* that merge onto the
+  child's `self` before `:render`/`:handle` but are **excluded from the
+  identity** that keyed-children change-detection compares.  Changing
+  only `props` re-renders the child in place (state preserved); changing
+  `:embed/args` still re-`:init`s it.  Use props for parent-owned display
+  state a keyed child must reflect — focus, selection, zoom — without
+  paying a re-init that would discard the child's local edit drafts.
+  Props must be EDN-clean (they ride the conversation value).  Outside
+  keyed children, props simply merge onto `self` at instantiation."
+  ([type]            (embed type {}))
+  ([type args]       {:embed/type type :embed/args args})
+  ([type args props] (cond-> {:embed/type type :embed/args args}
+                       (some? props) (assoc :embed/props props))))
 
 (defn embed?
   "True if `x` looks like an embed spec."
@@ -113,11 +125,16 @@
 
   `:stube/context` is adapter-supplied request/application context.  It
   is protected like instance metadata so handlers can read it via
-  `s/context` without accidentally persisting edits to the context map."
+  `s/context` without accidentally persisting edits to the context map.
+
+  `:instance/props` holds the render-input map from an embed's
+  `:embed/props` (see [[embed]]).  It is framework-owned so a child's
+  own handler can't clobber the parent-supplied props; [[merge-props]]
+  lifts it onto `self` for render/handle."
   #{:instance/id :instance/type :instance/parent
     :instance/resume :instance/rendered? :instance/children
     :instance/keyed-slots :instance/slot :instance/previous
-    :stube/context})
+    :instance/props :stube/context})
 
 (defn instantiate
   "Build a fresh instance map from a component definition and an embed
@@ -126,7 +143,7 @@
   This is the *flat* constructor: it does not look at `:component/children`.
   Use [[instantiate-tree]] when you want the kernel to materialise the
   whole subtree."
-  [cdef {:keys [embed/args]} parent-id resume-key]
+  [cdef {:keys [embed/args embed/props]} parent-id resume-key]
   (let [init-fn (or (:component/init cdef) (constantly {}))
         state   (init-fn (or args {}))]
     (merge state
@@ -135,7 +152,8 @@
             :instance/parent    parent-id
             :instance/resume    resume-key
             :instance/rendered? false
-            :instance/children  {}})))
+            :instance/children  {}}
+           (when (some? props) {:instance/props props}))))
 
 (defn instantiate-tree
   "Build a parent instance plus every child eagerly declared by its
@@ -444,12 +462,23 @@
               inst
               keep-keys))))
 
+(defn merge-props
+  "Lift an instance's `:instance/props` (the parent-supplied render
+  inputs from `:embed/props`) onto the top level of the instance map, so
+  `:render`/`:handle` read them as ordinary `self` keys.  Props form the
+  base; live signals/state layered on top win on collision.  No-op when
+  the instance carries no props."
+  [inst]
+  (if-let [props (:instance/props inst)]
+    (merge inst props)
+    inst))
+
 (defn merged-self
   "Look up `iid` in `conv`, find its component definition, and return the
-  instance with kept signals merged in.  This is the value passed to
-  `:render` and `:handle`."
+  instance with render props and kept signals merged in.  This is the
+  value passed to `:render` and `:handle`."
   [conv iid signals]
-  (let [inst (instance conv iid)
+  (let [inst (merge-props (instance conv iid))
         cdef (registry/lookup! (:instance/type inst))]
     (cond-> (merge-kept-signals inst signals (:component/keep cdef))
       (contains? conv :conv/context)

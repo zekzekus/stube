@@ -287,6 +287,8 @@
 (defalias signal       render/signal       "See [[dev.zeko.stube.render/signal]].")
 (defalias signal-wire-name render/signal-wire-name "See [[dev.zeko.stube.render/signal-wire-name]].")
 (defalias signal-mirror render/signal-mirror "See [[dev.zeko.stube.render/signal-mirror]].")
+(defalias signals      render/signals      "See [[dev.zeko.stube.render/signals]].")
+(defalias local-signals render/local-signals "See [[dev.zeko.stube.render/local-signals]].")
 (defalias root-attrs   render/root-attrs   "See [[dev.zeko.stube.render/root-attrs]].")
 (defalias preserve     render/preserve     "See [[dev.zeko.stube.render/preserve]].")
 (defalias on-mount     render/on-mount     "See [[dev.zeko.stube.render/on-mount]].")
@@ -323,10 +325,26 @@
 
       :render (fn [self]
                 [:section (s/root-attrs self)
-                 (s/keyed-children self :slot/cols)])"
-  [self slot]
-  (into [:div {:id (keyed/container-id (:instance/id self) slot)}]
-        (keyed/render-children-hiccup self slot)))
+                 (s/keyed-children self :slot/cols)])
+
+  The 3-arity takes `opts`.  `{:preserve true}` stamps
+  `data-stube-preserve` on the container so a parent re-render's morph
+  skips the keyed subtree, leaving the per-child reconcile fragments
+  (emit them with `(s/set-keyed-children … {:rerender-parent? true
+  :emit-per-child? true})`) as the sole painter of the children.  This
+  is the canonical pairing when a *re-rendering* parent wraps a keyed
+  slot — it removes the hand-rolled wrapper element, marker attribute,
+  and invented preserve key the host would otherwise coordinate.  Pass
+  a string to set an explicit preserve key instead of the default
+  container id."
+  ([self slot] (keyed-children self slot nil))
+  ([self slot opts]
+   (let [cid      (keyed/container-id (:instance/id self) slot)
+         preserve (:preserve opts)
+         attrs    (cond-> {:id cid}
+                    preserve (assoc :data-stube-preserve
+                                    (if (string? preserve) preserve cid)))]
+     (into [:div attrs] (keyed/render-children-hiccup self slot)))))
 
 (defn context
   "Return adapter/application context injected into this conversation.

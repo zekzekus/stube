@@ -198,6 +198,42 @@
       (is (str/includes? html2 "received=saved"))
       (is (str/includes? html2 "label")))))
 
+(deftest call-in-slot-resume-carries-call-time-context
+  ;; The kasten delete flow: stash *which* note is being confirmed as
+  ;; call-time ctx instead of as mutable in-flight state on the parent.
+  (registry/register!
+    {:component/id     :t/confirm
+     :component/render (fn [s] [:div {:id (:instance/id s)} "confirm?"])
+     :component/handle (fn [s _] [s [[:answer true]]])})
+  (registry/register!
+    {:component/id     :t/label
+     :component/render (fn [s] [:span {:id (:instance/id s)} "label"])})
+  (registry/register!
+    {:component/id     :t/parent
+     :component/init   (constantly {})
+     :children         {:slot/body (conv/embed :t/label)}
+     :component/render (fn [self]
+                         [:div {:id (:instance/id self)}
+                          (str "deleted=" (:deleted self))
+                          (s/render-slot self :slot/body)])
+     :component/handle (fn [s _]
+                         [s [[:call-in-slot :slot/body (conv/embed :t/confirm)
+                              :resume [:on-confirm {:note-id "n-42"}]]]])
+     :on-confirm       (fn [s yes?]
+                         [(assoc s :deleted (when yes?
+                                              (:note-id (:resume/context s))))
+                          []])})
+  (let [[c0]      (run-boot :t/parent)
+        parent    (conv/top-id c0)
+        [c1 _]    (kernel/dispatch c0 {:instance-id parent :event :ask :signals {}})
+        confirm   (get-in (conv/instance c1 parent) [:instance/children :slot/body])
+        [c2 _]    (kernel/dispatch c1 {:instance-id confirm :event :yes :signals {}})
+        parent'   (conv/instance c2 parent)]
+    (is (= "n-42" (:deleted parent'))
+        "slot resume read the call-time ctx via (:resume/context self)")
+    (is (not (contains? parent' :resume/context))
+        ":resume/context did not persist on the parent after the slot answer")))
+
 (deftest replacing-parent-sweeps-call-in-slot-previous-chain
   ;; Regression for the leak the property test surfaced: when a
   ;; parent frame is replaced (or ended, or popped on :answer)

@@ -231,6 +231,32 @@ definition and invokes it with the answered value. The parent's
 resume key isn't on the parent's instance, it's on the cdef — so any
 component that calls the prompt can name its own resume.
 
+**Resume context — `[key ctx]`.** A resume key may instead be a
+`[key ctx]` pair, where `ctx` is call-time data the caller wants its
+resume to read back. The kernel parks `ctx` on the parent under
+`:resume/context` for the duration of the resume and strips it
+afterward, so the resume reads `(:resume/context self)` without the
+parent holding mutable in-flight state between the call and the answer:
+
+```clojure
+;; ask which note to delete, carrying the id forward
+(s/call-in-slot :slot/confirm (s/confirm "Delete?")
+                [:on-delete {:note-id id}])
+
+:on-delete (fn [self yes?]
+             (if yes?
+               (delete! self (:note-id (:resume/context self)))
+               self))
+```
+
+`ctx` must be EDN-clean (it rides the conversation value). It is
+frame-scoped: it exists only while that resume runs and never persists
+on the parent. Bare-keyword resumes are unchanged. Works for both
+`s/call` and `s/call-in-slot`; pass the `[key ctx]` form in the resume
+position (with `s/call`, that means the embed-spec arity
+`(s/call (s/embed …) [key ctx])` or the 3-arity `(s/call id args [key ctx])`,
+since a 2-arg `(s/call id …)` reads its second argument as init args).
+
 **Structured event payloads.** `(s/on self :click :as [:pick item-id])`
 ships the rest of the vector as `:payload`. The handler sees
 `{:event :pick :payload item-id}`.
@@ -366,13 +392,47 @@ shouting at every other open browser tab on the same kernel:
 Returns the number of subscribers targeted in the current
 conversation. Stale subscribers are ignored, same as `s/publish!`.
 
-### `(s/embed type)`  /  `(s/embed type args)`
+### `(s/embed type)`  /  `(s/embed type args)`  /  `(s/embed type args props)`
 
-Returns an embed spec map: `{:embed/type type :embed/args args}`.
+Returns an embed spec map: `{:embed/type type :embed/args args}`, plus
+`:embed/props props` when the 3-arity is used.
 The kernel uses these to instantiate children. `s/call`, `s/become`
 and `s/call-in-slot` accept either a component id (+ optional args) or
 an existing embed spec. `:children` declarations, stock UI helpers, and
 `s/await` inside a `defflow` are where embed specs show up most often.
+
+**`props` — render inputs that don't trigger a re-init.** The 3-arity
+splits a child's inputs in two:
+
+- `args` is **identity**: it is passed to the child's `:init`. In a
+  keyed-children slot, changing `args` for an existing key re-`:init`s
+  that child in place — fresh state, drafts discarded.
+- `props` is **render input**: it merges onto the child's `self` for
+  `:render`/`:handle` (props form the base; live state/signals win on
+  collision), but it is **excluded** from the identity that
+  keyed-children change-detection compares. Changing only `props`
+  re-*renders* the child in place — no `:stop`/`:init`, so local state
+  (edit drafts, per-instance signals) survives.
+
+Use `props` for parent-owned display state a keyed child must reflect —
+focus, selection, zoom, "is-active" — that would otherwise force you to
+embed with minimal `args` and dispatch class-toggle events to each child
+after the fact. The child just reads `(:focused? self)`; the parent
+recomputes the pairs on every change:
+
+```clojure
+(s/set-keyed-children :slot/cols
+  (mapv (fn [id]
+          [id (s/embed :app/column
+                       {:id id}                         ; identity → :init
+                       {:focused? (= id focused-id)})]) ; render prop → re-render
+        order))
+```
+
+Props must be EDN-clean (they ride the conversation value, stored on the
+instance under the framework-owned `:instance/props` key). Outside keyed
+children, props simply merge onto `self` at instantiation. See also
+`s/keyed-children` / `s/set-keyed-children` below.
 
 ---
 
@@ -572,7 +632,7 @@ CSS selectors can target either the `data-` attribute or the
 every instance with one query selector. Append your own `:class` and
 it's concatenated, never replaced.
 
-### `(s/behavior self behavior-id args)`
+### `(s/behavior self behavior-id args)` / `(s/behavior self behavior-id args opts)`
 
 Attach a client-side behavior to this element.
 
@@ -635,6 +695,27 @@ hosts write `ctx.setSignal("edit-markdown", v)`, `:camel` hosts write
 `ctx.setSignal("editMarkdown", v)`. If no matching mirror is found,
 the bridge logs a `console.warn` pointing at the missing
 `s/signal-mirror` site rather than silently no-op'ing.
+
+**`opts {:signal …}` — the "behavior writes one signal" shortcut.**
+The 4-arity stamps `data-stube-arg-signal="<wire-name>"`, wire-cased
+exactly like `s/bind`, so the behavior reads a stable `ctx.args.signal`
+and never hard-codes the wire name or the casing:
+
+```clojure
+[:input (s/signal-mirror sig)]                         ; the write seam
+[:div (s/behavior self :notes/cm6-editor {:content md} {:signal sig})]
+```
+
+```js
+ctx.setSignal(ctx.args.signal, view.state.doc.toString());
+```
+
+This replaces computing `(s/signal-wire-name sig)` and threading it
+through `args` by hand. An `opts {:case …}` propagates to the
+wire-casing. The mirror still has to be a server-rendered
+`s/signal-mirror` — that hidden input is the public `data-bind` seam;
+the framework deliberately does **not** inject a Datastar-bound element
+client-side.
 
 `args` values stringify on the way out (`name` for keywords, `str`
 for numbers/booleans, `pr-str` for anything else). Pass small scalars
@@ -948,6 +1029,36 @@ behavior calls `ctx.setSignal` for a signal with no matching mirror
 in scope, the bridge logs a `console.warn` pointing at the missing
 helper call rather than silently no-op'ing.
 
+### `(s/signals m)` / `(s/signals m {:case …})` — seed initial values
+
+`s/bind` wires a two-way binding but does not give the signal a
+starting value. `s/signals` returns `{:data-signals "<json>"}` whose
+keys are wire-cased through the same rules as `s/bind` / `s/$`, so the
+seed lands under exactly the key the binding reads:
+
+```clojure
+[:form (merge (s/signals {:create-title "" :create-slug ""})
+              (s/on-target self :create))
+ [:input (merge {:name "title"} (s/bind :create-title))]]
+```
+
+Values must be JSON-encodable. This replaces hand-rolling the
+`data-signals` JSON plus the casing translation by hand — the one
+piece a real host (kasten) had to reinvent before this existed.
+
+### `(s/local-signals self m)` / `(s/local-signals self m {:case …})`
+
+Like `s/signals`, but scopes each key to this component instance via
+`s/local-signal`, so two embedded copies of a component don't seed the
+same page-global signal. Pair with `s/local-bind` and a `:keep` of the
+same logical keys:
+
+```clojure
+:keep #{:edit-title :edit-markdown}
+[:form (s/local-signals self {:edit-title title :edit-markdown md})
+ [:input (s/local-bind self :edit-title)]]
+```
+
 ### `(s/$ signal)` / `(s/signal event signal)` / `(s/signal-wire-name signal)`
 
 Casing-aware companions for the signal helpers above. All three
@@ -991,7 +1102,7 @@ call is a no-op when the slot has not been called into yet (or when
 its previous occupant has answered and popped).  No `(when (s/child-iid
 self :slot/foo) …)` guard is needed.
 
-### `(s/keyed-children self slot)`  /  `(s/set-keyed-children slot pairs)`
+### `(s/keyed-children self slot)` / `(s/keyed-children self slot opts)` / `(s/set-keyed-children slot pairs)`
 
 Use keyed children when a parent owns an ordered collection of child
 instances, identified by stable application keys instead of fixed slot
@@ -1016,7 +1127,10 @@ contents.
 Diff rules are intentionally small: a new key appends/prepends/inserts
 one child fragment, a removed key removes that child subtree, changed
 embed args re-initialise the child in place while preserving its root
-iid, and a pure reorder emits one outer patch for the container.
+iid, a same-key change of only `:embed/props` re-*renders* the child in
+place **without** re-`:init` (so its local state survives — see the
+3-arity of `s/embed`), and a pure reorder emits one outer patch for the
+container.
 
 **`:rerender-parent?` opt.** By default the reconcile's per-child
 fragments satisfy the kernel's "this dispatch already rendered" check
@@ -1057,6 +1171,27 @@ keyed container is marked `data-stube-preserve`: preserve makes morph
 skip the container subtree, so the parent re-render alone never lands
 adds/removes, and only the direct per-child patches do.  Like
 `:rerender-parent?`, this stays a no-op on the parent's first paint.
+
+**`(s/keyed-children self slot {:preserve true})` — the preserved-container
+pairing.** When you use `{:rerender-parent? true :emit-per-child? true}`,
+the container must be marked `data-stube-preserve` so the parent morph
+skips it. Pass `{:preserve true}` to the render helper and it stamps that
+marker on its own container element — no hand-rolled wrapper `<div>`, no
+literal marker attribute, no invented preserve key to keep in sync:
+
+```clojure
+;; render — one preserved container, no wrapper
+(s/keyed-children self :slot/cols {:preserve true})
+
+;; handler — emit both the parent re-render and the per-child patches
+[self [(s/set-keyed-children :slot/cols pairs
+                             {:rerender-parent? true :emit-per-child? true})]]
+```
+
+Pass a string (`{:preserve "ledger-cols"}`) to set an explicit key
+instead of the default container id. The effect flags stay separate by
+design: `:rerender-parent?` *alone* (parent morph paints the children)
+is a valid simpler mode, so `:emit-per-child?` is never implied.
 
 **Dev-mode staleness nudge.** Forgetting `:rerender-parent?` on a
 parent that *does* show slot-derived state (an open-column count, an

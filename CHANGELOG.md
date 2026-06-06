@@ -5,7 +5,67 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Added
+
+- **`s/keyed-children` `{:preserve …}` opt.**  A 3-arity
+  `(s/keyed-children self slot {:preserve true})` stamps
+  `data-stube-preserve` on the keyed container itself, so a
+  re-rendering parent's morph skips the keyed subtree and the per-child
+  reconcile fragments stay the sole painter.  This is the canonical
+  pairing with `(s/set-keyed-children … {:rerender-parent? true
+  :emit-per-child? true})` and removes the hand-rolled wrapper element,
+  marker attribute, and invented preserve key a host previously had to
+  coordinate by hand.  Pass a string for an explicit key instead of the
+  default container id.  (The effect flags stay separate on purpose:
+  `:rerender-parent?` alone — parent morph paints the children — is a
+  valid simpler mode that defaulting `:emit-per-child?` would break.)
+  ([kasten/stube_todo.md §4](kasten/stube_todo.md))
+- **Resume context — `[key ctx]` resume keys.**  `s/call` /
+  `s/call-in-slot` now accept a `[resume-key ctx]` pair in the resume
+  position.  The kernel parks `ctx` on the parent under
+  `:resume/context` while the resume runs and strips it afterward, so a
+  resume reads `(:resume/context self)` instead of the parent stashing
+  mutable in-flight state between the call and the answer (the kasten
+  delete flow's `:pending-delete-id`).  `ctx` must be EDN-clean and is
+  frame-scoped — it never persists on the parent.  Bare-keyword resumes
+  are unchanged.
+  ([kasten/stube_todo.md §6](kasten/stube_todo.md))
+- **`s/behavior` `{:signal …}` opt — the "behavior writes one signal"
+  shortcut.**  A 4-arity `(s/behavior self id args opts)`; when `opts`
+  carries `{:signal <key>}` the helper stamps
+  `data-stube-arg-signal="<wire-name>"`, wire-cased exactly like
+  `s/bind`, so the behavior reads a stable `ctx.args.signal` and calls
+  `ctx.setSignal(ctx.args.signal, v)` without the host computing the wire
+  name or threading it through `args`.  Collapses the CodeMirror-style
+  write wiring; the mirror stays a server-rendered `s/signal-mirror`
+  (the framework does not inject a Datastar-bound element client-side).
+  ([kasten/stube_todo.md §7](kasten/stube_todo.md))
+- **`s/signals` / `s/local-signals` — seed initial signal values.**
+  `s/bind` wires a two-way binding but never set the signal's starting
+  value, so hosts hand-rolled the `data-signals` JSON *and* the
+  kebab/camel wire-casing themselves.  `s/signals` returns
+  `{:data-signals "<json>"}` whose keys are wire-cased through the same
+  resolution as `s/bind` / `s/$`, and `s/local-signals` does the same
+  scoped per instance (to pair with `s/local-bind` + `:keep`).  Removes
+  the one app-level helper kasten had to reinvent.
+  ([kasten/stube_todo.md §2](kasten/stube_todo.md))
+- **Render props for keyed children** — `s/embed` gains a 3-arity
+  `(s/embed type args props)`.  `props` is a map of render inputs that
+  merges onto the child's `self` for `:render`/`:handle` but is
+  *excluded* from the identity that keyed-children change-detection
+  compares.  Changing only `props` for an existing key re-*renders* the
+  child in place (no `:stop`/`:init`), so its local state — edit drafts,
+  per-instance signals — survives; changing `:embed/args` still
+  re-`:init`s it as before.  This closes the gap where a keyed child
+  that owns local state had to be embedded with minimal `args` and then
+  fed parent-owned display state (focus, selection, zoom) through
+  after-the-fact `dispatch-to` class-toggle events.  The parent now just
+  recomputes the pairs with the right props each reconcile and the child
+  reads `(:focused? self)` directly.  Props are stored on the instance
+  under the framework-owned `:instance/props` key (EDN-clean; protected
+  like other instance metadata) and are merged via
+  `conversation/merge-props`.
+  ([kasten/stube_todo.md §1](kasten/stube_todo.md))
 
 ## 0.5.0
 

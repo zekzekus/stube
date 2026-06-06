@@ -48,7 +48,7 @@
                     ;; serialization too: user render fns may return lazy
                     ;; seqs whose elements call `s/render-slot` only when
                     ;; Chassis walks the tree.
-                    (let [hiccup (cond-> (render-fn inst)
+                    (let [hiccup (cond-> (render-fn (conv/merge-props inst))
                                    halos? (halos/decorate-root inst))]
                       (render/html hiccup)))
             marked (conv/mark-rendered conv iid)

@@ -76,6 +76,35 @@
     (is (seq (elements-fragments frags))
         "parent re-renders after receiving the answer")))
 
+(deftest call-resume-carries-call-time-context
+  (registry/register!
+    {:component/id     :t/child
+     :component/render (fn [s] [:div {:id (:instance/id s)} "child"])
+     :component/handle (fn [s _] [s [[:answer :yes]]])})
+  (registry/register!
+    {:component/id     :t/parent
+     :component/init   (constantly {})
+     :component/render (fn [s] [:div {:id (:instance/id s)} "parent"])
+     :component/handle (fn [s _]
+                         [s [[:call (conv/embed :t/child)
+                              :resume [:on-child {:note-id "n-7"}]]]])
+     :on-child         (fn [s v]
+                         [(assoc s
+                                 :answer v
+                                 :ctx-note (:note-id (:resume/context s)))
+                          []])})
+  (let [[c0]       (run-boot :t/parent)
+        parent-iid (conv/top-id c0)
+        [c1 _]     (kernel/dispatch c0 {:instance-id parent-iid :event :go :signals {}})
+        child-iid  (conv/top-id c1)
+        [c2 _]     (kernel/dispatch c1 {:instance-id child-iid :event :ack :signals {}})
+        parent     (conv/instance c2 parent-iid)]
+    (is (= :yes (:answer parent)) "answer delivered as usual")
+    (is (= "n-7" (:ctx-note parent))
+        "resume read the call-time ctx via (:resume/context self)")
+    (is (not (contains? parent :resume/context))
+        ":resume/context is transient — stripped after the resume, never persisted")))
+
 (deftest io-effect-runs-only-through-runtime-hook
   (let [calls (atom 0)
         thunk #(swap! calls inc)

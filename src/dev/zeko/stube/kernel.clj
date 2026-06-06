@@ -414,12 +414,36 @@
                    [c' [f]]))]
            [conv-final (into (vec extra) more)]))))))
 
+(defn- split-resume
+  "A resume key may be a bare keyword or a `[key ctx]` pair (see `s/call`
+  / `s/call-in-slot`).  Return `[key ctx]`, with `ctx` nil for the bare
+  form."
+  [resume]
+  (if (vector? resume) resume [resume nil]))
+
+(defn- stash-resume-context
+  "Park call-time `ctx` on the parent instance under `:resume/context` so
+  its resume handler reads it back via `(:resume/context self)`.  No-op
+  when there's no parent or no ctx."
+  [conv parent-id ctx]
+  (cond-> conv
+    (and parent-id ctx (conv/instance conv parent-id))
+    (update-in [:conv/instances parent-id] assoc :resume/context ctx)))
+
+(defn- clear-resume-context
+  "Strip the transient `:resume/context` after the resume has run so it
+  never persists on the parent (it is frame-scoped to one answer)."
+  [conv parent-id]
+  (cond-> conv
+    (and parent-id (conv/instance conv parent-id))
+    (update-in [:conv/instances parent-id] dissoc :resume/context)))
+
 (defn- answer-from-stack
   ([conv value] (answer-from-stack conv value false))
   ([conv value error?]
    (let [leaving-id      (conv/top-id conv)
          leaving         (conv/top-instance conv)
-         resume-key      (:instance/resume leaving)
+         [resume-key resume-ctx] (split-resume (:instance/resume leaving))
          ;; The whole frame is being destroyed — pull in previous-chained
          ;; slot occupants too so their `:stop` fires and they get swept
          ;; from `:conv/instances` by pop-top below.
@@ -427,7 +451,9 @@
          [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
          [conv' _popped] (conv/pop-top conv-stopped)
          parent-id       (conv/top-id conv')
-         [conv'' frags]  (resume-parent conv' parent-id resume-key value error?)]
+         conv'           (stash-resume-context conv' parent-id resume-ctx)
+         [conv'' frags]  (resume-parent conv' parent-id resume-key value error?)
+         conv''          (clear-resume-context conv'' parent-id)]
      [conv'' (into (vec stop-frags) frags)])))
 
 (defn- answer-from-slot
@@ -440,14 +466,16 @@
        (throw (ex-info "Embedded :answer is only supported for [:call-in-slot ...] children"
                        {:instance-id leaving-id
                         :parent      parent-id})))
-     (let [resume-key (:instance/resume leaving)
+     (let [[resume-key resume-ctx] (split-resume (:instance/resume leaving))
            previous   (:instance/previous leaving)
            stop-iids  (conv/descendant-ids conv leaving-id)
            [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
            conv'      (-> conv-stopped
                           (conv/remove-subtree leaving-id)
-                          (conv/set-child-slot parent-id slot previous))
-           [conv'' frags] (resume-parent conv' parent-id resume-key value error?)]
+                          (conv/set-child-slot parent-id slot previous)
+                          (stash-resume-context parent-id resume-ctx))
+           [conv'' frags] (resume-parent conv' parent-id resume-key value error?)
+           conv''     (clear-resume-context conv'' parent-id)]
        [conv'' (into (vec stop-frags) frags)]))))
 
 (defmethod step :answer

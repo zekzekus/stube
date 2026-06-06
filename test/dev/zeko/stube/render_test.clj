@@ -1,5 +1,6 @@
 (ns dev.zeko.stube.render-test
-  (:require [clojure.string :as str]
+  (:require [charred.api :as json]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [dev.zeko.stube.render :as render]))
 
@@ -176,6 +177,32 @@
       (is (not (contains? (render/behavior self :notes/cm6-editor)
                           :data-stube-event-base))))))
 
+(deftest behavior-signal-opt-stamps-wire-cased-arg
+  (let [self {:instance/id "ix-000001"}]
+    (testing ":signal stamps data-stube-arg-signal, wire-cased like bind"
+      (is (= "edit-markdown-ix-000001"
+             (-> (render/behavior self :notes/cm6-editor {} {:signal :edit-markdown-ix-000001})
+                 :data-stube-arg-signal))))
+    (testing ":case propagates to the wire name (dash before the id digits kept)"
+      (is (= "editMarkdownIx-000001"
+             (-> (render/behavior self :notes/cm6-editor {}
+                                  {:signal :edit-markdown-ix-000001 :case :camel})
+                 :data-stube-arg-signal))))
+    (testing "kernel-bound *signal-case* applies when no per-call opt is given"
+      (binding [render/*signal-case* :camel]
+        (is (= "editMarkdown"
+               (-> (render/behavior self :notes/cm6-editor {} {:signal :edit-markdown})
+                   :data-stube-arg-signal)))))
+    (testing "no :signal opt ⇒ no signal arg"
+      (is (not (contains? (render/behavior self :notes/cm6-editor {} {})
+                          :data-stube-arg-signal))))
+    (testing "coexists with ordinary args"
+      (is (= {:data-stube-behavior "notes/cm6-editor"
+              :data-stube-arg-content "hi"
+              :data-stube-arg-signal "edit-markdown-ix-000001"}
+             (render/behavior self :notes/cm6-editor {:content "hi"}
+                              {:signal :edit-markdown-ix-000001}))))))
+
 (deftest behavior-stamps-event-base-when-cid-is-bound
   (let [self {:instance/id "ix-42"}]
     (binding [render/*cid* "cv-001"]
@@ -306,6 +333,27 @@
     (testing ":camel emits the camelCased wire name (dash before the id digits kept)"
       (is (= {(keyword "data-indicator:saveSubmittingIx-000008") true}
              (render/local-indicator self :save-submitting {:case :camel}))))))
+
+(deftest signals-seeds-initial-values-with-wire-casing
+  (testing ":kebab keeps logical keys verbatim"
+    (let [{:keys [data-signals]} (render/signals {:create-title "" :create-slug "x"})]
+      (is (= {"create-title" "" "create-slug" "x"} (json/read-json data-signals)))))
+  (testing ":camel wire-cases the keys to match bind/$ "
+    (let [{:keys [data-signals]} (render/signals {:edit-markdown "hi"} {:case :camel})]
+      (is (= {"editMarkdown" "hi"} (json/read-json data-signals)))))
+  (testing "kernel-bound *signal-case* applies when no per-call opt is given"
+    (binding [render/*signal-case* :camel]
+      (let [{:keys [data-signals]} (render/signals {:edit-markdown "hi"})]
+        (is (str/includes? data-signals "editMarkdown"))))))
+
+(deftest local-signals-scopes-each-key-to-the-instance
+  (let [self {:instance/id "ix-000002"}
+        {:keys [data-signals]} (render/local-signals self {:edit-title "T" :edit-markdown "M"})]
+    (is (= {"edit-title-ix-000002" "T" "edit-markdown-ix-000002" "M"}
+           (json/read-json data-signals)))
+    (testing ":camel keeps the dash before the instance-id digits (matches local-bind)"
+      (let [{:keys [data-signals]} (render/local-signals self {:edit-title "T"} {:case :camel})]
+        (is (= {"editTitleIx-000002" "T"} (json/read-json data-signals)))))))
 
 (deftest dollar-ref-builds-inline-expression-reference
   (testing ":kebab keeps the kebab keyword on the wire"

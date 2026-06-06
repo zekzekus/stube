@@ -15,10 +15,11 @@
 
   The cid only exists at request time, so the helpers consult a dynamic
   var bound by the http layer for the duration of a render."
-  (:require [clojure.string                :as string]
+  (:require [charred.api                    :as json]
+            [clojure.string                 :as string]
             [dev.onionpancakes.chassis.core :as chassis]
-            [dev.zeko.stube.conversation   :as conv]
-            [dev.zeko.stube.halos          :as halos])
+            [dev.zeko.stube.conversation    :as conv]
+            [dev.zeko.stube.halos           :as halos])
   (:import (java.net URLEncoder)))
 
 ;; ---------------------------------------------------------------------------
@@ -495,6 +496,11 @@
     (boolean? v)     (str v)
     :else            (pr-str v)))
 
+;; `behavior` accepts an optional `{:signal …}` and wire-cases the
+;; signal key; `signal-wire-name` is defined further down with the other
+;; signal helpers, so forward-declare it.
+(declare signal-wire-name)
+
 (defn behavior
   "Attach a client-side behavior to this element.
 
@@ -502,6 +508,19 @@
 
   Renders as `data-stube-behavior=\"notes/cm6-editor\"` plus one
   `data-stube-arg-<key>` attribute per entry in `args`.
+
+  The 4-arity takes an `opts` map.  `{:signal <signal-key>}` is sugar for
+  the common \"behavior writes one signal\" case (CodeMirror, a slider, a
+  rich-text widget): it stamps `data-stube-arg-signal=\"<wire-name>\"`
+  with the key wire-cased exactly as [[bind]] would, so the behavior
+  reads a stable `ctx.args.signal` and calls `ctx.setSignal(ctx.args.signal,
+  value)` without the host computing the wire name or threading it through
+  `args` by hand.  Pair it with a `(s/signal-mirror <signal-key>)` input
+  in scope (that hidden input is the public `data-bind` write seam; see
+  [[signal-mirror]]).  An `opts` `{:case …}` propagates to the wire-casing.
+
+      [:input (s/signal-mirror sig)]
+      [:div (s/behavior self :notes/cm6-editor {:content md} {:signal sig})]
 
   The behaviors bridge loaded with the shell discovers the attribute
   after each Datastar morph, lazy-imports the module at
@@ -546,8 +565,10 @@
   server's render tree, and [[on-unmount]] for one-off teardown that
   doesn't need the full behavior contract."
   ([self behavior-id]
-   (behavior self behavior-id {}))
+   (behavior self behavior-id {} {}))
   ([self behavior-id args]
+   (behavior self behavior-id args {}))
+  ([self behavior-id args opts]
    (let [iid  (require-instance-id! "dev.zeko.stube.render/behavior" self)
          slug (behavior-slug behavior-id)
          arg-attrs (into {}
@@ -559,9 +580,12 @@
          ;; the host pre-building an `event-url`.  Only possible inside a
          ;; render (when *cid* is bound); harmless to omit otherwise — the
          ;; bridge warns if a behavior calls dispatch without it.
-         base (when *cid* (path "/event/" *cid* "/" iid))]
+         base (when *cid* (path "/event/" *cid* "/" iid))
+         sig  (:signal opts)]
      (cond-> (assoc arg-attrs :data-stube-behavior slug)
-       base (assoc :data-stube-event-base base)))))
+       base (assoc :data-stube-event-base base)
+       sig  (assoc (behavior-arg-attr :signal)
+                   (behavior-arg-value (signal-wire-name sig opts)))))))
 
 (defn back-button
   "Return a small Hiccup button wired to the conversation-level `[:back]`
@@ -858,6 +882,47 @@
      (assoc (bind signal opts)
             :type "hidden"
             :data-stube-signal-mirror wire))))
+
+(defn signals
+  "Return an attribute map that seeds initial signal *values* on this
+  element's subtree: `{:data-signals \"<json>\"}` whose keys are wire-cased
+  via [[signal-wire-name]] so they match what [[bind]] / [[$]] / [[signal]]
+  emit and read.
+
+  [[bind]] wires a two-way binding but does not set the signal's starting
+  value; pair it with [[signals]] to seed one without hand-rolling the
+  JSON and the casing:
+
+      [:form (merge (s/signals {:create-title \"\" :create-slug \"\"})
+                    (s/on-target self :create))
+       [:input (merge {:name \"title\"} (s/bind :create-title))]]
+
+  Casing follows the same resolution as [[bind]] (per-call `{:case ...}`
+  → kernel-bound [[*signal-case*]] → `:kebab`).  Values must be
+  JSON-encodable."
+  ([signal-map] (signals signal-map nil))
+  ([signal-map opts]
+   {:data-signals
+    (json/write-json-str
+      (reduce-kv (fn [m k v] (assoc m (signal-wire-name k opts) v))
+                 {} signal-map))}))
+
+(defn local-signals
+  "Like [[signals]], but scopes each key to this component instance via
+  [[local-signal]], so two embedded copies of a component don't seed the
+  same page-global signal.  Pair with [[local-bind]] and a `:keep` of the
+  same logical keys:
+
+      :keep #{:edit-title :edit-markdown}
+      [:form (s/local-signals self {:edit-title title :edit-markdown md})
+       [:input (s/local-bind self :edit-title)]]
+
+  Casing follows the same resolution as [[bind]]."
+  ([self signal-map] (local-signals self signal-map nil))
+  ([self signal-map opts]
+   (signals (reduce-kv (fn [m k v] (assoc m (local-signal self k) v))
+                       {} signal-map)
+            opts)))
 
 ;; ---------------------------------------------------------------------------
 ;; Slots: rendering an embedded child inline

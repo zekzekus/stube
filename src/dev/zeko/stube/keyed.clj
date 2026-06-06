@@ -39,7 +39,12 @@
                                        (iid preserved, descendants rebuilt),
                                        emit `:outer`
                                        at the child iid.
-  - Same key, same embed args        → no fragment.
+  - Same key + args, different props → re-*render* the child in place
+                                       (state preserved, no `:init`),
+                                       emit `:outer` at the child iid.
+                                       See `:embed/props` on
+                                       `dev.zeko.stube.conversation/embed`.
+  - Same key, same embed             → no fragment.
   - Different order, same key-set    → emit one `:outer` against the
                                        whole container (cheaper than a
                                        parent re-render; still
@@ -105,7 +110,7 @@
       (let [cdef      (registry/lookup! (:instance/type child))
             render-fn (or (:component/render cdef)
                           frame/default-render)]
-        (cond-> (render-fn child)
+        (cond-> (render-fn (conv/merge-props child))
           (:conv/halos? conv) (halos/decorate-root child))))))
 
 ;; ---------------------------------------------------------------------------
@@ -191,6 +196,14 @@
 (defn- remove-frag [child-iid]
   (f/elements "" {:selector (str "#" child-iid) :patch-mode :remove}))
 
+(defn- props-only-change?
+  "True when `old-embed` and `new-embed` agree on identity (type + args)
+  but differ only in `:embed/props`.  Such a change re-renders the child
+  in place instead of re-initialising it."
+  [old-embed new-embed]
+  (and (= (dissoc old-embed :embed/props) (dissoc new-embed :embed/props))
+       (not= (:embed/props old-embed) (:embed/props new-embed))))
+
 (defn- diff [old-order new-pairs old-children]
   (let [new-keys     (mapv first new-pairs)
         new-embeds   (into {} new-pairs)
@@ -198,19 +211,25 @@
         new-key-set  (set new-keys)
         added        (filter (complement old-key-set) new-keys)
         removed      (remove new-key-set old-order)
-        changed-args (filter (fn [k]
+        changed      (filter (fn [k]
                                (and (old-key-set k)
                                     (not= (get-in old-children [k :embed])
                                           (get new-embeds k))))
                              new-keys)
+        props-only   (filter (fn [k]
+                               (props-only-change? (get-in old-children [k :embed])
+                                                   (get new-embeds k)))
+                             changed)
+        reinit       (remove (set props-only) changed)
         reorder?     (and (= old-key-set new-key-set)
                           (not= old-order new-keys))]
-    {:added        added
-     :removed      removed
-     :changed-args changed-args
-     :reorder?     reorder?
-     :new-keys     new-keys
-     :new-embeds   new-embeds}))
+    {:added      added
+     :removed    removed
+     :reinit     reinit
+     :props-only props-only
+     :reorder?   reorder?
+     :new-keys   new-keys
+     :new-embeds new-embeds}))
 
 (defn- update-slot-state [parent slot new-keys new-embeds child-iids]
   (let [children (into {} (map (fn [k]
@@ -244,6 +263,22 @@
         (let [[c'' frag] (render-child-outer c' iid)]
           [c'' (conj (into fs lifecycle-frags) frag)])
         [c' (into fs lifecycle-frags)]))))
+
+(defn- rerender-step
+  "Props-only change: update the live instance's `:instance/props` from
+  the new embed and re-render it in place — no `:stop`/`:init`, so the
+  child's own state (edit drafts, local signals) survives.  Emits an
+  `:outer` patch at the child iid when the parent is already rendered."
+  [rendered? new-embeds old-children]
+  (fn [[c fs] k]
+    (let [iid   (get-in old-children [k :iid])
+          props (:embed/props (get new-embeds k))
+          c'    (conv/put-instance
+                  c (assoc (conv/instance c iid) :instance/props props))]
+      (if rendered?
+        (let [[c'' frag] (render-child-outer c' iid)]
+          [c'' (conj fs frag)])
+        [c' fs]))))
 
 (defn- mint-step
   [run-effects-fn rendered? parent-id slot new-keys new-embeds]
@@ -279,7 +314,7 @@
         old-state    (get-in parent [:instance/keyed-slots slot])
         old-order    (vec (:order old-state))
         old-children (:children old-state)
-        {:keys [added removed changed-args reorder? new-keys new-embeds]}
+        {:keys [added removed reinit props-only reorder? new-keys new-embeds]}
         (diff old-order pairs old-children)
 
         ;; iids the new state inherits from the old (= preserved keys).
@@ -299,7 +334,12 @@
         (reduce (reinit-step run-effects-fn rendered? parent-id
                              new-embeds old-children)
                 [conv frags]
-                changed-args)
+                reinit)
+
+        [conv frags]
+        (reduce (rerender-step rendered? new-embeds old-children)
+                [conv frags]
+                props-only)
 
         [conv frags child-iids]
         (reduce (mint-step run-effects-fn rendered? parent-id slot
@@ -316,7 +356,8 @@
         ;; distinguishable in replay traces.
         [conv frags]
         (if (and reorder? rendered?
-                 (empty? added) (empty? removed) (empty? changed-args))
+                 (empty? added) (empty? removed)
+                 (empty? reinit) (empty? props-only))
           (let [[conv htmls]
                 (reduce (fn [[c hs] k]
                           (let [[c' html] (render-child-html c (get child-iids k))]

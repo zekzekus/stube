@@ -45,7 +45,9 @@
     :instance/keyed-slots
     :instance/slot
     :instance/previous
+    :instance/props
     :instance/last-html
+    :resume/context
     :stube/context})
 
 (defn user-state
