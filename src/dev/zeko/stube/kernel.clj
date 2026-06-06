@@ -404,14 +404,31 @@
                conv'          (conv/put-instance conv parent')
                [conv'' more]  (e/with-origin parent-id
                                 (run-effects conv' fx))
-               ;; If the resume produced no further element fragments,
-               ;; re-render the parent so its state changes are visible.
+               ;; Re-render the revealed parent.
                [conv-final extra]
-               (if (or (rendered-output? more)
-                       (nil? (conv/instance conv'' parent-id)))
-                 [conv'' []]
-                 (let [[c' f] (render-frame conv'' parent-id)]
-                   [c' [f]]))]
+               (let [parent-now (conv/instance conv'' parent-id)]
+                 (cond
+                   (nil? parent-now)
+                   [conv'' []]
+
+                   ;; A stack-call parent whose DOM was replaced by the
+                   ;; popped child (marked rendered?=false on pop) must be
+                   ;; repainted via root-inner *regardless* of the resume's
+                   ;; fragments — otherwise its UI stays orphaned under the
+                   ;; now-removed child.
+                   (not (:instance/rendered? parent-now))
+                   (let [[c' f] (render-frame conv'' parent-id)]
+                     [c' [f]])
+
+                   ;; Otherwise (slot answer, or call-in-slot reveal): only
+                   ;; re-render when the resume produced no element fragments
+                   ;; of its own, so its state change is still visible.
+                   (rendered-output? more)
+                   [conv'' []]
+
+                   :else
+                   (let [[c' f] (render-frame conv'' parent-id)]
+                     [c' [f]])))]
            [conv-final (into (vec extra) more)]))))))
 
 (defn- split-resume
@@ -451,6 +468,14 @@
          [conv-stopped stop-frags] (run-stop-hooks conv stop-iids)
          [conv' _popped] (conv/pop-top conv-stopped)
          parent-id       (conv/top-id conv')
+         ;; The popped frame was a stack `:call`: it rendered into the
+         ;; root selector on first paint, replacing the revealed parent's
+         ;; DOM.  Mark the parent unrendered so the reveal re-renders it
+         ;; via root-inner (morph-by-id would miss — its id is gone).
+         conv'           (cond-> conv'
+                           parent-id
+                           (assoc-in [:conv/instances parent-id
+                                      :instance/rendered?] false))
          conv'           (stash-resume-context conv' parent-id resume-ctx)
          [conv'' frags]  (resume-parent conv' parent-id resume-key value error?)
          conv''          (clear-resume-context conv'' parent-id)]

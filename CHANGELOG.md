@@ -5,7 +5,21 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Fixed
+
+- **Answering a stack `:call` now repaints the revealed parent.**  When a
+  component `s/call`s a child (a stack push — e.g. a full-screen
+  `defflow` wizard), the child renders into the root selector and
+  *replaces* the parent's DOM.  On `:answer` the child popped but the
+  kernel re-rendered the revealed parent with a plain morph-by-id patch,
+  which missed (the parent's id was no longer in the DOM) and left the
+  revealed UI orphaned.  The pop now marks the revealed parent
+  unrendered so its reveal repaint targets the root selector
+  (`:inner`), and `resume-parent` repaints a not-yet-rendered parent
+  *regardless* of any synchronous fragments the resume produced
+  (`s/patch`, `s/set-keyed-children`) — those previously short-circuited
+  the repaint via `rendered-output?`.  Surfaced by kasten's guided
+  first-note wizard (K6).
 
 ## 0.6.0
 

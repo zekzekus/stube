@@ -105,6 +105,49 @@
     (is (not (contains? parent :resume/context))
         ":resume/context is transient — stripped after the resume, never persisted")))
 
+(deftest answering-a-stack-call-repaints-the-revealed-parent
+  ;; Regression for the K6 wizard bug: a parent on the stack `:call`s a
+  ;; child (a `defflow` wizard), which renders into `#root` and *replaces*
+  ;; the parent's DOM.  When the child answers and pops, the parent's id is
+  ;; no longer in the DOM, so it must be repainted via root-inner (#root,
+  ;; :inner) — a plain morph-by-id render would miss and orphan the
+  ;; revealed UI.  Crucially this must hold *even when the resume produces
+  ;; its own synchronous fragments* (here an `s/patch`): the
+  ;; not-yet-rendered parent wins over the `rendered-output?` short-circuit
+  ;; that normally suppresses the auto-render.
+  (registry/register!
+    {:component/id     :t/wizard
+     :component/render (fn [s] [:div {:id (:instance/id s)} "wizard"])
+     :component/handle (fn [s _] [s [[:answer :ok]]])})
+  (registry/register!
+    {:component/id     :t/parent
+     :component/init   (constantly {})
+     :component/render (fn [self] [:div {:id (:instance/id self)} "parent"])
+     :component/handle (fn [self _]
+                         [self [[:call (conv/embed :t/wizard) :resume :on-done]]])
+     ;; The resume emits a synchronous :elements fragment of its own.
+     :on-done          (fn [self _]
+                         [self [(s/patch [:div#side "from-resume"])]])})
+  (let [[c0]       (run-boot :t/parent)
+        parent-iid (conv/top-id c0)
+        [c1 _]     (kernel/dispatch c0 {:instance-id parent-iid :event :go :signals {}})
+        wizard-iid (conv/top-id c1)
+        _          (is (not= parent-iid wizard-iid) "wizard pushed onto the stack")
+        [c2 frags] (kernel/dispatch c1 {:instance-id wizard-iid :event :ack :signals {}})]
+    (is (= [parent-iid] (:conv/stack c2)) "wizard popped, parent revealed")
+    (is (some (fn [f] (re-find #"from-resume" (str (:fragment/html f)))) frags)
+        "the resume's own patch fragment is still emitted")
+    (let [parent-frag (some (fn [f]
+                              (when (and (= :elements (:fragment/kind f))
+                                         (re-find #"parent" (str (:fragment/html f))))
+                                f))
+                            frags)]
+      (is (some? parent-frag)
+          "the revealed parent is repainted despite the resume's own fragments")
+      (is (= "#root" (get-in parent-frag [:fragment/opts :selector]))
+          "parent repaint targets #root (its old id is gone from the DOM)")
+      (is (= :inner (get-in parent-frag [:fragment/opts :patch-mode]))))))
+
 (deftest io-effect-runs-only-through-runtime-hook
   (let [calls (atom 0)
         thunk #(swap! calls inc)
