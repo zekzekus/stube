@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.8.0
+
 This pass is an API-ergonomics sweep — no breaking changes. The
 *Recommended adoption* notes below flag idioms that hosts (kasten
 today) should migrate to even though the old way still works.
