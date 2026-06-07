@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.8.1
+
 ### Added
 
 - **`s/dispatch-to-parent` — child→parent push sugar.**

@@ -20,7 +20,7 @@ project:
 
 | Target | Change |
 |---|---|
-| `deps.edn` | merges `dev.zeko/stube {:mvn/version "0.8.0"}` into `:deps` |
+| `deps.edn` | merges `dev.zeko/stube {:mvn/version "0.8.1"}` into `:deps` |
 | `resources/system.edn` | merges `:stube/kernel` and `:reitit.routes/stube` Integrant keys |
 | `src/clj/<proj>/core.clj` | appends requires for `dev.zeko.stube.kit` and `<proj>.stube` |
 | `src/clj/<proj>/stube.clj` | new file — a starter counter component |
