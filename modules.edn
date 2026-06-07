@@ -1,0 +1,24 @@
+;; Kit module registry.
+;;
+;; This file lets the stube git repository double as a kit-clj module
+;; repository.  Point a Kit project's `kit.edn` at this repo:
+;;
+;;     :modules
+;;     {:root "modules"
+;;      :repositories
+;;      [{:url  "https://github.com/kit-clj/modules.git" :tag "master" :name "kit-modules"}
+;;       {:url  "https://github.com/zekzekus/stube.git"  :tag "master" :name "stube"}]}
+;;
+;; then from the REPL:
+;;
+;;     (kit/sync-modules)
+;;     (kit/install-module :stube/kernel)
+;;
+;; Kit clones this repo to `modules/stube/` and resolves each module's
+;; `:path` relative to that directory, so the module assets live under
+;; `kit/stube/` (see docs/kit-module.md for the full walkthrough).
+{:name "stube-modules"
+ :modules
+ {:stube/kernel
+  {:path "kit/stube"
+   :doc  "embeds a stube (Datastar) widget — kernel, Reitit routes, and a starter component mounted at /stube"}}}

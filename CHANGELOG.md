@@ -5,7 +5,17 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Added
+
+- **Kit module (`:stube/kernel`).**  The repo now doubles as a kit-clj
+  module repository: a root `modules.edn` plus the module under
+  `kit/stube/`.  A Kit project that points its `kit.edn` at this repo
+  can run `(kit/install-module :stube/kernel)` to merge `dev.zeko/stube`
+  into `deps.edn`, add the `:stube/kernel` / `:reitit.routes/stube`
+  Integrant keys to `system.edn`, require the adapter and a generated
+  starter component from `core.clj`, and serve a working counter at
+  `/stube` — all reversible with `(kit/remove-module :stube/kernel)`.
+  Documented in [`docs/kit-module.md`](docs/kit-module.md).
 
 ## 0.6.1
 

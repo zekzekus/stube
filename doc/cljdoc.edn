@@ -3,6 +3,7 @@
   ["Tutorial"      {:file "docs/tutorial.md"}]
   ["API reference" {:file "docs/api.md"}]
   ["Internals"     {:file "docs/internals.md"}]
+  ["Kit module"    {:file "docs/kit-module.md"}]
   ["Rationale"     {:file "docs/rationale.md"}]
   ["Changelog"     {:file "CHANGELOG.md"}]
   ["Architecture decisions"

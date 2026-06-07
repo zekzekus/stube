@@ -1,0 +1,55 @@
+;; stube Kit module — `:stube/kernel`.
+;;
+;; Installed with `(kit/install-module :stube/kernel)`.  It wires an
+;; embedded stube runtime into a kit-clj / Integrant system:
+;;
+;;   * adds `dev.zeko/stube` to deps.edn
+;;   * adds `:stube/kernel` and `:reitit.routes/stube` to system.edn
+;;   * requires the Integrant adapter + a starter component from core.clj
+;;   * drops a starter component namespace into the project
+;;
+;; stube's `dev.zeko.stube.kit` adapter supplies the Integrant
+;; multimethods for both keys, and `make-kernel` defaults are sane
+;; (cookie-based sessions, nil app context), so the only configuration
+;; the module injects is the URL prefix and the page mount.
+;;
+;; `<<ns-name>>`, `<<sanitized>>` and `<<name>>` are filled in by Kit's
+;; Selmer renderer from the target project's kit.edn.
+{:default
+ {:require-restart? true
+  :success-message  "stube installed. Restart the REPL, run (go), and open http://localhost:3000/stube"
+  :actions
+  {:assets
+   [["assets/src/stube.clj" "src/clj/<<sanitized>>/stube.clj"]]
+
+   :injections
+   [;; 1. Library dependency.
+    {:type   :edn
+     :path   "deps.edn"
+     :target [:deps]
+     :action :merge
+     :value  {dev.zeko/stube {:mvn/version "0.6.1"}}}
+
+    ;; 2. Integrant system: an isolated kernel plus its Reitit routes.
+    ;;    `:base-path` prefixes the generated SSE/asset/event URLs;
+    ;;    `:mounts` maps a page path to a registered root component id,
+    ;;    so GET /stube serves a full stube shell out of the box.
+    {:type   :edn
+     :path   "resources/system.edn"
+     :target []
+     :action :merge
+     :value  {:stube/kernel
+              {:base-path "/stube"}
+
+              :reitit.routes/stube
+              {:kernel #ig/ref :stube/kernel
+               :mounts {"/stube" :<<name>>/counter}}}}
+
+    ;; 3. Load the adapter (registers the Integrant multimethods) and
+    ;;    the starter component namespace (registers the component) so
+    ;;    both are in place before `ig/init` runs.
+    {:type   :clj
+     :path   "src/clj/<<sanitized>>/core.clj"
+     :action :append-requires
+     :value  ["[dev.zeko.stube.kit]"
+              "[<<ns-name>>.stube]"]}]}}}

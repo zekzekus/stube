@@ -73,6 +73,7 @@ Seaside model, rebuilt for 2026.
 | [**Tutorial**](docs/tutorial.md) | Build a real app, step by step. Start here. |
 | [**API reference**](docs/api.md) | Every public function in `dev.zeko.stube.core`. |
 | [**Internals**](docs/internals.md) | How the kernel, conversation and effects fit together. |
+| [**Kit module**](docs/kit-module.md) | Add stube to a kit-clj app with `kit/install-module`. |
 | [**Rationale**](docs/rationale.md) | Why stube exists. Seaside, the uncommon web, and where the model came from. |
 | [**Changelog**](CHANGELOG.md) | Big-rock changes by release/development pass. |
 
@@ -171,9 +172,14 @@ for a worked example.
 
 ### kit-clj / Integrant
 
-Already on [kit-clj](https://kit-clj.github.io/)?  Three lines in
-`system.edn` and your project mounts a stube widget alongside the rest
-of your routes:
+Already on [kit-clj](https://kit-clj.github.io/)?  The fastest path is
+the **Kit module**: point your project's `kit.edn` at this repo and run
+`(kit/install-module :stube/kernel)` to add a working stube widget — and
+remove it just as cleanly.  See [`docs/kit-module.md`](docs/kit-module.md)
+for the full walkthrough.
+
+Prefer to wire it by hand?  Three lines in `system.edn` and your project
+mounts a stube widget alongside the rest of your routes:
 
 ```clojure
 ;; system.edn

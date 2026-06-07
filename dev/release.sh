@@ -4,7 +4,8 @@
 # Sequence (every step exits non-zero on first failure):
 #   1. sanity-check args, env, working copy, CHANGELOG draft
 #   2. run the full test suite
-#   3. bump the version in build.clj, README.md, docs/tutorial.md;
+#   3. bump the version in build.clj, README.md, docs/tutorial.md,
+#      docs/kit-module.md and the Kit module's kit/stube/config.edn;
 #      rename `## Unreleased` in CHANGELOG.md to `## VERSION` and
 #      restore a fresh `## Unreleased` placeholder above it
 #   4. describe the commit, advance master, start a fresh working copy
@@ -70,8 +71,12 @@ echo "→ bumping version to $VERSION"
 # the string literal is preserved verbatim (build.clj uses several
 # spaces for alignment).
 sed -i -E 's/(\(def version[[:space:]]+")[^"]+"/\1'"$VERSION"'"/' build.clj
+# `dev.zeko/stube {:mvn/version "x.y.z"}` appears in the prose docs and
+# in the Kit module config the generator injects into a consumer's
+# deps.edn — all must track build.clj.  Each file has a single such
+# coordinate, so the non-global sed (first match per line) is enough.
 sed -i -E 's/(\{:mvn\/version[[:space:]]+")[^"]+"/\1'"$VERSION"'"/' \
-  README.md docs/tutorial.md
+  README.md docs/tutorial.md docs/kit-module.md kit/stube/config.edn
 
 echo "→ promoting CHANGELOG.md ## Unreleased to ## $VERSION"
 # Rewrite the first `## Unreleased` heading to `## VERSION` and
