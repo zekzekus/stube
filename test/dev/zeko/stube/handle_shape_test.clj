@@ -81,11 +81,20 @@
   (is (thrown-with-msg? clojure.lang.ExceptionInfo
                         #"unwrapped effect"
                         (lifecycle/coerce-return {} (s/answer :ok))))
+  ;; The symmetric slip — a bare effect in the pair's effects slot
+  ;; (`[self [:answer :ok]]` instead of `[self [(s/answer :ok)]]`) — is
+  ;; caught too.
+  (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                        #"effects slot holds a single unwrapped effect"
+                        (lifecycle/coerce-return {} [{:n 1} (s/answer :ok)])))
   ;; The valid shapes are unaffected: a wrapped single effect, a
-  ;; canonical pair, a bare map, and nil all pass straight through.
-  (is (= [{} [[:answer :ok]]] (lifecycle/coerce-return {} [(s/answer :ok)])))
-  (is (= [{:n 1} []]          (lifecycle/coerce-return {} {:n 1})))
-  (is (= [{} []]              (lifecycle/coerce-return {} nil)))
+  ;; canonical pair, an empty-effects pair, a bare map, and nil all pass
+  ;; straight through.
+  (is (= [{} [[:answer :ok]]]   (lifecycle/coerce-return {} [(s/answer :ok)])))
+  (is (= [{:n 1} [[:answer :ok]]] (lifecycle/coerce-return {} [{:n 1} [(s/answer :ok)]])))
+  (is (= [{:n 1} []]            (lifecycle/coerce-return {} [{:n 1} []])))
+  (is (= [{:n 1} []]            (lifecycle/coerce-return {} {:n 1})))
+  (is (= [{} []]                (lifecycle/coerce-return {} nil)))
   ;; And it still works end-to-end through dispatch.
   (registry/register!
     {:component/id     :t/leaf

@@ -26,13 +26,15 @@
   `[(s/answer :ok)]` directly when one side of the pair would be
   ceremony; the original `[self' effects]` form keeps working.
 
-  A bare, *unwrapped* single effect — `(s/answer :ok)`, which is the
-  vector `[:answer :ok]` — is a common mistake: it looks like it should
-  work but would be folded as the two-effect vector `[:answer :ok]`
-  (op `:answer`, then op `:ok`).  We detect the tell (a vector whose
-  first element is a keyword — a valid effects vector always holds
-  *effect vectors*, never keywords) and throw a guiding error instead
-  of misbehaving silently.  Wrap it: `[(s/answer :ok)]`."
+  Two unwrapped-effect mistakes are caught with a guiding error rather
+  than misbehaving silently, since a valid effects vector always holds
+  *effect vectors*, never bare keywords:
+
+      (s/answer :ok)          ; a bare effect, i.e. [:answer :ok]
+      [self (s/answer :ok)]   ; effect not wrapped in the pair's vec
+
+  Both would otherwise fold `:answer` and `:ok` as two bogus ops.  Wrap
+  the effect: `[(s/answer :ok)]` or `[self [(s/answer :ok)]]`."
   [self result]
   (cond
     (nil? result)
@@ -41,8 +43,19 @@
     (map? result)
     [result []]
 
+    ;; Canonical pair `[self effects]` — but guard the common slip of
+    ;; putting a bare effect in the effects slot (`[self [:answer :ok]]`)
+    ;; instead of a vector of effects (`[self [(s/answer :ok)]]`).
     (and (vector? result) (= 2 (count result)) (map? (first result)))
-    result
+    (if (keyword? (first (second result)))
+      (throw (ex-info
+               (str "stube handler/hook returned a [self effects] pair whose "
+                    "effects slot holds a single unwrapped effect: "
+                    (pr-str (second result)) ". The effects slot is a vector "
+                    "*of* effects — wrap it as [(... )], e.g. [self ["
+                    (pr-str (second result)) "]].")
+               {:result result}))
+      result)
 
     (and (vector? result) (keyword? (first result)))
     (throw (ex-info

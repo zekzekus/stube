@@ -38,13 +38,15 @@ today) should migrate to even though the old way still works.
 ### Changed
 
 - **Clearer error for an unwrapped single effect.**  A handler or
-  lifecycle hook that returns a bare effect — `(s/answer :ok)`, i.e.
-  the vector `[:answer :ok]` — instead of wrapping it (`[(s/answer :ok)]`)
-  now throws a guiding `ex-info` at the kernel boundary
-  (`lifecycle/coerce-return`) instead of silently folding `:answer` and
-  `:ok` as two bogus ops.  This is not a breaking change: that shape
-  never worked correctly.  The four valid return shapes — `self`,
-  `[self effects]`, a bare effects *vector*, and `nil` — are unchanged.
+  lifecycle hook that returns a bare effect now throws a guiding
+  `ex-info` at the kernel boundary (`lifecycle/coerce-return`) instead
+  of silently folding the effect's op and argument as two bogus ops.
+  Both slips are caught: `(s/answer :ok)` returned alone (should be
+  `[(s/answer :ok)]`) and `[self (s/answer :ok)]` with the effect not
+  wrapped in the pair's effects vector (should be `[self [(s/answer :ok)]]`).
+  This is not a breaking change: neither shape ever worked correctly.
+  The four valid return shapes — `self`, `[self effects]`, a bare
+  effects *vector*, and `nil` — are unchanged.
 
 ### Documentation
 
