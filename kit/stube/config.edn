@@ -28,7 +28,7 @@
      :path   "deps.edn"
      :target [:deps]
      :action :merge
-     :value  {dev.zeko/stube {:mvn/version "0.6.1"}}}
+     :value  {dev.zeko/stube {:mvn/version "0.7.0"}}}
 
     ;; 2. Integrant system: an isolated kernel plus its Reitit routes.
     ;;    `:base-path` prefixes the generated SSE/asset/event URLs;

@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.7.0
+
 ### Added
 
 - **Kit module (`:stube/kernel`).**  The repo now doubles as a kit-clj
