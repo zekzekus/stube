@@ -278,6 +278,46 @@ scripts, Datastar, and optional halos tooling with the right
   (stube/shell-for stube-kernel cid)]]
 ```
 
+#### Rendering `head-tags` through hiccup2 / rum / reagent
+
+`head-tags` (and `shell-for`) return Hiccup whose inline `<script>` /
+`<style>` bodies are chassis `RawString` values. Chassis — stube's own
+renderer — serializes those verbatim, so under `start!` or the stock
+shell there is nothing to do. But a host that serializes through a
+**different** renderer (hiccup2, rum, reagent SSR) won't recognize the
+chassis marker and will HTML-escape those bodies, so your inline
+scripts arrive as `&quot;…` and fail to parse.
+
+Re-wrap chassis `RawString` in your renderer's own raw primitive before
+emitting. For hiccup2:
+
+```clojure
+(require '[hiccup2.core :as h])
+
+(defn- chassis-raw? [x]
+  ;; chassis arrives transitively via stube — resolve the class by name
+  ;; so you don't have to add chassis as a direct dependency.
+  (= "dev.onionpancakes.chassis.core.RawString"
+     (some-> x class .getName)))
+
+(defn chassis->hiccup-raw
+  "Recursively re-wrap chassis RawString nodes as hiccup2 raw strings."
+  [node]
+  (cond
+    (chassis-raw? node) (h/raw (str node))
+    (vector? node)      (mapv chassis->hiccup-raw node)
+    (sequential? node)  (map chassis->hiccup-raw node)
+    :else               node))
+
+;; …then walk head-tags before splicing it into your <head>:
+(into [:head [:title "Host app"]]
+      (map chassis->hiccup-raw (stube/head-tags stube-kernel)))
+```
+
+rum / reagent hosts do the same with their own raw wrapper. (This is
+the one boundary a non-chassis embedder has to bridge; everything else
+in `head-tags` is plain Hiccup.)
+
 If you run your own Idiomorph bridge outside Datastar, use the same
 `data-stube-preserve` marker and merge attributes before telling
 Idiomorph to skip the subtree:
