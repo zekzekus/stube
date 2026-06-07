@@ -80,13 +80,16 @@ These come up periodically. Each has a working path today; don't add
 the framework feature unless the documented alternative proves
 insufficient under real load.
 
-- **Signal-name registry / scoped indicator helper.** The casing
-  problem itself landed in `Unreleased` (kernel-level `:signal-case`
+- **Signal-name registry (component-level `:signals` declaration).**
+  The casing problem itself landed earlier (kernel-level `:signal-case`
   plus `s/$` / `s/signal` / `s/signal-wire-name` helpers — see
-  `kasten/stube_notes.md §3`). What stays parked is the broader
-  registry: a single declaration of every signal a component owns,
-  with init defaults, and scoped indicator names. That's an
-  app-architecture pattern, not a framework one — apps that want it
+  `kasten/stube_notes.md §3`), and the per-element seed/bind/indicator
+  helpers are all shipped: `s/signals` / `s/local-signals` (seed),
+  `s/bind` / `s/local-bind`, and the indicator twins `s/indicator`
+  (page-global) + `s/local-indicator` (per-instance). What stays parked
+  is only the broader *registry*: a single component-level declaration
+  of every signal it owns, with init defaults and auto-`:keep`. That's
+  an app-architecture pattern, not a framework one — apps that want it
   can keep their own map. Kasten — the only host that built such a
   registry — is now shrinking it, so the second datapoint is moving
   away, not closer. Revisit only if a second host independently

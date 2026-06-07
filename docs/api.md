@@ -615,6 +615,13 @@ expression.
 
 ## Client-side seam
 
+> **New to stube? Skip this section on a first read.** The everyday
+> render helpers — `s/bind`, `s/signals`, `s/render-slot`,
+> `s/keyed-children` — live under [More Hiccup
+> helpers](#more-hiccup-helpers) just below. You only need the
+> client-side seam when a component embeds third-party in-browser JS
+> (a code editor, a chart, drag-and-drop). Come back when you hit that.
+
 Most stube components render purely from the server: SSE patches morph
 the DOM, Datastar wires events back. When a feature genuinely needs
 in-browser JS — a code-editor, a drag-and-drop list, a chart, an
@@ -1246,6 +1253,31 @@ instead of the default container id. The effect flags stay separate by
 design: `:rerender-parent?` *alone* (parent morph paints the children)
 is a valid simpler mode, so `:emit-per-child?` is never implied.
 
+> **Recipe — a re-rendering parent that wraps a keyed slot.** This is
+> the one combination worth memorising as a unit. Three pieces must
+> agree, plus one invariant:
+>
+> 1. **Render** the container with preserve:
+>    `(s/keyed-children self slot {:preserve true})`.
+> 2. **Reconcile** with both flags:
+>    `(s/set-keyed-children slot pairs {:rerender-parent? true :emit-per-child? true})`.
+> 3. **Read** the slot in the parent's `:render` (the count/empty-state
+>    that motivated `:rerender-parent?` in the first place).
+> 4. **Invariant — keep the container permanently mounted.** The
+>    preserved container element must be present in *every* parent
+>    render, including the empty state. If the parent omits it when the
+>    collection is empty and adds it back when populated, the morph that
+>    re-creates the container races the per-child `:elements` patches and
+>    you get a phantom duplicate child. Render the container
+>    unconditionally (an empty keyed slot renders as an empty `<div>`)
+>    and toggle a wrapper class for the empty-state styling instead of
+>    toggling the container's existence.
+>
+> If you *don't* preserve the container (the simpler mode), use
+> `{:rerender-parent? true}` alone and drop pieces 1, 2's
+> `:emit-per-child?`, and 4 — the parent morph paints the children
+> directly.
+
 **Dev-mode staleness nudge.** Forgetting `:rerender-parent?` on a
 parent that *does* show slot-derived state (an open-column count, an
 empty-state toggle) is an easy footgun — the children update but the
@@ -1867,8 +1899,28 @@ dynamic vars the http layer binds during normal dispatch:
 Use this when the components under test call `(s/app)` or
 `(s/principal)` from `:render` / `:handle` — those return nil under
 pure replay otherwise.  Equivalent to wrapping the call in
-[[with-app]] / [[with-principal]] but a single line of test code.
-The bindings are torn down when `replay` returns.
+`s/with-app` / `s/with-principal` (below) but a single line of test
+code. The bindings are torn down when `replay` returns.
+
+### `(s/with-app app-value & body)` / `(s/with-principal principal-value & body)`
+
+Test-only macros that bind the same dynamic vars the http runtime
+binds during dispatch, so component code calling `(s/app)` or
+`(s/principal)` sees a stand-in instead of nil under pure
+`replay` / `dispatch`:
+
+```clojure
+(s/with-app {:db stub-conn}
+  (s/replay :my/component events))
+
+(s/with-principal {:user-id 42}
+  (is (= … (-> (s/replay :acct/page []) first …))))
+```
+
+The 3-arg `replay` opts map (`{:app … :principal …}`, above) is the
+one-liner form; reach for these macros when several `replay` /
+`dispatch` calls in a test share the same stand-in, or when you exercise
+a component's render fn directly outside `replay`.
 
 ---
 
@@ -1932,6 +1984,8 @@ for the EDN-clean shape.
 (s/on self :click :as [:pick id])
 (s/on-target parent-iid :click :as [:pick id])
 (s/bind :draft)                (s/local-bind self :text)
+(s/signals {:draft ""})        (s/local-signals self {:text t})  ; seed values
+(s/indicator :saving)          (s/local-indicator self :saving)  ; data-indicator
 (s/behavior self :ns/name {:k v})                ; attach a client-side behavior
 (s/preserve self :widget)      (s/on-mount   self :widget "mount(el)")
                                (s/on-unmount self :widget "el.cm?.destroy()")

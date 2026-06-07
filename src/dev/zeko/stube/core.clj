@@ -337,7 +337,13 @@
   slot — it removes the hand-rolled wrapper element, marker attribute,
   and invented preserve key the host would otherwise coordinate.  Pass
   a string to set an explicit preserve key instead of the default
-  container id."
+  container id.
+
+  Invariant for the preserved pairing: render this container in *every*
+  parent render, including the empty state (an empty slot renders as an
+  empty `<div>`).  Toggling its existence between empty and populated
+  races the per-child patches and yields a phantom duplicate child — see
+  the keyed-children recipe in `docs/api.md`."
   ([self slot] (keyed-children self slot nil))
   ([self slot opts]
    (let [cid      (keyed/container-id (:instance/id self) slot)
