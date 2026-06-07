@@ -91,3 +91,14 @@
     (let [eff (s/dispatch-to "ix-007" [:open :a])]
       (is (= "ix-007" (e/dispatch-to-iid eff)))
       (is (= [:open :a] (e/dispatch-to-event eff))))))
+
+(deftest dispatch-to-parent-targets-self-parent
+  (testing "routes to :instance/parent, same wire shape as dispatch-to"
+    (is (= [:dispatch-to "ix-parent" [:open 42]]
+           (s/dispatch-to-parent {:instance/id "ix-child"
+                                  :instance/parent "ix-parent"}
+                                 [:open 42]))))
+  (testing "throws a clear message when self has no parent"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"requires self to have :instance/parent"
+                          (s/dispatch-to-parent {:instance/id "ix-root"} :open)))))

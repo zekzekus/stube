@@ -43,17 +43,6 @@ build. Don't build any of them without an example that demonstrably
 needs the primitive — speculative API is the largest source of
 framework cruft.
 
-- [ ] **`[:notify-parent k value]`.** A child pushing data to its
-      parent without unmounting. Today the only child→parent channel
-      is `:answer`, which pops. Three example workloads have come and
-      gone (chat, shared-counter, paginated-list) without anyone
-      reaching for it; pub/sub or `render-slot` always covered the
-      need. If a real demo wants it, the kernel addition is small —
-      one new effect that looks up the parent through `:instance/parent`
-      and routes the value through a named resume key without
-      touching the call stack.
-      [carried §2]
-
 - [ ] **`:rebuild-children` effect for lazy / conditional slots.**
       `:children` materialises eagerly at instantiation. A slot whose
       embed-spec needs to change in response to later state currently
@@ -63,6 +52,16 @@ framework cruft.
       the gap for "the shape of the tree depends on conversation
       state at runtime."
       [carried §2]
+
+      Kasten evaluated (2026-06) and does **not** demonstrate this gap:
+      its reading stack is homogeneous (`keyed-children`), its overlays
+      are transient call/answer (`call-in-slot`), the topbar "swap" is
+      separate siblings toggled by flags, and the about page is a
+      distinct component id. The missing shape — a long-lived named slot
+      whose component *type* changes in place while siblings keep local
+      state — never arises (kasten has one note kind). Stay parked until
+      a host shows a heterogeneous, state-bearing detail slot that is
+      neither a keyed collection nor a call-in-slot overlay.
 
 - [x] **`[:answer-error e]` + `:on-error` resume.** Shipped under S-14
       (issue #25) for the 0.1.3 / round-2 kasten-migration sweep.
@@ -94,6 +93,19 @@ insufficient under real load.
   registry — is now shrinking it, so the second datapoint is moving
   away, not closer. Revisit only if a second host independently
   re-invents the registry shape under real load.
+
+- **`[:notify-parent k value]` — child→parent push without unmounting.**
+  Resolved: the framework already covers it. `s/dispatch-to (:instance/parent
+  self) [k value]` delivers a payload to the parent's `:handle` without
+  popping the child, and kasten uses exactly this at 6+ sites
+  (`search`→`:open-from-search`, `note-column`/`ledger`→`:delete` /
+  `:open-create` / refresh). For one→many there's `s/publish-local!`; for
+  click-driven controls there's `s/on-parent`. The only thing a dedicated
+  effect would add is routing to a *resume key* rather than `:handle`, and
+  no host has wanted that. The lone residual friction — threading
+  `(:instance/parent self)` by hand through those `dispatch-to` calls —
+  was closed by the `s/dispatch-to-parent` sugar (mirrors `s/on-parent`).
+  Don't add `notify-parent`.
 
 - **`try` / `catch` across `s/await` in `defflow`.** Cloroutine
   restricts forms across yield points, and we never spiked the exact

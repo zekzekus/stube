@@ -5,7 +5,20 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Added
+
+- **`s/dispatch-to-parent` — child→parent push sugar.**
+  `(s/dispatch-to-parent self route-event)` is sugar for
+  `(s/dispatch-to (:instance/parent self) route-event)`, so a child can
+  route a programmatic notification up to its parent without threading
+  `:instance/parent` through every call site. It's the handler-side
+  companion to `s/on-parent` (which sugars the same for DOM-event
+  controls). Throws if `self` has no parent. Evidence-backed: kasten
+  threaded `(:instance/parent self)` by hand through 6+ `dispatch-to`
+  calls.
+
+  *Recommended adoption:* replace `(s/dispatch-to (:instance/parent self)
+  …)` with `(s/dispatch-to-parent self …)`.
 
 ## 0.8.0
 

@@ -336,6 +336,14 @@ target's `:handle` exactly as if a button wired with
              (s/dispatch-to (:instance/parent self) [:open payload])])))
 ```
 
+For the common parent case, `(s/dispatch-to-parent self route-event)`
+is sugar for `(s/dispatch-to (:instance/parent self) route-event)` —
+so the child→parent push above reads `(s/dispatch-to-parent self [:open
+payload])` without reaching into the instance map. It's the
+handler-side companion to `s/on-parent`, which does the same for
+DOM-event-driven controls. Throws if `self` has no parent (a root
+frame).
+
 Why an effect instead of a synchronous function call? The runtime
 schedules the dispatch on a background thread so the current handler
 completes first; this keeps the per-cid lock non-reentrant and avoids
@@ -348,10 +356,11 @@ Pick the right tool:
 - `s/answer` — pop this frame and deliver a value up the call stack.
   The cleanest answer-up channel; use it when the caller `(s/call …)`-ed
   this frame and is waiting for the result.
-- `s/dispatch-to` — notify a *known* peer (parent or sibling) in the
-  same conversation without unmounting. Use [`s/child-iid`](#schild-iid-self-slot-key)
-  to find the iid of a fixed slot child, `:instance/parent` for the
-  parent.
+- `s/dispatch-to` / `s/dispatch-to-parent` — notify a *known* peer
+  (parent or sibling) in the same conversation without unmounting. Use
+  [`s/child-iid`](#schild-iid-self-slot-key) to find the iid of a fixed
+  slot child; `s/dispatch-to-parent self …` for the parent (or
+  `:instance/parent` with the bare `s/dispatch-to`).
 - `s/publish-local!` — notify zero-or-many anonymous peers in the same
   conversation; the sender does not know (or care) who is listening.
 - `s/publish!` — like the local form, but every subscriber of `topic`

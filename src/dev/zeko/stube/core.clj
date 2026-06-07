@@ -588,6 +588,29 @@
   [target route-event]
   (effects/dispatch-to (target->iid target) route-event))
 
+(defn dispatch-to-parent
+  "Effect: like [[dispatch-to]], but delivers `route-event` to `self`'s
+  parent instance.
+
+      [self [(s/dispatch-to-parent self [:open note-id])]]
+
+  Equivalent to `(s/dispatch-to (:instance/parent self) route-event)`,
+  but the public name lets a child route a programmatic notification up
+  to its parent without threading the instance-map's `:instance/parent`
+  through every call site — the child→parent *push* pattern (a column
+  telling its desk a note was deleted, a search row asking the shell to
+  open a result). This is the handler-side companion to [[on-parent]],
+  which does the same for DOM-event-driven controls rendered inside a
+  child.
+
+  Throws if `self` has no `:instance/parent` (a root frame, or `self`
+  was not threaded through from a handler/render)."
+  [self route-event]
+  (let [parent (or (:instance/parent self)
+                   (throw (ex-info "stube dispatch-to-parent requires self to have :instance/parent"
+                                   {:got self})))]
+    (dispatch-to parent route-event)))
+
 (defalias publish! server/publish!
   "Publish `msg` to every live instance subscribed to `topic`.
   Delivery is asynchronous and cid/iid-scoped; stale subscribers are
