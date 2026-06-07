@@ -79,8 +79,9 @@ Recognised keys:
 | `:url` | `(fn [self] url-string-or-[op url]-or-nil)` | pure projection of state to the browser URL — see [URL as a projection of state](#url-as-a-projection-of-state) |
 
 **Colocated keys are a closed set.** `:init`, `:render`, `:handle`,
-`:keep`, `:doc`, `:state`, `:start`, `:stop`, `:wakeup`, `:children`
-and `:url` are lifted to `:component/<name>` at registration. Resume
+`:keep`, `:doc`, `:state`, `:start`, `:stop`, `:wakeup`, `:children`,
+`:url`, `:styles` and `:modules` are lifted to `:component/<name>` at
+registration. Resume
 keys (`:on-foo`, `:on-error-foo`, …) are open — authors invent them
 per call site, and the kernel looks them up by exact name with no
 namespacing. Declaring both `:foo` and `:component/foo` for a
@@ -370,6 +371,11 @@ Like `s/publish!` but only delivers to subscribers in the **current
 conversation** — every other conversation's subscribers on the same
 topic stay silent. Reads the active cid from the runtime binding;
 throws when called outside a dispatch/render context.
+
+Note the scope: `-local!` here means *this conversation* (one browser
+tab), which is **wider** than the per-instance scope of the `local-*`
+signal helpers. See "Signal helpers at a glance" for the full scope
+ladder.
 
 Use this for parent/child or sibling channels that must not leak
 across browser tabs or users — for example, a notes shell that
@@ -937,6 +943,35 @@ render fn.
 
 ## More Hiccup helpers
 
+### Signal helpers at a glance
+
+Every signal helper comes in a **page-global** form and a
+per-component-**instance** `local-*` form. The local form suffixes the
+wire name with the instance id so two embedded copies of a component
+don't collide on one page-global signal; pick it whenever the same
+logical signal name could appear twice on a page.
+
+| do this | global | instance-local |
+|---|---|---|
+| seed a starting value | `s/signals` | `s/local-signals` |
+| two-way bind an input | `s/bind` | `s/local-bind` |
+| read a posted value in `:handle` | `s/signal` | read `self` (lifted by `:keep`) |
+| inline `$ref` for an expression | `s/$` | `s/local-signal-ref` |
+| `data-indicator` while in-flight | `s/indicator` | `s/local-indicator` |
+| hidden write seam for a behavior | `s/signal-mirror` | — |
+
+> **"local" here means one component instance.** It is a *narrower*
+> scope than the conversation-scoped `s/publish-local!` (which means
+> "this browser tab's conversation"). The scope ladder, narrowest
+> first: **instance** (`local-*` signal helpers, `s/dispatch-to`) →
+> **conversation** (`s/publish-local!`) → **kernel/global**
+> (`s/publish!`, plain signal helpers).
+
+> **`s/signal` (singular) reads; `s/signals` (plural) seeds.** Easy to
+> swap: `(s/signal event :k)` pulls one posted value *off an event* in
+> `:handle`; `(s/signals {…})` returns `data-signals` attrs that *write*
+> starting values onto an element. Read vs. write, event vs. attrs.
+
 ### `(s/bind signal)` / `(s/bind signal {:case …})`
 
 Two-way binding for an input. Datastar updates the signal
@@ -1003,6 +1038,25 @@ Datastar writes `true` to the per-instance signal while the
 round-trip is in flight and `false` when it completes.  Both helpers
 accept the same `{:case …}` opt as `bind` and follow the kernel-bound
 casing default.
+
+### `(s/indicator signal)` / `(s/indicator signal {:case …})`
+
+The page-global counterpart to `s/local-indicator`. Returns attrs that
+mount Datastar's `data-indicator:<signal>` on an element bound to a
+*page-global* signal — use it for top-bar / one-off action buttons
+where there is only one instance, and reach for `s/local-indicator`
+when two embedded copies must not share indicator state. Pair with
+`s/$` (not `s/local-signal-ref`) for the matching `data-show`:
+
+```clojure
+[:button (merge (s/on self :click :as :reload)
+                (s/indicator :reload-loading))
+ "Reload"]
+[:span {:data-show (s/$ :reload-loading)} "⏳"]
+```
+
+This replaces the `{:data-indicator (s/signal-wire-name :reload-loading)}`
++ hand-built spinner pairing hosts used to write by hand.
 
 ### `(s/signal-mirror signal)` / `(s/signal-mirror signal {:case …})`
 
@@ -1585,13 +1639,28 @@ stylesheet convention and the `:modules` declaration on
 `defcomponent` are the preferred seams.  Reach for these when the
 component-scoped placement isn't expressive enough.
 
-**Renderer constraint.** `embed/head-tags` returns a Hiccup tree
-whose `<script>` / `<style>` bodies (`:eager-scripts`, inline
-`:styles`) are wrapped in chassis `RawString`. Hosts that render
-through chassis get the bodies emitted verbatim. Hosts that render
-through hiccup2 / rum / reagent SSR must re-wrap those instances in
-their own raw primitive before emitting, or the bodies are
+**Renderer constraint.** `embed/head-tags` (and `shell-for` /
+`rendered-shell-for!`) return a Hiccup tree whose `<script>` /
+`<style>` bodies (`:eager-scripts`, inline `:styles`) are wrapped in
+chassis `RawString`. Hosts that render through chassis (`start!` or the
+stock shell) get the bodies emitted verbatim and need do nothing. Hosts
+that render through **hiccup2 / rum / reagent SSR** must re-wrap those
+instances in their own raw primitive before emitting, or the bodies are
 HTML-escaped and inline scripts fail to parse.
+
+Use `embed/rewrap-raw` for this — pass your renderer's raw constructor
+and the tree; don't hand-roll a walker:
+
+```clojure
+(require '[hiccup2.core :as h])
+
+(into [:head [:title "Host app"]]
+      (embed/rewrap-raw h/raw (embed/head-tags k)))
+```
+
+`embed/chassis-raw?` is the underlying predicate, exposed for hosts
+that run their own Idiomorph / SSR walker and need to spot bodies that
+must be emitted verbatim.
 
 ### Server-rendered first paint
 

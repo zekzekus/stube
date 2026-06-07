@@ -818,6 +818,29 @@
   ([event k opts]
    (get-in event [:signals (keyword (signal-wire-name k opts))])))
 
+(defn indicator
+  "Return attrs that mount Datastar's `data-indicator` on this element
+  bound to a page-global signal — typically used to flip a 'loading'
+  boolean while an `@post(…)`/`@get(…)` round-trip is in flight:
+
+      [:button (merge (s/on self :click :as :reload)
+                      (s/indicator :reload-loading))
+       \"Reload\"]
+      ;; …and a spinner that reads the same signal:
+      [:span {:data-show (s/$ :reload-loading)} \"⏳\"]
+
+  Datastar writes `true` to the signal while the request is in flight
+  and back to `false` when it completes.  This is the page-global
+  counterpart to [[local-indicator]]: use it for top-bar/global action
+  buttons where there is only one instance; reach for `local-indicator`
+  when two embedded copies of a component must not share indicator
+  state.  Pair with [[$]] for the matching `data-show` reference.
+  Casing follows the same resolution as [[bind]]."
+  ([signal] (indicator signal nil))
+  ([signal opts]
+   {(keyword (str "data-indicator:" (signal-wire-name signal opts)))
+    true}))
+
 (defn local-signal-ref
   "Return the Datastar inline-expression reference for a per-instance
   signal — `(s/local-signal-ref self :save-submitting)` →

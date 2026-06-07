@@ -146,11 +146,13 @@ Stable embedder API:
 - `stube/make-kernel` creates an isolated runtime instance.
 - `stube/mint-conversation!` registers a root component for a request.
 - `stube/shell-for` returns a Hiccup fragment for the host layout.
+- `stube/rendered-shell-for!` mints + boots a conversation and returns a shell with the first paint already inlined (readable GET responses).
 - `stube/head-tags` returns the CSS/script tags required by that fragment.
+- `stube/rewrap-raw` / `stube/chassis-raw?` bridge `head-tags`/`shell-for` output into a non-chassis renderer (hiccup2/rum/reagent).
 - `stube/dispatch!` dispatches into a live conversation and returns fragments.
-- `stube/publish!` publishes from host code into that runtime kernel.
+- `stube/publish!` / `stube/publish-local!` publish from host code into that runtime kernel.
 - `stube/replay-with` runs the same interaction path against a kernel configuration without mutating runtime state.
-- `stube/halt!` closes open streams and clears runtime registries.
+- `stube/halt!` closes open streams and clears runtime registries; `stube/shutting-down?` reports drain state.
 
 `examples/dev/zeko/stube/examples/embedded_ring.clj` shows a plain Ring
 host serving `/healthz` and `/api/foo` beside a stube widget under
@@ -294,35 +296,22 @@ shell there is nothing to do. But a host that serializes through a
 chassis marker and will HTML-escape those bodies, so your inline
 scripts arrive as `&quot;…` and fail to parse.
 
-Re-wrap chassis `RawString` in your renderer's own raw primitive before
-emitting. For hiccup2:
+Pass the tree through `stube/rewrap-raw` with your renderer's own raw
+constructor before emitting. For hiccup2:
 
 ```clojure
 (require '[hiccup2.core :as h])
 
-(defn- chassis-raw? [x]
-  ;; chassis arrives transitively via stube — resolve the class by name
-  ;; so you don't have to add chassis as a direct dependency.
-  (= "dev.onionpancakes.chassis.core.RawString"
-     (some-> x class .getName)))
-
-(defn chassis->hiccup-raw
-  "Recursively re-wrap chassis RawString nodes as hiccup2 raw strings."
-  [node]
-  (cond
-    (chassis-raw? node) (h/raw (str node))
-    (vector? node)      (mapv chassis->hiccup-raw node)
-    (sequential? node)  (map chassis->hiccup-raw node)
-    :else               node))
-
-;; …then walk head-tags before splicing it into your <head>:
+;; rewrap-raw walks the tree and re-wraps chassis RawString nodes;
+;; everything else passes through untouched.
 (into [:head [:title "Host app"]]
-      (map chassis->hiccup-raw (stube/head-tags stube-kernel)))
+      (stube/rewrap-raw h/raw (stube/head-tags stube-kernel)))
 ```
 
-rum / reagent hosts do the same with their own raw wrapper. (This is
-the one boundary a non-chassis embedder has to bridge; everything else
-in `head-tags` is plain Hiccup.)
+rum / reagent hosts pass their own raw wrapper as the first argument.
+(This is the one boundary a non-chassis embedder has to bridge;
+everything else in `head-tags` is plain Hiccup.) `stube/chassis-raw?`
+is exposed as the underlying predicate if you run your own walker.
 
 If you run your own Idiomorph bridge outside Datastar, use the same
 `data-stube-preserve` marker and merge attributes before telling

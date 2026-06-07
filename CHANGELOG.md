@@ -5,7 +5,60 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+This pass is an API-ergonomics sweep — no breaking changes. The
+*Recommended adoption* notes below flag idioms that hosts (kasten
+today) should migrate to even though the old way still works.
+
+### Added
+
+- **`s/indicator` — page-global `data-indicator` helper.**  The
+  global counterpart to `s/local-indicator`: `(s/indicator :reload-loading)`
+  returns the `data-indicator:<wire>` attrs, casing-aware like every
+  other signal helper, and pairs with `(s/$ :reload-loading)` for the
+  matching `data-show` spinner.
+
+  *Recommended adoption:* replace hand-built
+  `{:data-indicator (s/signal-wire-name :foo-loading)}` + spinner pairs
+  with `(s/indicator :foo-loading)`.  See the signal helpers section of
+  [`docs/api.md`](docs/api.md#more-hiccup-helpers).
+
+- **`embed/rewrap-raw` + `embed/chassis-raw?` — the non-chassis host
+  bridge.**  `(embed/rewrap-raw h/raw (embed/head-tags k))` re-wraps the
+  chassis `RawString` bodies in `head-tags` / `shell-for` /
+  `rendered-shell-for!` output using your renderer's raw constructor,
+  so hiccup2 / rum / reagent SSR hosts stop hand-rolling the recursive
+  walker (and the by-class-name `RawString` detection).  `chassis-raw?`
+  is the exposed predicate for hosts running their own walker.
+
+  *Recommended adoption:* delete the local `chassis->hiccup-raw` walker
+  and call `embed/rewrap-raw` instead.  See
+  [`docs/api.md`](docs/api.md#embedding-in-a-host-ring-app) and the
+  README embedding section.
+
+### Changed
+
+- **Clearer error for an unwrapped single effect.**  A handler or
+  lifecycle hook that returns a bare effect — `(s/answer :ok)`, i.e.
+  the vector `[:answer :ok]` — instead of wrapping it (`[(s/answer :ok)]`)
+  now throws a guiding `ex-info` at the kernel boundary
+  (`lifecycle/coerce-return`) instead of silently folding `:answer` and
+  `:ok` as two bogus ops.  This is not a breaking change: that shape
+  never worked correctly.  The four valid return shapes — `self`,
+  `[self effects]`, a bare effects *vector*, and `nil` — are unchanged.
+
+### Documentation
+
+- **Signal helpers matrix + scope ladder** in `docs/api.md`: a
+  global-vs-instance table, an explicit note that `local-*` signal
+  helpers scope to one *instance* while `publish-local!` scopes to one
+  *conversation*, and a `s/signal` (reads) vs `s/signals` (seeds)
+  disambiguation.
+- Fixed a non-compiling `defflow` example in `docs/tutorial.md` (a
+  bare `recur` with no enclosing `loop`), a dead `s/file-store` anchor,
+  and reconciled the colocated-key list in `api.md` with the registry
+  (`:styles` / `:modules` were missing).
+- README embedder API list now includes `rendered-shell-for!`,
+  `rewrap-raw` / `chassis-raw?`, `publish-local!`, and `shutting-down?`.
 
 ## 0.7.0
 

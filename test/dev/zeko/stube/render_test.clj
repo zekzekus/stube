@@ -334,6 +334,20 @@
       (is (= {(keyword "data-indicator:saveSubmittingIx-000008") true}
              (render/local-indicator self :save-submitting {:case :camel}))))))
 
+(deftest indicator-mounts-page-global-data-indicator
+  (testing ":kebab keeps the logical key verbatim on the wire"
+    (is (= {(keyword "data-indicator:reload-loading") true}
+           (render/indicator :reload-loading))))
+  (testing ":camel wire-cases the signal name"
+    (is (= {(keyword "data-indicator:reloadLoading") true}
+           (render/indicator :reload-loading {:case :camel}))))
+  (testing "kernel-bound *signal-case* applies when no per-call opt is given"
+    (binding [render/*signal-case* :camel]
+      (is (= {(keyword "data-indicator:reloadLoading") true}
+             (render/indicator :reload-loading)))))
+  (testing "no instance id is required, unlike local-indicator"
+    (is (map? (render/indicator :foo)))))
+
 (deftest signals-seeds-initial-values-with-wire-casing
   (testing ":kebab keeps logical keys verbatim"
     (let [{:keys [data-signals]} (render/signals {:create-title "" :create-slug "x"})]

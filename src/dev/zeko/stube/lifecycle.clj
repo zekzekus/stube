@@ -24,7 +24,15 @@
 
   The map and pair cases let `:handle` return `(assoc self :n 1)` or
   `[(s/answer :ok)]` directly when one side of the pair would be
-  ceremony; the original `[self' effects]` form keeps working."
+  ceremony; the original `[self' effects]` form keeps working.
+
+  A bare, *unwrapped* single effect — `(s/answer :ok)`, which is the
+  vector `[:answer :ok]` — is a common mistake: it looks like it should
+  work but would be folded as the two-effect vector `[:answer :ok]`
+  (op `:answer`, then op `:ok`).  We detect the tell (a vector whose
+  first element is a keyword — a valid effects vector always holds
+  *effect vectors*, never keywords) and throw a guiding error instead
+  of misbehaving silently.  Wrap it: `[(s/answer :ok)]`."
   [self result]
   (cond
     (nil? result)
@@ -35,6 +43,15 @@
 
     (and (vector? result) (= 2 (count result)) (map? (first result)))
     result
+
+    (and (vector? result) (keyword? (first result)))
+    (throw (ex-info
+             (str "stube handler/hook returned what looks like a single, "
+                  "unwrapped effect: " (pr-str result) ". Effects must be "
+                  "returned in a vector — wrap it as [" (pr-str result)
+                  "]. (A handler may return self, [self effects], a bare "
+                  "effects vector, or nil.)")
+             {:result result}))
 
     :else
     [self result]))

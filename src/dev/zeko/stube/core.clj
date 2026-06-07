@@ -301,6 +301,7 @@
 (defalias local-signal conv/local-signal   "See [[dev.zeko.stube.conversation/local-signal]].")
 (defalias local-bind   render/local-bind   "See [[dev.zeko.stube.render/local-bind]].")
 (defalias local-signal-ref render/local-signal-ref "See [[dev.zeko.stube.render/local-signal-ref]].")
+(defalias indicator        render/indicator        "See [[dev.zeko.stube.render/indicator]].")
 (defalias local-indicator  render/local-indicator  "See [[dev.zeko.stube.render/local-indicator]].")
 (defalias back-button  render/back-button  "See [[dev.zeko.stube.render/back-button]].")
 (defalias upload-attrs render/upload-attrs "See [[dev.zeko.stube.render/upload-attrs]].")

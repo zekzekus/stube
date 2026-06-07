@@ -505,11 +505,12 @@ The two shapes are interchangeable for the same wizard:
 ```clojure
 ;; A. defflow — transient, ergonomic, in-memory only
 (s/defflow :standup/onboard []
-  (let [name (s/await (s/prompt "Who's standing up?"))
-        ok?  (s/await (s/confirm (str "Welcome, " name "!  Begin?")))]
-    (if ok?
-      (s/await (s/embed :standup/board {:user name}))
-      (recur))))
+  (loop []
+    (let [name (s/await (s/prompt "Who's standing up?"))
+          ok?  (s/await (s/confirm (str "Welcome, " name "!  Begin?")))]
+      (if ok?
+        (s/await (s/embed :standup/board {:user name}))
+        (recur)))))
 
 ;; B. Hand-rolled task — durable, EDN-clean, survives restart
 (s/defcomponent :standup/onboard-task
@@ -538,7 +539,7 @@ The two shapes are interchangeable for the same wizard:
 
 The task version threads its partial state (`:pending-name`)
 through the same instance map every component uses.  Every step is
-a plain `pr-str` of a Clojure map, so [`s/file-store`](api.md#s/file-store-dir)
+a plain `pr-str` of a Clojure map, so [`s/file-store`](api.md#sfile-store-dir)
 persists it across restarts and a deploy mid‑flow doesn't lose the
 user's place.  The shape is more verbose, which is the trade you
 make for durability — and `defflow` is the ergonomic alternative

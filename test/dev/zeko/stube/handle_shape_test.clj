@@ -14,6 +14,7 @@
             [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.core         :as s]
             [dev.zeko.stube.kernel       :as kernel]
+            [dev.zeko.stube.lifecycle    :as lifecycle]
             [dev.zeko.stube.registry     :as registry]))
 
 (use-fixtures :each (fn [t] (registry/clear!) (t) (registry/clear!)))
@@ -71,6 +72,28 @@
   (let [[c0]   (boot :t/leaf)
         [c1 _] (dispatch-event c0 :bump)]
     (is (= 1 (:n (conv/top-instance c1))) "existing [self' effects] form unchanged")))
+
+(deftest bare-unwrapped-effect-throws-guiding-error
+  ;; `(s/answer :ok)` is the vector `[:answer :ok]`; returning it
+  ;; unwrapped (instead of `[(s/answer :ok)]`) used to fold silently
+  ;; into two bogus ops. coerce-return — the shared kernel boundary —
+  ;; now throws with guidance.
+  (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                        #"unwrapped effect"
+                        (lifecycle/coerce-return {} (s/answer :ok))))
+  ;; The valid shapes are unaffected: a wrapped single effect, a
+  ;; canonical pair, a bare map, and nil all pass straight through.
+  (is (= [{} [[:answer :ok]]] (lifecycle/coerce-return {} [(s/answer :ok)])))
+  (is (= [{:n 1} []]          (lifecycle/coerce-return {} {:n 1})))
+  (is (= [{} []]              (lifecycle/coerce-return {} nil)))
+  ;; And it still works end-to-end through dispatch.
+  (registry/register!
+    {:component/id     :t/leaf
+     :component/render (fn [self] [:div {:id (:instance/id self)}])
+     :component/handle (fn [_self _ev] [(s/answer :ok)])})
+  (let [[c0]   (boot :t/leaf)
+        [c1 _] (dispatch-event c0 :go)]
+    (is (:conv/ended? c1) "wrapped single effect still works")))
 
 (deftest lifecycle-hooks-accept-bare-map-too
   ;; coerce-return is shared between handlers and lifecycle hooks.

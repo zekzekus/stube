@@ -6,12 +6,40 @@
   the loop, so any failure here is a logic bug, not a transport one."
   (:require [clojure.string     :as str]
             [clojure.test       :refer [deftest is testing use-fixtures]]
+            [dev.onionpancakes.chassis.core :as chassis]
             [dev.zeko.stube.conversation :as conv]
             [dev.zeko.stube.core         :as s]
+            [dev.zeko.stube.embed        :as embed]
             [dev.zeko.stube.kernel       :as kernel]
             [dev.zeko.stube.registry     :as registry]))
 
 (use-fixtures :each (fn [t] (registry/clear!) (t) (registry/clear!)))
+
+;; ---------------------------------------------------------------------------
+;; Non-chassis host bridge: rewrap-raw / chassis-raw?
+;; ---------------------------------------------------------------------------
+
+(deftest chassis-raw?-detects-only-chassis-rawstring
+  (is (embed/chassis-raw? (chassis/raw "x")))
+  (is (not (embed/chassis-raw? "x")))
+  (is (not (embed/chassis-raw? [:div]))))
+
+(deftest rewrap-raw-rewraps-chassis-rawstring-and-leaves-the-rest
+  (let [raw-fn (fn [s] {::raw s})                      ; stand-in host raw primitive
+        tree   [:head
+                [:script (chassis/raw "{\"a\":1}")]
+                [:style {:type "text/css"} (chassis/raw "& {color:red}")]
+                [:link {:rel "stylesheet" :href "/x.css"}]]
+        out    (embed/rewrap-raw raw-fn tree)]
+    (testing "chassis RawString bodies are re-wrapped via raw-fn"
+      (is (= {::raw "{\"a\":1}"} (get-in out [1 1])))
+      (is (= {::raw "& {color:red}"} (get-in out [2 2]))))
+    (testing "everything else passes through untouched"
+      (is (= :head (first out)))
+      (is (= {:type "text/css"} (get-in out [2 1])))
+      (is (= [:link {:rel "stylesheet" :href "/x.css"}] (nth out 3))))
+    (testing "a bare RawString node is rewrapped directly"
+      (is (= {::raw "hi"} (embed/rewrap-raw raw-fn (chassis/raw "hi")))))))
 
 (defn- elements-fragments [frags]
   (filter #(= :elements (:fragment/kind %)) frags))

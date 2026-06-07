@@ -82,10 +82,47 @@
 
   Hosts using a non-chassis renderer must re-wrap the chassis
   `RawString` instances in the renderer's own raw primitive before
-  emitting — e.g. a small walker that turns
-  `dev.onionpancakes.chassis.core.RawString` into `hiccup2.core/raw`."
+  emitting — pass the tree through [[rewrap-raw]] with your renderer's
+  raw constructor (e.g. `hiccup2.core/raw`) instead of hand-rolling a
+  walker."
   [k]
   (rt/head-tags k))
+
+(defn chassis-raw?
+  "True when `x` is a chassis `RawString` — the marker stube wraps inline
+  `<script>` / `<style>` bodies in inside [[head-tags]] / [[shell-for]] /
+  [[rendered-shell-for!]] output.  Hosts running their own Idiomorph or
+  SSR walker can use this to detect bodies that must be emitted verbatim."
+  [x]
+  (instance? dev.onionpancakes.chassis.core.RawString x))
+
+(defn rewrap-raw
+  "Re-wrap every chassis `RawString` in a [[head-tags]] / [[shell-for]] /
+  [[rendered-shell-for!]] Hiccup tree using `raw-fn`, your renderer's own
+  raw-string primitive, leaving the rest of the tree untouched.
+
+  This is the one boundary a **non-chassis** embedder (hiccup2, rum,
+  reagent SSR) must bridge: those renderers don't recognise the chassis
+  marker and would HTML-escape inline script/style bodies, so `\"…\"`
+  arrives as `&quot;…` and the scripts fail to parse.  Under chassis
+  (`start!` or the stock shell) nothing needs re-wrapping and you never
+  call this.
+
+  hiccup2:
+
+      (require '[hiccup2.core :as h])
+      (into [:head [:title \"Host app\"]]
+            (embed/rewrap-raw h/raw (embed/head-tags kernel)))
+
+  rum / reagent: pass that renderer's raw wrapper as `raw-fn`.  Replaces
+  the hand-rolled `chassis->hiccup-raw` walker hosts used to copy out of
+  the README."
+  [raw-fn node]
+  (cond
+    (chassis-raw? node) (raw-fn (str node))
+    (vector? node)      (mapv #(rewrap-raw raw-fn %) node)
+    (sequential? node)  (map #(rewrap-raw raw-fn %) node)
+    :else               node))
 
 (defn dispatch!
   "Dispatch an event into live conversation `cid` in runtime `k` and
