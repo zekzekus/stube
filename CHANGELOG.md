@@ -112,6 +112,12 @@ development entry.
 
 ### Documentation
 
+- **`examples/secure_ring.clj` — a worked secure embedding.** Combines
+  the whole chain in one runnable file: a kernel with secure-cookie
+  defaults + `:principal-fn` + audit hooks + a fail-closed
+  `:before-dispatch` authz gate, the mount mechanism (so stube does the
+  cookie/CSRF handshake), and `security/wrap-defaults` + a
+  Datastar-compatible CSP around the ring handler.
 - **`docs/security.md` — the security contract.** Threat model
   (single-JVM multi-user web app, cookies trusted), the
   framework / host / author shared-responsibility split, what the

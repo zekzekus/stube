@@ -325,6 +325,11 @@ it is a safe place for authz and per-cid rate limiting.
 conversation mints; the framework emits the events, the host persists
 them (see ADR 0004's framework/host split).
 
+**Worked example.** [`examples/secure_ring.clj`](../examples/dev/zeko/stube/examples/secure_ring.clj)
+wires all of the above into one runnable host: secure-cookie defaults,
+`:principal-fn`, the audit hooks, a fail-closed `:before-dispatch`
+gate, and `security/wrap-defaults` + a Datastar-compatible CSP.
+
 ---
 
 ## 8 · Known limits
