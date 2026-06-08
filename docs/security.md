@@ -83,6 +83,13 @@ release.
   secret — the owner cookie gates access — but it is not enumerable
   either, so a visitor cannot fish for other live conversations via the
   `410`-vs-`403` response split.
+- **CSRF token on every state-changing request.** Each conversation
+  minted via the GET shell carries a `:conv/csrf-token`, embedded as
+  `data-stube-csrf`. The behaviors bridge sends it back as the
+  `X-Stube-Csrf` header on `event`/`back` (Datastar `@post`) and as a
+  hidden `_stube_csrf` field on the multipart upload form; the server
+  `403`s a mismatch. A custom header can't be forged cross-site (CORS
+  preflight), so this is real CSRF defence on top of `SameSite=Lax`.
 - **EDN reads are eval-safe.** The file store reads conversations with
   `clojure.edn/read-string` and `:default tagged-literal` — unknown
   tags become inert data, never constructor calls (`store.clj`). The
@@ -133,7 +140,6 @@ informed risk decision today and apply the compensating control in
 
 | Gap | Risk | Compensating control until fixed |
 |---|---|---|
-| **No CSRF token** (gap — tracked) | State-changing POSTs (`/event`, `/back`, `/upload`) rely entirely on the cookie + `SameSite=Lax`. | Keep `SameSite=Lax` intact end-to-end; ensure no proxy strips or rewrites the cookie attribute. |
 | **No CSP or security headers** (gap — tracked) | The shell can be framed cross-origin; no `nosniff`, no `Referrer-Policy`. | Apply the headers in [§5](#5-required-host-configuration) at the proxy or via host middleware. |
 | **Pub/sub topics are unscoped; `:io`/`:after` uncapped** (gap — tracked) | Any component can publish to any topic; async effects spawn unbounded futures. Only matters under an untrusted-component model. | Trust your component authors (see [§1](#1-threat-model)); use `publish-local!` for per-conversation channels. |
 

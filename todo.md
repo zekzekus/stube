@@ -106,15 +106,20 @@ multi-tenant host exists (see §5, "deliberately not on this list").
 
 ### Phase 2 — CSRF token (changes the client contract)
 
-- [ ] **Per-conversation CSRF nonce.** Mint at `install-conversation!`,
-      store as `:conv/csrf-token`, embed once as
-      `<meta name="stube-csrf">` in the shell. The behaviors/preserve
-      bridge attaches it as a custom header on every Datastar POST;
-      `event`/`back`/`upload` handlers check it → `403` on mismatch.
-      Keep `SameSite=Lax` as defence in depth. **Fiddliest item:**
-      confirm Datastar's custom-header seam works with our adapter;
-      needs a `resources/.../behaviors.js` change and a `-M:e2e`
-      regression test.
+- [x] **Per-conversation CSRF nonce.** `mint-conversation!` mints
+      `:conv/csrf-token`; the shell stamps it on its root as
+      `data-stube-csrf` (not a `<meta>` — that way it rides both the
+      standalone `shell/html` and the embedded `shell-for` fragment).
+      The behaviors bridge echoes it back via two transports, because
+      not every request is a fetch: the `X-Stube-Csrf` header on
+      Datastar `@post` (`event`/`back`, via a `fetch` wrapper) and a
+      hidden `_stube_csrf` field on the zero-JS multipart upload form
+      (which can't set a header). Handlers `403` a mismatch; the upload
+      payload strips the field so it never reaches component state.
+      `create-conversation!` (compat) mints no token. Validated by unit
+      tests *and* the browser e2e harness (multicounter, guess,
+      protected-counter, dialogs all green). The bridge stays on the
+      web-platform `fetch`/`submit` seams — no Datastar internals.
 
 ### Phase 3 — operator seams and headers (hooks + docs)
 

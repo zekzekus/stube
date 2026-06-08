@@ -313,11 +313,17 @@
   (or (:content-length req)
       (some-> (get-in req [:headers "content-length"]) parse-long)))
 
+(def ^:private csrf-field "_stube_csrf")
+
 (defn- upload-payload [req]
   (let [params (:multipart-params req)]
     {:fields (into {}
                    (keep (fn [[k v]]
-                           (when-not (multipart-file? v)
+                           ;; Drop the CSRF field the behaviors bridge
+                           ;; injects — it is transport plumbing, not
+                           ;; component data, and must not persist.
+                           (when (and (not (multipart-file? v))
+                                      (not= csrf-field (name k)))
                              [(keyword (name k)) v])))
                    params)
      :files  (mapv (fn [[k v]] (upload-file-summary k v))
@@ -398,7 +404,8 @@
                                     :base-css (:base-css k)
                                     :eager-scripts (:eager-scripts k)
                                     :base-path (rt/base-path k)
-                                    :root-selector (rt/root-selector k)})})))))
+                                    :root-selector (rt/root-selector k)
+                                    :csrf-token (rt/conversation-csrf-token k cid)})})))))
 
 (defn- resume-render
   "Render the current top frame of a conversation that already has
@@ -489,6 +496,9 @@
        (not (rt/authorized? k req cid))
        (session/forbidden-response)
 
+       (not (session/csrf-ok? req live))
+       (session/csrf-forbidden-response)
+
        :else
        (with-mdc {:cid cid}
          (fn []
@@ -530,22 +540,33 @@
        :else
        (with-mdc {:cid cid :iid iid}
          (fn []
-           (let [req'    (if (:multipart-params req)
-                           req
-                           (multipart/multipart-params-request req))
-                 payload (upload-payload req')]
-             (try
-               (rt/dispatch! k cid {:instance-id iid
-                                    :event       :upload-received
-                                    :payload     payload
-                                    :signals     {}})
-               (upload-ok-response)
-               (finally
-                 ;; The synchronous dispatch above has consumed the file;
-                 ;; reclaim ring's tempfiles unless the host opted to keep
-                 ;; them for async processing.
-                 (when-not (:keep-upload? k)
-                   (delete-tempfiles! (multipart-tempfiles req'))))))))))))
+           (let [req'  (if (:multipart-params req)
+                         req
+                         (multipart/multipart-params-request req))
+                 token (get (:multipart-params req') csrf-field)]
+             ;; CSRF rides a hidden `_stube_csrf` field here (a form
+             ;; can't set a header), so the check waits until after the
+             ;; multipart parse — but still before any dispatch / side
+             ;; effect.  The size cap above bounds what we parse.
+             (if-not (session/valid-csrf-token? live token)
+               (try
+                 (session/csrf-forbidden-response)
+                 (finally
+                   (when-not (:keep-upload? k)
+                     (delete-tempfiles! (multipart-tempfiles req')))))
+               (let [payload (upload-payload req')]
+                 (try
+                   (rt/dispatch! k cid {:instance-id iid
+                                        :event       :upload-received
+                                        :payload     payload
+                                        :signals     {}})
+                   (upload-ok-response)
+                   (finally
+                     ;; The synchronous dispatch above has consumed the
+                     ;; file; reclaim ring's tempfiles unless the host
+                     ;; opted to keep them for async processing.
+                     (when-not (:keep-upload? k)
+                       (delete-tempfiles! (multipart-tempfiles req'))))))))))))))
 
 (defn event-handler
   "Dispatch one client event into the conversation.  The instance id
@@ -562,6 +583,9 @@
 
        (not (rt/authorized? k req cid))
        (session/forbidden-response)
+
+       (not (session/csrf-ok? req live))
+       (session/csrf-forbidden-response)
 
        (:conv/ended? live)
        (stale-response! k cid)

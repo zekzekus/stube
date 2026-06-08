@@ -21,14 +21,19 @@
 
 (defn fragment
   "Hiccup fragment a host page can slot into its own layout.  It opens
-  the SSE stream and contains the DOM target for the first stube patch."
-  [cid {:keys [dev? base-path root-selector]
+  the SSE stream and contains the DOM target for the first stube patch.
+
+  When `:csrf-token` is supplied it is stamped on the shell `<div>` as
+  `data-stube-csrf`; the behaviors bridge reads it and echoes it back as
+  the `X-Stube-Csrf` header on every state-changing POST."
+  [cid {:keys [dev? base-path root-selector csrf-token]
         :or {base-path "" root-selector "#root"}}]
   (binding [render/*base-path* base-path
             render/*root-selector* root-selector]
     [:div (cond-> {:data-init (str "@get('" (render/sse-url cid) "')")
                    :data-stube-base-path base-path}
-            dev? (assoc :data-stube-cid cid))
+            dev?       (assoc :data-stube-cid cid)
+            csrf-token (assoc :data-stube-csrf csrf-token))
      [:div {:id (root-id root-selector)}]]))
 
 (defn rendered-fragment
@@ -45,13 +50,14 @@
   that mints the conversation, runs boot, and assembles the shell in
   one call."
   [cid pre-rendered-html
-   {:keys [dev? base-path root-selector]
+   {:keys [dev? base-path root-selector csrf-token]
     :or {base-path "" root-selector "#root"}}]
   (binding [render/*base-path* base-path
             render/*root-selector* root-selector]
     [:div (cond-> {:data-init (str "@get('" (render/sse-url cid) "')")
                    :data-stube-base-path base-path}
-            dev? (assoc :data-stube-cid cid))
+            dev?       (assoc :data-stube-cid cid)
+            csrf-token (assoc :data-stube-csrf csrf-token))
      [:div {:id (root-id root-selector)} (chassis/raw (or pre-rendered-html ""))]]))
 
 (defn- component-stylesheet-resource [type-kw]
@@ -206,7 +212,8 @@
   started with `:halos? true`), inject the halos overlay script and the
   `data-stube-cid` hook so the floating pill can activate the overlay."
   [cid opts-or-dev?]
-  (let [{:keys [dev? ui-css? base-css css-layer-order eager-scripts base-path root-selector]
+  (let [{:keys [dev? ui-css? base-css css-layer-order eager-scripts base-path root-selector
+                csrf-token]
          :or {ui-css? true base-css [] eager-scripts [] base-path "" root-selector "#root"}}
         (if (map? opts-or-dev?)
           opts-or-dev?
@@ -219,7 +226,8 @@
               render/*root-selector* root-selector]
       (let [[_ body-attrs root] (fragment cid {:dev? dev?
                                                :base-path base-path
-                                               :root-selector root-selector})
+                                               :root-selector root-selector
+                                               :csrf-token csrf-token})
             assets (head-tags {:dev? dev?
                                :ui-css? ui-css?
                                :base-css base-css

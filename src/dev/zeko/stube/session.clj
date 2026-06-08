@@ -70,3 +70,35 @@
    :headers {"Content-Type" "text/plain; charset=utf-8"
              "Cache-Control" "no-store"}
    :body    "stube conversation belongs to a different session."})
+
+(def ^:private csrf-header "x-stube-csrf")
+
+(defn valid-csrf-token?
+  "True when `conv` carries no CSRF token (legacy / host-managed
+  conversations created via `create-conversation!`) or `presented`
+  equals it.  Pairs with the `data-stube-csrf` the shell embeds and the
+  behaviors bridge echoes back.
+
+  A custom request header cannot be set by a cross-site form or simple
+  request without a CORS preflight the attacker's origin can't satisfy,
+  so requiring it *is* the CSRF defence; comparing to the per-conversation
+  token binds the request to this exact conversation as defence in depth."
+  [conv presented]
+  (let [token (:conv/csrf-token conv)]
+    (or (nil? token) (= token presented))))
+
+(defn csrf-ok?
+  "True when the request's `X-Stube-Csrf` header satisfies [[valid-csrf-token?]]
+  for `conv`.  Used by the fetch-based `event`/`back` endpoints; the
+  multipart upload path uses [[valid-csrf-token?]] directly against a
+  hidden `_stube_csrf` form field, since a form cannot set a header."
+  [req conv]
+  (valid-csrf-token? conv (get-in req [:headers csrf-header])))
+
+(defn csrf-forbidden-response
+  "403 sent when [[csrf-ok?]] fails on a state-changing POST."
+  []
+  {:status  403
+   :headers {"Content-Type" "text/plain; charset=utf-8"
+             "Cache-Control" "no-store"}
+   :body    "stube request is missing or has a stale CSRF token; reload the page."})

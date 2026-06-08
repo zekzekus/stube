@@ -418,3 +418,75 @@
     walkAndMount(document.body || document.documentElement);
   }
 })();
+
+// stube CSRF bridge
+//
+// The shell stamps a per-conversation token on its root element as
+// `data-stube-csrf`; the server requires it back on every state-changing
+// request and rejects a mismatch with 403.  Two transports:
+//
+//   - event / back go out as Datastar `@post` → `window.fetch`, so we
+//     wrap fetch and add the `X-Stube-Csrf` header.  A custom header
+//     can't be set cross-site without a CORS preflight the attacker's
+//     origin can't satisfy, which is what makes it a CSRF defence.
+//   - uploads are a zero-JS `multipart/form-data` <form> targeting a
+//     hidden iframe; a form can't set a header, so we inject a hidden
+//     `_stube_csrf` field on submit instead.
+//
+// This runs as a module *before* Datastar in the head, so the fetch
+// wrapper is in place before any user-triggered POST.  We touch only
+// the web-platform fetch/submit seams — never a Datastar internal.
+(() => {
+  const flag = "__stubeCsrfInstalled";
+  if (globalThis[flag]) return;
+  globalThis[flag] = true;
+
+  const tokenOf = () => {
+    const el = document.querySelector("[data-stube-csrf]");
+    return el && el.getAttribute("data-stube-csrf");
+  };
+
+  // event / back — fetch header
+  if (typeof globalThis.fetch === "function") {
+    const orig = globalThis.fetch;
+    globalThis.fetch = function (input, init) {
+      try {
+        const token = tokenOf();
+        if (token) {
+          const raw    = typeof input === "string" ? input : (input && input.url) || "";
+          const method = ((init && init.method) || (input && input.method) || "GET").toUpperCase();
+          const u      = new URL(raw, document.baseURI);
+          if (method === "POST" &&
+              u.origin === location.origin &&
+              /\/(event|back)\//.test(u.pathname)) {
+            const headers = new Headers((init && init.headers) ||
+                                        (input && input.headers) || undefined);
+            headers.set("X-Stube-Csrf", token);
+            init = Object.assign({}, init, {headers});
+          }
+        }
+      } catch (_e) { /* never block a request on CSRF wiring */ }
+      return orig.call(this, input, init);
+    };
+  }
+
+  // upload — hidden form field, set just-in-time on submit
+  document.addEventListener("submit", (e) => {
+    try {
+      const form = e.target;
+      if (!form || !form.matches ||
+          !form.matches('form[enctype="multipart/form-data"]')) return;
+      if (!/\/upload\//.test(form.getAttribute("action") || "")) return;
+      const token = tokenOf();
+      if (!token) return;
+      let input = form.querySelector('input[name="_stube_csrf"]');
+      if (!input) {
+        input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "_stube_csrf";
+        form.appendChild(input);
+      }
+      input.value = token;
+    } catch (_e) { /* never block a submit on CSRF wiring */ }
+  }, true);
+})();

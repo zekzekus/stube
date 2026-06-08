@@ -62,6 +62,10 @@
   (let [resp (http/behaviors-js-handler {})]
     (is (= 200 (:status resp)))
     (is (re-find #"stube behaviors bridge" (:body resp)))
+    (testing "CSRF bridge: header for event/back, hidden field for upload"
+      (is (re-find #"X-Stube-Csrf" (:body resp)))
+      (is (re-find #"_stube_csrf" (:body resp)))
+      (is (re-find #"data-stube-csrf" (:body resp))))
     (testing "writes flow through Datastar's public data-bind seam, not internal handles"
       ;; The bridge must locate a `[data-stube-signal-mirror=…]` element
       ;; (rendered by `s/signal-mirror`), write its `.value`, and
@@ -233,6 +237,100 @@
                               k (req "totally-unnamed-event-xyz")))))
         (is (= 1 (get-in (server/conversation cid)
                          [:conv/instances "ix-1" :n])))))))
+
+(deftest mint-conversation-mints-csrf-token-create-does-not
+  (let [k       (embed/make-kernel)
+        minted  (rt/mint-conversation! k :test/root {} {:headers {}})
+        created (rt/create-conversation! k :test/root "owner")]
+    (is (string? (rt/conversation-csrf-token k minted))
+        "the real GET-shell path mints a per-conversation CSRF token")
+    (is (nil? (rt/conversation-csrf-token k created))
+        "the compat helper does not — it falls back to cookie + SameSite")))
+
+(deftest shell-embeds-csrf-token
+  (let [resp ((http/shell-handler :test/root) {:headers {}})
+        body (:body resp)
+        cid  (some (fn [[cid c]] (when (:conv/csrf-token c) cid))
+                   (server/active-conversations))
+        tok  (:conv/csrf-token (server/conversation cid))]
+    (is (some? tok) "minted conversation carries a CSRF token")
+    (is (re-find (re-pattern (str "data-stube-csrf=\"" tok "\"")) body)
+        "the shell embeds that exact token for the bridge to read")))
+
+(deftest event-handler-enforces-csrf-token
+  (registry/register!
+    {:component/id :test/csrf
+     :component/handle (fn [s {:keys [event]}]
+                         (if (= event :bump)
+                           [(update s :n (fnil inc 0)) []]
+                           [s []]))})
+  (let [k   (server/default-kernel)
+        cid (rt/create-conversation! k :test/csrf "owner")]
+    (rt/swap-conv! k cid
+      (fn [c]
+        [(-> c
+             (assoc :conv/csrf-token "tok")
+             (assoc :conv/instances {"ix-1" {:instance/id "ix-1"
+                                             :instance/type :test/csrf
+                                             :instance/children {}}})
+             (assoc :conv/stack ["ix-1"]))
+         []]))
+    (let [req (fn [hdrs]
+                {:path-params    {:cid cid :iid "ix-1" :event "bump"}
+                 :request-method :post
+                 :headers        (merge {"cookie" "stube_sid=owner"} hdrs)})]
+      (testing "missing CSRF header → 403, no dispatch"
+        (is (= 403 (:status (http/event-handler k (req {})))))
+        (is (nil? (get-in (server/conversation cid)
+                          [:conv/instances "ix-1" :n]))))
+      (testing "wrong CSRF header → 403"
+        (is (= 403 (:status (http/event-handler
+                              k (req {"x-stube-csrf" "nope"}))))))
+      (testing "correct CSRF header → dispatches"
+        (is (= 204 (:status (http/event-handler
+                              k (req {"x-stube-csrf" "tok"})))))
+        (is (= 1 (get-in (server/conversation cid)
+                         [:conv/instances "ix-1" :n])))))))
+
+(deftest upload-handler-enforces-csrf-field
+  (registry/register!
+    {:component/id :test/csrf-up
+     :component/handle (fn [s {:keys [event payload]}]
+                         (if (= event :upload-received)
+                           [(assoc s :seen payload) []]
+                           [s []]))})
+  (let [k      (server/default-kernel)
+        cid    (rt/create-conversation! k :test/csrf-up "owner")
+        mk-tmp #(doto (java.io.File/createTempFile "stube-csrf" ".txt")
+                  (spit "x"))
+        upload (fn [tmp fields]
+                 (http/upload-handler
+                   k {:path-params {:cid cid :iid "ix-1"}
+                      :headers {"cookie" "stube_sid=owner"}
+                      :multipart-params
+                      (merge {"file" {:filename "x.txt"
+                                      :content-type "text/plain"
+                                      :tempfile tmp}}
+                             fields)}))]
+    (rt/swap-conv! k cid
+      (fn [c]
+        [(-> c
+             (assoc :conv/csrf-token "tok")
+             (assoc :conv/instances {"ix-1" {:instance/id "ix-1"
+                                             :instance/type :test/csrf-up
+                                             :instance/rendered? true
+                                             :instance/children {}}})
+             (assoc :conv/stack ["ix-1"]))
+         []]))
+    (testing "missing _stube_csrf field → 403"
+      (is (= 403 (:status (upload (mk-tmp) {})))))
+    (testing "wrong _stube_csrf field → 403"
+      (is (= 403 (:status (upload (mk-tmp) {"_stube_csrf" "nope"})))))
+    (testing "correct _stube_csrf field → 200, and the field is not leaked"
+      (is (= 200 (:status (upload (mk-tmp) {"_stube_csrf" "tok"}))))
+      (is (not (contains? (get-in (server/conversation cid)
+                                  [:conv/instances "ix-1" :seen :fields])
+                          :_stube_csrf))))))
 
 (deftest stale-upload-instance-in-live-conversation-is-noop
   (let [cid  (rt/create-conversation! (server/default-kernel) :test/root nil)

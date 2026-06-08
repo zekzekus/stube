@@ -304,11 +304,12 @@
 (defn- principal-for [k request]
   (when-let [f (:principal-fn k)] (f request)))
 
-(defn- install-conversation! [k root-id init-args request owner-token]
+(defn- install-conversation! [k root-id init-args request owner-token csrf-token]
   (let [ctx       (context-for k request)
         principal (principal-for k request)
         conv (cond-> (conv/new-conversation)
                owner-token       (assoc :conv/owner-token owner-token)
+               csrf-token        (assoc :conv/csrf-token csrf-token)
                (some? ctx)       (assoc :conv/context ctx)
                (some? principal) (assoc :conv/principal principal))
         conv ((:on-conv-mint k) conv request)
@@ -319,11 +320,18 @@
 
 (defn create-conversation!
   "Compatibility helper for standalone server code that already resolved
-  the owner token."
+  the owner token.  Does not mint a CSRF token — that is the
+  [[mint-conversation!]] (GET shell) path's job; conversations created
+  here fall back to cookie + `SameSite=Lax` for cross-site protection."
   ([k root-id]
    (create-conversation! k root-id nil))
   ([k root-id owner-token]
-   (install-conversation! k root-id {} nil owner-token)))
+   (install-conversation! k root-id {} nil owner-token nil)))
+
+(defn conversation-csrf-token
+  "The CSRF nonce recorded on conversation `cid`, or nil."
+  [k cid]
+  (:conv/csrf-token (conversation k cid)))
 
 (defn mint-conversation!
   "Register a new conversation for `root-id` and return its cid.
@@ -338,9 +346,9 @@
    (mint-conversation! k root-id {} request))
   ([k root-id init-args request]
    (let [[sid _set-cookie] (ensure-session k request)]
-     (install-conversation! k root-id init-args request sid)))
+     (install-conversation! k root-id init-args request sid (conv/new-csrf-token))))
   ([k root-id init-args request owner-token]
-   (install-conversation! k root-id init-args request owner-token)))
+   (install-conversation! k root-id init-args request owner-token (conv/new-csrf-token))))
 
 (defn- cid-lock
   "Return (and lazily mint) the per-cid monitor object for `cid`.  Locking
@@ -515,7 +523,8 @@
   [k cid]
   (shell/fragment cid {:dev? (halos? k)
                        :base-path (:base-path k)
-                       :root-selector (:root-selector k)}))
+                       :root-selector (:root-selector k)
+                       :csrf-token (conversation-csrf-token k cid)}))
 
 (defn- first-elements-html
   "Pick the HTML body of the first `:elements`-kind fragment in `frags`,
@@ -570,7 +579,8 @@
       :shell (shell/rendered-fragment cid html
                                       {:dev?          (halos? k)
                                        :base-path     (:base-path k)
-                                       :root-selector (:root-selector k)})})))
+                                       :root-selector (:root-selector k)
+                                       :csrf-token    (conversation-csrf-token k cid)})})))
 
 (defn head-tags
   "Return Hiccup head nodes required by [[shell-for]] for kernel `k`."

@@ -73,6 +73,15 @@
     (.nextBytes secure-rng bs)
     (str "cv-" (->hex bs))))
 
+(defn new-csrf-token
+  "Mint a per-conversation CSRF nonce: 128 bits of `SecureRandom`,
+  hex-encoded.  Embedded in the shell as `data-stube-csrf` and required
+  back as the `X-Stube-Csrf` header on every state-changing POST."
+  []
+  (let [bs (byte-array 16)]
+    (.nextBytes secure-rng bs)
+    (->hex bs)))
+
 (defn new-instance-id
   "Mint a fresh instance id."
   []

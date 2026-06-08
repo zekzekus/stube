@@ -7,6 +7,24 @@ development entry.
 
 ### Security
 
+- **Per-conversation CSRF token on every state-changing request.**
+  `mint-conversation!` (the GET-shell path) now mints a
+  `:conv/csrf-token`; the shell embeds it as `data-stube-csrf` on its
+  root element. The behaviors bridge echoes it back — as the
+  `X-Stube-Csrf` header on Datastar `@post` requests (`event` / `back`,
+  via a `fetch` wrapper) and as a hidden `_stube_csrf` field on the
+  zero-JS multipart upload form (which can't set a header). The server
+  rejects a missing/stale token with `403`. A custom header can't be set
+  cross-site without a CORS preflight the attacker can't satisfy, so this
+  is real CSRF defence layered on top of the `SameSite=Lax` cookie. The
+  bridge touches only the web-platform `fetch`/`submit` seams, never a
+  Datastar internal. Conversations created via the `create-conversation!`
+  compat helper carry no token and fall back to cookie + `SameSite`. The
+  upload payload no longer leaks the `_stube_csrf` field into component
+  state. Validated by the unit suite and the browser e2e harness.
+  `todo.md §2`, Phase 2.
+
+
 - **Multipart upload caps + tempfile cleanup.** The upload handler
   rejects a body whose `Content-Length` exceeds `:max-upload-bytes`
   (default 10 MiB) with a `413` before parsing, and deletes the
