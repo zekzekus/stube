@@ -5,6 +5,51 @@ development entry.
 
 ## Unreleased
 
+This is the **security-hardening release**. Most of it is transparent —
+if you render the shell through `shell-for` / `rendered-shell-for!` /
+`head-tags` / `:mounts` and serve over HTTPS, you get unguessable cids,
+bounded parsing, a `Secure` cookie, and automatic CSRF with no code
+change. But read the upgrade notes: two items will otherwise cost you a
+debugging session.
+
+### Upgrading
+
+1. **`Secure` cookie — set `:dev-cookie? true` if you serve plain HTTP.**
+   `make-kernel` now mints the `stube_sid` cookie with `Secure` by
+   default. Over plain HTTP the browser silently stops returning it, so
+   every request looks cross-session and you get blanket `403`s. Serve
+   HTTPS (recommended) or pass `:dev-cookie? true`. The standalone
+   `s/start!` server already defaults `:dev-cookie? true` for localhost
+   — but a standalone deploy behind a TLS proxy should pass
+   `:dev-cookie? false`.
+2. **CSRF — keep rendering the shell via stube.** CSRF is automatic
+   *only* because `shell-for` / `rendered-shell-for!` / `:mounts` now
+   embed a `data-stube-csrf` token and `head-tags` loads the
+   `behaviors.js` bridge that echoes it back. If you hand-roll the shell
+   root (`<div id="root">`) or omit `behaviors.js`, the server mints a
+   token the client never returns → `403` on every event. Adopt
+   `shell-for` + `head-tags`, or propagate the token yourself (header
+   `X-Stube-Csrf` for `event`/`back`, hidden `_stube_csrf` field for
+   the upload form).
+3. **Custom clients / integration tests** that POST directly to
+   `/event`, `/back`, or `/upload` must now send the CSRF token (header
+   or upload field), or they will `403`.
+4. **New request caps.** Defaults: signals body 64 KiB
+   (`:max-signals-bytes`), EDN payload 4 KiB (`:max-payload-bytes`),
+   multipart upload 10 MiB (`:max-upload-bytes`). Bump them on
+   `make-kernel` if you legitimately exceed them; oversize → `413`.
+5. **Signal keys.** Untrusted JSON keys are no longer auto-interned, so
+   a signal you do *not* `:keep` arrives on `(:signals event)` under a
+   *string* key, not a keyword. Read kept signals via `:keep` + the
+   merged `self`, or `s/signal` (both unaffected); only direct
+   `(:signals event)` reads of un-kept, novel keys change.
+
+A worked secure host wiring all of this — secure cookie, CSRF,
+`:principal-fn`, audit hooks, `:before-dispatch`, and
+`security/wrap-defaults` + CSP — ships in
+[`examples/secure_ring.clj`](examples/dev/zeko/stube/examples/secure_ring.clj).
+See [`docs/security.md`](docs/security.md) for the full contract.
+
 ### Added
 
 - **Security/audit hooks + a dispatch authz seam on `make-kernel`.**
