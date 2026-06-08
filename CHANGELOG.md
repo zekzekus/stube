@@ -5,7 +5,16 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Docs
+
+- Reconciled [`docs/security.md`](docs/security.md) with the shipped
+  reality now that the Phase 1–3 hardening track is complete: the
+  honesty note no longer apologises for unbuilt work, `§4` is retitled
+  "Residual gaps" (the host-owned CSP, which is permanent rather than a
+  stopgap, and the parked untrusted-component item), `§3` gains a bullet
+  for the shipped `security/wrap-defaults` + `content-security-policy`
+  helpers, and the `§9` roadmap records the track as done with only the
+  parked Phase 4 remaining.
 
 ## 0.9.1
 

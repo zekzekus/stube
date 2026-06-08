@@ -5,15 +5,19 @@ designed against, the split of responsibility between the framework,
 the host that embeds it, and the component author, and the concrete
 configuration a host must apply to deploy it safely.
 
-> **Honesty note.** stube grew up as a personal research project, and
-> some of the hardening described here as the *target* contract is not
-> yet enforced by the framework. Where that is true I say so inline and
-> mark the item **(gap — tracked)** with a pointer to the security
-> section of [`todo.md`](../todo.md). The route from here to "every
-> item below is enforced by default" is sequenced in
-> [`docs/security_draft.md`](security_draft.md). This page is updated
-> as each fix lands, so it always describes the *current* state, not
-> the aspiration.
+> **Status.** stube grew up as a personal research project, and this
+> page used to apologise for hardening that was specified but not yet
+> built. That track is now done: unguessable cids, bounded parsing, the
+> `Secure` cookie, automatic CSRF, the audit/authz hooks, and the
+> security-headers + CSP helpers all shipped in **0.9.0**. Every item in
+> [§3](#3-what-the-framework-enforces-today) is enforced on the current
+> release. The one remaining piece of hardening — a component sandbox,
+> topic ACLs, and executor caps for an *untrusted*-component model — is
+> parked by design: it is out of scope for this page's threat model
+> (see [§1](#1-threat-model)) and is documented as a structural known
+> limit in [§8](#8-known-limits), not a gap being closed. The full
+> assessment and the parked stretch work live in
+> [`docs/security_draft.md`](security_draft.md).
 
 The authentication/authorization split this page leans on is the
 subject of [ADR 0004](decisions/0004-app-store-and-principal.md); read
@@ -132,28 +136,37 @@ release.
   `:on-stale`, `:on-shell-mint` audit hooks and a `:before-dispatch`
   authz/rate-limit gate (fail-closed). The framework emits; the host
   decides what to enforce and persist (see [§7](#7-authentication-vs-authorization)).
+- **A security-headers helper ships in the box.**
+  `dev.zeko.stube.security/wrap-defaults` is Ring middleware that adds
+  `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, COOP,
+  and a restrictive `Permissions-Policy` without clobbering headers a
+  handler already set, and `security/content-security-policy` builds a
+  CSP string from a directive map. These are host opt-in — the host
+  wires them on and supplies the concrete CSP, since only it knows its
+  CDN / font / analytics origins (see [§5](#5-required-host-configuration)).
 
 ---
 
-## 4 · Current gaps being closed
+## 4 · Residual gaps
 
-These are known weaknesses. Each is tracked in the security section of
-[`todo.md`](../todo.md); this list exists so a host operator can make an
-informed risk decision today and apply the compensating control in
-[§5](#5-required-host-configuration).
+The Phase 1–3 hardening track (cid entropy, bounded parsing, the
+`Secure` cookie, CSRF, audit/authz seams, the security-headers + CSP
+helpers) is **complete** — those items live in
+[§3](#3-what-the-framework-enforces-today) and shipped in 0.9.0. Two
+things remain, both deliberate rather than half-finished:
 
-| Gap | Risk | Compensating control until fixed |
+| Item | Why it isn't enforced by the framework | What the host does instead |
 |---|---|---|
-| **CSP must be configured by the host** | The framework ships `security/wrap-defaults` (baseline headers) and `content-security-policy` (CSP builder), but cannot pick the actual CSP — only the host knows its CDN / analytics / font origins, and the inline `data-init` / `data-on:*` attributes need a per-render nonce. | Wrap the ring handler with `security/wrap-defaults`; supply a `:csp`. See [§5](#5-required-host-configuration). |
-| **Pub/sub topics are unscoped; `:io`/`:after` uncapped** (gap — tracked) | Any component can publish to any topic; async effects spawn unbounded futures. Only matters under an untrusted-component model. | Trust your component authors (see [§1](#1-threat-model)); use `publish-local!` for per-conversation channels. |
+| **The concrete CSP is the host's to pick.** | Permanent, not a stopgap. The framework ships `security/wrap-defaults` and `content-security-policy`, but only the host knows its CDN / analytics / font origins, and Datastar's expression engine forces `unsafe-eval` regardless. | Wrap the ring handler with `security/wrap-defaults` and supply a `:csp`. See [§5](#5-required-host-configuration). |
+| **Pub/sub topics are unscoped; `:io`/`:after` futures are uncapped.** | Parked by design (Phase 4). Any component can publish to any topic and async effects spawn unbounded futures — but this only bites under an *untrusted*-component model, which is out of scope (see [§1](#1-threat-model)). Building it before a real multi-tenant host exists would be speculative. | Trust your component authors; use `publish-local!` for per-conversation channels. Tracked as the parked stretch work in [§8](#8-known-limits) / [`security_draft.md`](security_draft.md). |
 
 ---
 
 ## 5 · Required host configuration
 
-A safe deployment applies all of the following. Several of these are
-the compensating controls for [§4](#4-current-gaps-being-closed) and
-become belt-and-braces once the framework fix lands.
+A safe deployment applies all of the following — including supplying a
+CSP, the one [§4](#4-residual-gaps) item that is permanently the host's
+to own.
 
 **Transport**
 - Serve over HTTPS only. Terminate TLS at the proxy and redirect or
@@ -353,9 +366,14 @@ in the threat model:
 
 ## 9 · Roadmap
 
-The sequenced plan to close every **(gap — tracked)** item above lives
-in [`docs/security_draft.md`](security_draft.md) (the assessment and the
-three-release route) and as a checklist in the security section of
-[`todo.md`](../todo.md). As each item ships, its row moves from
-[§4](#4-current-gaps-being-closed) into [§3](#3-what-the-framework-enforces-today)
-and this page stops apologising for it.
+The sequenced hardening plan — Phase 0 (this contract) through Phase 3
+(operator seams and headers) — is **done**, shipped in 0.9.0. The
+original assessment and three-release route are preserved in
+[`docs/security_draft.md`](security_draft.md) for the record, and the
+ticked checklist lives in the security section of
+[`todo.md`](../todo.md). What's left is **Phase 4**, the
+untrusted-component model (per-kernel registry, topic ACLs, executor
+caps, signed cookies) — parked by design and not to be built until a
+concrete multi-tenant host needs it. Until then this page describes a
+finished contract for its threat model, with the one structural limit
+honestly flagged in [§4](#4-residual-gaps) / [§8](#8-known-limits).
