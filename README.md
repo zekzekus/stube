@@ -74,6 +74,7 @@ Seaside model, rebuilt for 2026.
 | [**API reference**](docs/api.md) | Every public function in `dev.zeko.stube.core`. |
 | [**Internals**](docs/internals.md) | How the kernel, conversation and effects fit together. |
 | [**Kit module**](docs/kit-module.md) | Add stube to a kit-clj app with `kit/install-module`. |
+| [**Security**](docs/security.md) | Threat model, shared-responsibility split, and the host-config checklist for a safe deployment. |
 | [**Rationale**](docs/rationale.md) | Why stube exists. Seaside, the uncommon web, and where the model came from. |
 | [**Changelog**](CHANGELOG.md) | Big-rock changes by release/development pass. |
 

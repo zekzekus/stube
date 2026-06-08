@@ -5,7 +5,19 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Documentation
+
+- **`docs/security.md` — the security contract.** Threat model
+  (single-JVM multi-user web app, cookies trusted), the
+  framework / host / author shared-responsibility split, what the
+  framework enforces today vs the current gaps being closed, the
+  required host-config checklist (TLS, proxy, headers/CSP, store-dir
+  permissions, reaper, halos-off), and the component-author rules
+  around `s/execute-script` / `s/on-mount`. Honest about unshipped
+  hardening: each gap is marked and points at the `todo.md` security
+  section. The sequenced route to close every gap lives in
+  `docs/security_draft.md`; `todo.md §2` tracks it as a phased
+  checklist.
 
 ## 0.8.1
 

@@ -5,10 +5,14 @@ most of the leverage items; what's here is the small set of things that
 genuinely remain. Older history — the full 1.0 punch list, the tiered
 sweeps, the resolved items — lives at `docs/archive/archived_todo.md`.
 
-Three tiers:
+Tiers:
 
 - **Correctness** — actual bugs the framework has today. These should
   be fixed before tagging 1.0.
+- **Security hardening** — active work to move from "personal research
+  project" to "credibly secure for third-party adoption." Assessment
+  and the three-release route live in `docs/security_draft.md`; the
+  shipped contract is `docs/security.md`.
 - **Deferred spikes** — design seams we deliberately punted on. No
   concrete use case yet; build the smallest example that *needs* one
   before adding the primitive.
@@ -36,7 +40,100 @@ and by the strengthened structural assertions in
 
 ---
 
-## 2 · Deferred design spikes — wait for a real use case
+## 2 · Security hardening (road to credibly-secure)
+
+Active work. Full assessment in `docs/security_draft.md`; the
+current contract (what's enforced vs what's still a gap) is
+`docs/security.md`. As each item ships, move its row from the
+"current gaps" table in `security.md` into "what the framework
+enforces today," and tick it here.
+
+Sequencing: **Phase 0** (the doc) is done. **Phase 1** is all
+framework-internal, no client-contract change, each item shippable on
+its own — target a 0.9.0. **Phase 2/3** change the client contract or
+add operator seams — target a 0.10.0. **Phase 4** is parked until a
+multi-tenant host exists (see §5, "deliberately not on this list").
+
+- [x] **Phase 0 — `docs/security.md`.** The shared-responsibility
+      contract, threat model, host-config checklist, and author rules.
+      Written before the code so each Phase 1 fix is "the thing the doc
+      would otherwise apologise for."
+
+### Phase 1 — cheap, high-severity, no client cooperation
+
+- [ ] **Cid entropy.** Replace `cv-<hex counter>`
+      (`conversation.clj/new-cid`) with `cv-` + 16 `SecureRandom` bytes,
+      hex-encoded — keeps the `file-store` "cids are `[0-9a-f]` + `cv-`"
+      invariant literally true with no new alphabet or dependency. Ids
+      stay opaque to callers. ~30 LoC.
+- [ ] **Bounded parsing — size.** Add `:max-signals-bytes` (default
+      64 KiB) and `:max-payload-bytes` (default 4 KiB) to `make-kernel`;
+      reject oversize in `http.clj` with `413`. Cap EDN payload nesting
+      depth in `read-event-payload`.
+- [ ] **Bounded parsing — keyword interning.** Replace `:key-fn keyword`
+      (`http.clj/parse-json`) and `(keyword event)` (`event-handler`)
+      with a bounded keywordizer. **Blocked on a regression test
+      first:** `merge-kept-signals` matches on interned keyword keys
+      *including the kernel-computed camelCase variant* under
+      `:signal-case :camel` — pin current camel-binding behaviour
+      before touching the key-fn, then decide `(or (find-keyword s) s)`
+      vs an LRU-capped intern. This is the one item with a real design
+      choice, not a pragmatic pick.
+- [ ] **Secure cookie + knob.** Default `Secure` on the `stube_sid`
+      cookie (`session.clj/session-cookie-header`); add `:dev-cookie?`
+      so the standalone/localhost dev server can flip it off. Optional
+      `:cookie-domain` / `:cookie-path`. Standalone dev server must set
+      `:dev-cookie?` or local HTTP breaks.
+- [ ] **Multipart caps + tempfile cleanup.** Configure ring multipart
+      `:max-file-size` / `:max-file-count` in `upload-handler`; wrap the
+      dispatch in `try`/`finally` that deletes tempfiles after the
+      handler consumes them, or add a `:keep-upload?` opt-in.
+
+### Phase 2 — CSRF token (changes the client contract)
+
+- [ ] **Per-conversation CSRF nonce.** Mint at `install-conversation!`,
+      store as `:conv/csrf-token`, embed once as
+      `<meta name="stube-csrf">` in the shell. The behaviors/preserve
+      bridge attaches it as a custom header on every Datastar POST;
+      `event`/`back`/`upload` handlers check it → `403` on mismatch.
+      Keep `SameSite=Lax` as defence in depth. **Fiddliest item:**
+      confirm Datastar's custom-header seam works with our adapter;
+      needs a `resources/.../behaviors.js` change and a `-M:e2e`
+      regression test.
+
+### Phase 3 — operator seams and headers (hooks + docs)
+
+- [ ] **Security event hooks** on the kernel — `:on-auth-fail`,
+      `:on-stale`, `:on-shell-mint` — beside the existing
+      `:on-conv-mint` / `:on-error`. Replace the `println` paths in
+      `runtime.clj` / `store.clj` with a configurable logger fn.
+- [ ] **`:before-dispatch` seam** —
+      `(fn [conv event request] -> :continue | [:reject status body])`
+      in `event-handler` / `back-handler` for host authz / rate-limit /
+      audit.
+- [ ] **`embed/rotate-session!`** — mint a new `stube_sid`, update
+      `:conv/owner-token`, return a `Set-Cookie` the host attaches.
+      Documented as "call on login/logout"; replaces the current
+      end-and-remint workaround.
+- [ ] **`stube.security/wrap-defaults`** — Ring middleware adding
+      `X-Content-Type-Options`, `Referrer-Policy`, COOP,
+      `X-Frame-Options` / `frame-ancestors`, `Permissions-Policy`.
+- [ ] **CSP recipe** — a documented, Datastar-compatible baseline using
+      a nonce for the shell's inline `data-init` and Datastar's inline
+      `data-on:*` attributes, so the page can drop `unsafe-inline`.
+      Verify against the upstream Datastar version pinned in nixpkgs.
+
+### Phase 4 — multi-tenant / untrusted-component (parked)
+
+Do **not** build without a concrete second host that needs it; consistent
+with the speculative-API discipline in §3. Sketched in
+`security_draft.md` "Stretch": per-kernel registry (drop the global atom
+in `registry.clj`), topic ACLs in pub/sub, injectable `Executor` caps
+for `:io` / `:after`, signed (HMAC) conversation cookies.
+
+---
+
+## 3 · Deferred design spikes — wait for a real use case
 
 Each of these is a known shape we've thought about and chosen not to
 build. Don't build any of them without an example that demonstrably
@@ -73,7 +170,7 @@ framework cruft.
 
 ---
 
-## 3 · Won't do (we have a documented alternative)
+## 4 · Won't do (we have a documented alternative)
 
 These come up periodically. Each has a working path today; don't add
 the framework feature unless the documented alternative proves
@@ -137,7 +234,7 @@ insufficient under real load.
 
 ---
 
-## 4 · Deliberately not on this list
+## 5 · Deliberately not on this list
 
 Carried forward from `v2_1.md` §16 — kept here so we don't add them by
 accident:
