@@ -7,6 +7,17 @@ development entry.
 
 ### Security
 
+- **`Secure` session cookie by default.** The `stube_sid` cookie is now
+  minted with `Secure` (in addition to the existing `HttpOnly` and
+  `SameSite=Lax`), so it never rides a plain-HTTP request. New
+  `make-kernel` options: `:dev-cookie?` (default false; set true only
+  for plain-HTTP localhost dev, or the browser won't return the cookie)
+  and `:cookie-domain` / `:cookie-path` to scope the cookie for embedded
+  mounts. The standalone `s/start!` server defaults `:dev-cookie? true`
+  because it binds plain HTTP on localhost — a standalone deploy behind
+  a TLS proxy should pass `:dev-cookie? false`. `todo.md §2`, Phase 1.
+
+
 - **Bounded keyword interning (slow-DoS fix).** Untrusted JSON signal
   keys and the event-name path segment were turned into keywords with
   bare `keyword`, permanently growing the JVM keyword table — a slow

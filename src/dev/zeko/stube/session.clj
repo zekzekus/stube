@@ -29,17 +29,30 @@
 (defn- new-session []
   (str (UUID/randomUUID)))
 
-(defn- session-cookie-header [sid]
-  (str session-cookie "=" sid "; Path=/; HttpOnly; SameSite=Lax"))
+(defn session-cookie-header
+  "Build the `Set-Cookie` value for `sid`.  Always `HttpOnly` and
+  `SameSite=Lax`; `:secure?` (default true) adds `Secure`, `:domain`
+  scopes the cookie, `:path` defaults to `/`."
+  [sid {:keys [secure? domain path] :or {secure? true path "/"}}]
+  (str session-cookie "=" sid
+       "; Path=" path
+       (when domain (str "; Domain=" domain))
+       "; HttpOnly; SameSite=Lax"
+       (when secure? "; Secure")))
 
 (defn ensure-session
   "Return `[sid set-cookie-header-or-nil]`.  The `Set-Cookie` value is
-  only non-nil on the first request from a fresh browser."
-  [req]
-  (if-let [sid (request-session req)]
-    [sid nil]
-    (let [sid (new-session)]
-      [sid (session-cookie-header sid)])))
+  only non-nil on the first request from a fresh browser.
+
+  `opts` controls the emitted cookie attributes — `:secure?` (default
+  true; only turn it off behind plain-HTTP localhost dev, or the browser
+  will not send the cookie back), `:domain`, and `:path`."
+  ([req] (ensure-session req {}))
+  ([req opts]
+   (if-let [sid (request-session req)]
+     [sid nil]
+     (let [sid (new-session)]
+       [sid (session-cookie-header sid opts)]))))
 
 (defn authorized?
   "True when the request's session cookie matches the conversation's

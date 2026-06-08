@@ -103,8 +103,12 @@ release.
   `keyword`, so an attacker cannot grow the JVM keyword table by sending
   novel keys — closing a slow memory-leak DoS. Keys a component actually
   uses are keyword literals (already interned) and resolve normally.
-- **Cookies are `HttpOnly` and `SameSite=Lax`.** This blocks JS cookie
-  theft and cross-site form POSTs (`session.clj`).
+- **Cookies are `HttpOnly`, `SameSite=Lax`, and `Secure` by default.**
+  This blocks JS cookie theft, cross-site form POSTs, and any plain-HTTP
+  leak of the cookie (`session.clj`). `Secure` is on unless the kernel
+  is built with `:dev-cookie? true`; the standalone `s/start!` server
+  sets that for localhost, so a standalone TLS deploy must pass
+  `:dev-cookie? false`.
 - **A reaper exists.** `(embed/reap! k ttl)` ends conversations whose
   `:conv/touched` is older than `ttl`, bounding unbounded growth from
   conversation minting — *once the host wires it onto a schedule*
@@ -123,7 +127,6 @@ informed risk decision today and apply the compensating control in
 
 | Gap | Risk | Compensating control until fixed |
 |---|---|---|
-| **Cookie is not `Secure`** (gap — tracked) | Cookie rides plain HTTP if the host ever serves it. | Serve over HTTPS only; have the proxy refuse plain HTTP or `Strict-Transport-Security` it. |
 | **No CSRF token** (gap — tracked) | State-changing POSTs (`/event`, `/back`, `/upload`) rely entirely on the cookie + `SameSite=Lax`. | Keep `SameSite=Lax` intact end-to-end; ensure no proxy strips or rewrites the cookie attribute. |
 | **Multipart tempfiles not deleted** (gap — tracked) | Uploads write tempfiles stube never cleans up, and there is no upload-size cap, so a client can fill the tempfile directory. | Cap multipart size at the proxy; mount the tempfile dir on a bounded volume; reap it out-of-band. |
 | **No CSP or security headers** (gap — tracked) | The shell can be framed cross-origin; no `nosniff`, no `Referrer-Policy`. | Apply the headers in [§5](#5-required-host-configuration) at the proxy or via host middleware. |
@@ -139,10 +142,14 @@ become belt-and-braces once the framework fix lands.
 
 **Transport**
 - Serve over HTTPS only. Terminate TLS at the proxy and redirect or
-  refuse plain HTTP. Until the framework sets `Secure` itself, the
-  cookie depends entirely on the transport never being HTTP.
+  refuse plain HTTP. The cookie is `Secure` by default, so it will not
+  even be sent over plain HTTP — but the rest of the exchange still
+  needs TLS.
 - Send `Strict-Transport-Security` so a downgrade is not silently
   accepted.
+- If you deploy the standalone `s/start!` server behind a TLS
+  terminator, pass `:dev-cookie? false` so the cookie keeps its
+  `Secure` attribute (it defaults to dev mode for localhost).
 
 **Reverse proxy (SSE-aware)**
 - Do **not** buffer the SSE stream. For nginx: `proxy_buffering off;`

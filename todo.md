@@ -86,11 +86,15 @@ multi-tenant host exists (see §5, "deliberately not on this list").
       first-dispatch case keep working. Pinned by
       `conversation-test/merge-kept-signals-accepts-string-keys` and
       `http-test/event-handler-bounds-keyword-interning`.
-- [ ] **Secure cookie + knob.** Default `Secure` on the `stube_sid`
-      cookie (`session.clj/session-cookie-header`); add `:dev-cookie?`
-      so the standalone/localhost dev server can flip it off. Optional
-      `:cookie-domain` / `:cookie-path`. Standalone dev server must set
-      `:dev-cookie?` or local HTTP breaks.
+- [x] **Secure cookie + knob.** `stube_sid` is `Secure` by default
+      (plus the existing `HttpOnly` + `SameSite=Lax`). New `make-kernel`
+      opts `:dev-cookie?` (opt out of `Secure` for plain-HTTP localhost)
+      and `:cookie-domain` / `:cookie-path`. The default
+      `:ensure-session-fn` is a closure over the resolved cookie
+      attributes; host-managed sessions (`:session-id-fn`) keep control.
+      Standalone `s/start!` defaults `:dev-cookie? true` (binds plain
+      HTTP), keeping the e2e harness and localhost dev working. Pinned
+      by `session-test`.
 - [ ] **Multipart caps + tempfile cleanup.** Configure ring multipart
       `:max-file-size` / `:max-file-count` in `upload-handler`; wrap the
       dispatch in `try`/`finally` that deletes tempfiles after the

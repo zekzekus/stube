@@ -37,8 +37,15 @@
 (defonce ^:private !server      (atom nil))
 (defonce ^:private !reaper-stop (atom nil))
 
-(defn- new-kernel [{:keys [store ui-css? base-css eager-scripts halos? app principal-fn]
-                    :or {ui-css? true base-css [] eager-scripts [] halos? false}}]
+(defn- new-kernel [{:keys [store ui-css? base-css eager-scripts halos? app principal-fn
+                           dev-cookie?]
+                    :or {ui-css? true base-css [] eager-scripts [] halos? false
+                         ;; The standalone server binds plain HTTP on
+                         ;; localhost, so its session cookie must NOT be
+                         ;; `Secure` by default or the browser never
+                         ;; returns it.  A standalone deploy behind a TLS
+                         ;; proxy should pass `:dev-cookie? false`.
+                         dev-cookie? true}}]
   (rt/make-kernel {:store         (or store (store/in-memory-store))
                    :base-path     ""
                    :ui-css?       ui-css?
@@ -46,7 +53,8 @@
                    :eager-scripts eager-scripts
                    :halos?        halos?
                    :app           app
-                   :principal-fn  principal-fn}))
+                   :principal-fn  principal-fn
+                   :dev-cookie?   dev-cookie?}))
 
 (defn default-kernel
   "The kernel instance used by the standalone server API."
@@ -191,11 +199,17 @@
 
   Accepts the embedder options `:app` and `:principal-fn` and forwards
   them to the underlying kernel.  See
-  [[dev.zeko.stube.embed/make-kernel]] for the full set."
+  [[dev.zeko.stube.embed/make-kernel]] for the full set.
+
+  `:dev-cookie?` defaults to **true** here (unlike `make-kernel`):
+  the standalone server binds plain HTTP on localhost, so a `Secure`
+  cookie would never come back.  A standalone deployment that terminates
+  TLS in front of this process should pass `:dev-cookie? false`."
   ([] (start! {}))
   ([{:keys [port store ui-css? base-css eager-scripts halos? app principal-fn
-            conversation-ttl reaper-interval]
-     :or {port 8080 ui-css? true base-css [] eager-scripts [] halos? false}}]
+            conversation-ttl reaper-interval dev-cookie?]
+     :or {port 8080 ui-css? true base-css [] eager-scripts [] halos? false
+          dev-cookie? true}}]
    (when @!server
      (stop!))
    (when-let [old @!kernel]
@@ -206,7 +220,8 @@
                         :eager-scripts eager-scripts
                         :halos?        halos?
                         :app           app
-                        :principal-fn  principal-fn})]
+                        :principal-fn  principal-fn
+                        :dev-cookie?   dev-cookie?})]
      (reset! !kernel k)
      (when (and store (seq (rt/active-conversations k)))
        (println (str "stube: restored " (count (rt/active-conversations k))

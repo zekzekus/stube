@@ -33,36 +33,58 @@
       :else base)))
 
 (defn- default-options [opts]
-  (let [custom-session? (contains? opts :session-id-fn)]
-    (merge {:context-fn        (constantly nil)
-            :app               nil
-            :principal-fn      nil
-            :store             (store/in-memory-store)
-            :base-path         ""
-            :root-selector     "#root"
-            :session-id-fn     session/request-session
-            :ensure-session-fn (when-not custom-session?
-                                 session/ensure-session)
-            :on-conv-mint      (fn [conv _request] conv)
-            :on-error          nil
-            :ui-css?           true
-            :base-css          []
-            :css-layer-order   nil
-            :eager-scripts     []
-            :halos?            false
-            :signal-case       :kebab
-            ;; Bounded request parsing.  An event POST carries a JSON
-            ;; signals body and an EDN payload query param, both
-            ;; attacker-controlled; cap them so a single request can
-            ;; neither OOM the parser nor stream an unbounded body.
-            ;; Oversize → 413.
-            :max-signals-bytes 65536
-            :max-payload-bytes 4096
-            ;; SSE comment-frame heartbeat that keeps reverse-proxy idle
-            ;; timers happy.  15s sits under the common 30/60s thresholds
-            ;; (nginx, ALB).  Set to nil or 0 to disable.
-            :sse-keepalive-ms  15000}
-           opts)))
+  (let [custom-session? (contains? opts :session-id-fn)
+        merged
+        (merge {:context-fn        (constantly nil)
+                :app               nil
+                :principal-fn      nil
+                :store             (store/in-memory-store)
+                :base-path         ""
+                :root-selector     "#root"
+                :session-id-fn     session/request-session
+                :on-conv-mint      (fn [conv _request] conv)
+                :on-error          nil
+                :ui-css?           true
+                :base-css          []
+                :css-layer-order   nil
+                :eager-scripts     []
+                :halos?            false
+                :signal-case       :kebab
+                ;; Session-cookie hygiene.  The cookie is `Secure` by
+                ;; default — embedders run behind the host's TLS.  Set
+                ;; `:dev-cookie? true` only when the same kernel serves
+                ;; plain HTTP (localhost dev), or the browser will refuse
+                ;; to send the cookie back and every conversation looks
+                ;; cross-session.  `:cookie-domain` / `:cookie-path`
+                ;; scope the cookie for embedded mounts.
+                :dev-cookie?       false
+                :cookie-domain     nil
+                :cookie-path       "/"
+                ;; Bounded request parsing.  An event POST carries a JSON
+                ;; signals body and an EDN payload query param, both
+                ;; attacker-controlled; cap them so a single request can
+                ;; neither OOM the parser nor stream an unbounded body.
+                ;; Oversize → 413.
+                :max-signals-bytes 65536
+                :max-payload-bytes 4096
+                ;; SSE comment-frame heartbeat that keeps reverse-proxy
+                ;; idle timers happy.  15s sits under the common 30/60s
+                ;; thresholds (nginx, ALB).  Set to nil or 0 to disable.
+                :sse-keepalive-ms  15000}
+               opts)]
+    ;; The default session minter is a closure over the resolved cookie
+    ;; attributes, so `:dev-cookie?` / `:cookie-domain` / `:cookie-path`
+    ;; reach `session/ensure-session`.  A host that supplied its own
+    ;; `:session-id-fn` (host-managed sessions) or an explicit
+    ;; `:ensure-session-fn` keeps full control — we don't override.
+    (cond-> merged
+      (and (not custom-session?)
+           (not (contains? opts :ensure-session-fn)))
+      (assoc :ensure-session-fn
+             (let [cookie-opts {:secure? (not (:dev-cookie? merged))
+                                :domain  (:cookie-domain merged)
+                                :path    (:cookie-path merged)}]
+               (fn [req] (session/ensure-session req cookie-opts)))))))
 
 (defn make-kernel
   "Create an embeddable stube runtime instance.
@@ -129,7 +151,17 @@
   * `:max-payload-bytes` — cap (in bytes) on the EDN `payload` query
     param of an event POST.  Default 4 KiB.  Oversize → `413`;
     unparseable → `400`.  The bound also caps EDN nesting depth, so a
-    deeply-nested value cannot exhaust the parser stack."
+    deeply-nested value cannot exhaust the parser stack.
+  * `:dev-cookie?` — when true, the `stube_sid` cookie is minted
+    *without* the `Secure` attribute.  Default false (secure): an
+    embedded kernel runs behind the host's TLS.  Flip this on only when
+    the same kernel serves plain HTTP (localhost dev) — otherwise the
+    browser refuses to send the cookie back and every conversation
+    appears cross-session.  Ignored when the host supplies its own
+    `:session-id-fn` / `:ensure-session-fn`.
+  * `:cookie-domain` / `:cookie-path` — scope the `stube_sid` cookie.
+    Default no `Domain` and `Path=/`.  Set `:cookie-path` to a mount
+    prefix when several independent stube apps share an origin."
   ([]
    (make-kernel {}))
   ([opts]
