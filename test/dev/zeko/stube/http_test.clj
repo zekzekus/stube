@@ -1,6 +1,7 @@
 (ns dev.zeko.stube.http-test
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing use-fixtures]]
+            [dev.zeko.stube.embed :as embed]
             [dev.zeko.stube.fragments :as fragments]
             [dev.zeko.stube.http :as http]
             [dev.zeko.stube.registry :as registry]
@@ -250,7 +251,12 @@
   (let [cid  (rt/create-conversation! (server/default-kernel) :test/upload "owner")
         iid  "ix-upload"
         tmp  (doto (java.io.File/createTempFile "stube-upload" ".txt")
-               (spit "hello upload"))]
+               (spit "hello upload"))
+        ;; Capture before the handler runs: the default upload path now
+        ;; deletes the tempfile once dispatch consumes it, so reading
+        ;; `.length` afterwards would see 0.
+        expected-size (.length tmp)
+        expected-path (.getAbsolutePath (io/file tmp))]
     (try
       (rt/swap-conv! (server/default-kernel)
         cid
@@ -276,8 +282,84 @@
         (is (= [{:field "file"
                  :filename "hello.txt"
                  :content-type "text/plain"
-                 :size (.length tmp)
-                 :tempfile (.getAbsolutePath (io/file tmp))}]
+                 :size expected-size
+                 :tempfile expected-path}]
                (:files seen))))
       (finally
         (io/delete-file tmp true)))))
+
+(deftest upload-handler-reclaims-tempfiles-by-default
+  (registry/register!
+    {:component/id :test/up-clean
+     :component/handle (fn [s _] [s []])})
+  (let [k   (server/default-kernel)
+        cid (rt/create-conversation! k :test/up-clean "owner")
+        iid "ix-up"
+        tmp (doto (java.io.File/createTempFile "stube-cleanup" ".txt")
+              (spit "data"))]
+    (rt/swap-conv! k cid
+      (fn [c]
+        [(-> c
+             (assoc :conv/instances {iid {:instance/id iid
+                                          :instance/type :test/up-clean
+                                          :instance/rendered? true
+                                          :instance/children {}}})
+             (assoc :conv/stack [iid]))
+         []]))
+    (http/upload-handler
+      k {:path-params {:cid cid :iid iid}
+         :headers {"cookie" "stube_sid=owner"}
+         :multipart-params {"file" {:filename "x.txt"
+                                    :content-type "text/plain"
+                                    :tempfile tmp}}})
+    (is (not (.exists tmp))
+        "default upload path deletes the tempfile after dispatch consumes it")))
+
+(deftest upload-handler-keeps-tempfiles-when-opted-in
+  (registry/register!
+    {:component/id :test/up-keep
+     :component/handle (fn [s _] [s []])})
+  (let [k   (embed/make-kernel {:keep-upload? true})
+        cid (rt/create-conversation! k :test/up-keep "owner")
+        iid "ix-up"
+        tmp (doto (java.io.File/createTempFile "stube-keep" ".txt")
+              (spit "data"))]
+    (try
+      (rt/swap-conv! k cid
+        (fn [c]
+          [(-> c
+               (assoc :conv/instances {iid {:instance/id iid
+                                            :instance/type :test/up-keep
+                                            :instance/rendered? true
+                                            :instance/children {}}})
+               (assoc :conv/stack [iid]))
+           []]))
+      (http/upload-handler
+        k {:path-params {:cid cid :iid iid}
+           :headers {"cookie" "stube_sid=owner"}
+           :multipart-params {"file" {:filename "x.txt"
+                                      :content-type "text/plain"
+                                      :tempfile tmp}}})
+      (is (.exists tmp)
+          ":keep-upload? leaves the tempfile for async processing")
+      (finally
+        (io/delete-file tmp true)))))
+
+(deftest upload-handler-rejects-oversize-body
+  (let [k   (server/default-kernel)
+        cid (rt/create-conversation! k :test/up-clean "owner")]
+    (registry/register!
+      {:component/id :test/up-clean
+       :component/handle (fn [s _] [s []])})
+    (rt/swap-conv! k cid
+      (fn [c]
+        [(-> c
+             (assoc :conv/instances {"ix-1" {:instance/id "ix-1"
+                                             :instance/type :test/up-clean
+                                             :instance/children {}}})
+             (assoc :conv/stack ["ix-1"]))
+         []]))
+    (is (= 413 (:status (http/upload-handler
+                          k {:path-params {:cid cid :iid "ix-1"}
+                             :headers {"cookie" "stube_sid=owner"
+                                       "content-length" "999999999"}}))))))

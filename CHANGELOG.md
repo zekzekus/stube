@@ -7,6 +7,15 @@ development entry.
 
 ### Security
 
+- **Multipart upload caps + tempfile cleanup.** The upload handler
+  rejects a body whose `Content-Length` exceeds `:max-upload-bytes`
+  (default 10 MiB) with a `413` before parsing, and deletes the
+  multipart tempfiles ring writes once the `:upload-received` dispatch
+  has consumed them — so a client can no longer fill the tempfile
+  directory. Handlers that hand the file to asynchronous processing set
+  `:keep-upload? true` and clean up themselves. `todo.md §2`, Phase 1.
+
+
 - **`Secure` session cookie by default.** The `stube_sid` cookie is now
   minted with `Secure` (in addition to the existing `HttpOnly` and
   `SameSite=Lax`), so it never rides a plain-HTTP request. New

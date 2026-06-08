@@ -103,6 +103,12 @@ release.
   `keyword`, so an attacker cannot grow the JVM keyword table by sending
   novel keys — closing a slow memory-leak DoS. Keys a component actually
   uses are keyword literals (already interned) and resolve normally.
+- **Bounded uploads + tempfile cleanup.** A multipart body over
+  `:max-upload-bytes` (default 10 MiB) is rejected (`413`) by
+  `Content-Length` before parsing, and ring's tempfiles are deleted once
+  the dispatch consumes them — so uploads can neither overflow the
+  request nor accumulate on disk. `:keep-upload? true` opts a kernel out
+  for handlers that process the file asynchronously.
 - **Cookies are `HttpOnly`, `SameSite=Lax`, and `Secure` by default.**
   This blocks JS cookie theft, cross-site form POSTs, and any plain-HTTP
   leak of the cookie (`session.clj`). `Secure` is on unless the kernel
@@ -128,7 +134,6 @@ informed risk decision today and apply the compensating control in
 | Gap | Risk | Compensating control until fixed |
 |---|---|---|
 | **No CSRF token** (gap — tracked) | State-changing POSTs (`/event`, `/back`, `/upload`) rely entirely on the cookie + `SameSite=Lax`. | Keep `SameSite=Lax` intact end-to-end; ensure no proxy strips or rewrites the cookie attribute. |
-| **Multipart tempfiles not deleted** (gap — tracked) | Uploads write tempfiles stube never cleans up, and there is no upload-size cap, so a client can fill the tempfile directory. | Cap multipart size at the proxy; mount the tempfile dir on a bounded volume; reap it out-of-band. |
 | **No CSP or security headers** (gap — tracked) | The shell can be framed cross-origin; no `nosniff`, no `Referrer-Policy`. | Apply the headers in [§5](#5-required-host-configuration) at the proxy or via host middleware. |
 | **Pub/sub topics are unscoped; `:io`/`:after` uncapped** (gap — tracked) | Any component can publish to any topic; async effects spawn unbounded futures. Only matters under an untrusted-component model. | Trust your component authors (see [§1](#1-threat-model)); use `publish-local!` for per-conversation channels. |
 
@@ -178,10 +183,14 @@ until then, start from `default-src 'self'` plus the Datastar CDN
 origin and add nonces for the inline attributes.
 
 **Request limits**
-- Cap request body size and multipart upload size at the proxy. The
-  framework does not cap these yet.
-- Mount the multipart tempfile directory on a bounded volume and reap
-  it out of band; stube does not delete upload tempfiles today.
+- The framework caps the signals body (`:max-signals-bytes`), EDN
+  payload (`:max-payload-bytes`), and multipart upload Content-Length
+  (`:max-upload-bytes`). A belt-and-braces body-size limit at the proxy
+  is still good practice, especially for non-stube routes the host
+  serves.
+- stube deletes multipart tempfiles after each upload dispatch. If you
+  set `:keep-upload? true` for async processing, mount the tempfile
+  directory on a bounded volume and reap it out of band yourself.
 
 **Conversation store**
 - `chmod` the file-store directory so only the stube process user can

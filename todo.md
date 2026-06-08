@@ -95,10 +95,14 @@ multi-tenant host exists (see §5, "deliberately not on this list").
       Standalone `s/start!` defaults `:dev-cookie? true` (binds plain
       HTTP), keeping the e2e harness and localhost dev working. Pinned
       by `session-test`.
-- [ ] **Multipart caps + tempfile cleanup.** Configure ring multipart
-      `:max-file-size` / `:max-file-count` in `upload-handler`; wrap the
-      dispatch in `try`/`finally` that deletes tempfiles after the
-      handler consumes them, or add a `:keep-upload?` opt-in.
+- [x] **Multipart caps + tempfile cleanup.** Ring's multipart
+      middleware doesn't expose a byte cap, so `upload-handler` gates on
+      `Content-Length` against `:max-upload-bytes` (default 10 MiB) →
+      `413` before parsing, and a `try`/`finally` deletes ring's
+      tempfiles after the synchronous dispatch consumes them.
+      `:keep-upload? true` opts out for async file handoff. Pinned by
+      `http-test/upload-handler-reclaims-tempfiles-by-default`,
+      `-keeps-tempfiles-when-opted-in`, and `-rejects-oversize-body`.
 
 ### Phase 2 — CSRF token (changes the client contract)
 

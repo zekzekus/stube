@@ -297,6 +297,22 @@
              :size         (or size (when (and file (.exists file)) (.length file)) 0)}
       file (assoc :tempfile (.getAbsolutePath file)))))
 
+(defn- multipart-tempfiles
+  "The `java.io.File` tempfiles ring stored for this multipart request."
+  [req]
+  (keep (fn [[_ v]] (when (multipart-file? v) (:tempfile v)))
+        (:multipart-params req)))
+
+(defn- delete-tempfiles! [files]
+  (doseq [f files]
+    (try
+      (when (instance? java.io.File f) (.delete ^java.io.File f))
+      (catch Throwable _ nil))))
+
+(defn- content-length [req]
+  (or (:content-length req)
+      (some-> (get-in req [:headers "content-length"]) parse-long)))
+
 (defn- upload-payload [req]
   (let [params (:multipart-params req)]
     {:fields (into {}
@@ -506,6 +522,11 @@
        ;; the whole page is stale.
        (no-op-response)
 
+       (let [max-bytes (:max-upload-bytes k)
+             clen      (content-length req)]
+         (and max-bytes clen (> (long clen) (long max-bytes))))
+       (too-large-response)
+
        :else
        (with-mdc {:cid cid :iid iid}
          (fn []
@@ -513,11 +534,18 @@
                            req
                            (multipart/multipart-params-request req))
                  payload (upload-payload req')]
-             (rt/dispatch! k cid {:instance-id iid
-                                      :event       :upload-received
-                                      :payload     payload
-                                      :signals     {}})
-             (upload-ok-response))))))))
+             (try
+               (rt/dispatch! k cid {:instance-id iid
+                                    :event       :upload-received
+                                    :payload     payload
+                                    :signals     {}})
+               (upload-ok-response)
+               (finally
+                 ;; The synchronous dispatch above has consumed the file;
+                 ;; reclaim ring's tempfiles unless the host opted to keep
+                 ;; them for async processing.
+                 (when-not (:keep-upload? k)
+                   (delete-tempfiles! (multipart-tempfiles req'))))))))))))
 
 (defn event-handler
   "Dispatch one client event into the conversation.  The instance id

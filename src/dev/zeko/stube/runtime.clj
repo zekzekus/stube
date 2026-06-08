@@ -67,6 +67,14 @@
                 ;; Oversize → 413.
                 :max-signals-bytes 65536
                 :max-payload-bytes 4096
+                ;; Multipart uploads.  Reject a body whose Content-Length
+                ;; exceeds the cap (413) before parsing, and delete the
+                ;; tempfiles ring writes once the dispatch has consumed
+                ;; them — unless `:keep-upload?` is set, for handlers that
+                ;; hand the file off to async processing and clean up
+                ;; themselves.
+                :max-upload-bytes  10485760   ; 10 MiB
+                :keep-upload?      false
                 ;; SSE comment-frame heartbeat that keeps reverse-proxy
                 ;; idle timers happy.  15s sits under the common 30/60s
                 ;; thresholds (nginx, ALB).  Set to nil or 0 to disable.
@@ -161,7 +169,15 @@
     `:session-id-fn` / `:ensure-session-fn`.
   * `:cookie-domain` / `:cookie-path` — scope the `stube_sid` cookie.
     Default no `Domain` and `Path=/`.  Set `:cookie-path` to a mount
-    prefix when several independent stube apps share an origin."
+    prefix when several independent stube apps share an origin.
+  * `:max-upload-bytes` — cap (in bytes) on a multipart upload body,
+    checked against `Content-Length` before parsing.  Default 10 MiB.
+    Oversize → `413`.
+  * `:keep-upload?` — by default the upload handler deletes ring's
+    multipart tempfiles once the `:upload-received` dispatch has
+    consumed them.  Set this true when a handler hands the tempfile to
+    asynchronous processing (e.g. an `:io` thunk) and takes
+    responsibility for deleting it itself."
   ([]
    (make-kernel {}))
   ([opts]
