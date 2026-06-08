@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.9.0
+
 This is the **security-hardening release**. Most of it is transparent —
 if you render the shell through `shell-for` / `rendered-shell-for!` /
 `head-tags` / `:mounts` and serve over HTTPS, you get unguessable cids,
