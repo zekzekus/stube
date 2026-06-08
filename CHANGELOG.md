@@ -7,6 +7,13 @@ development entry.
 
 ### Added
 
+- **`embed/rotate-session!`** — rotate the session that owns a
+  conversation on login/logout. Mints a fresh `stube_sid`, makes it the
+  conversation's `:conv/owner-token`, and returns a `Set-Cookie` (built
+  with the kernel's cookie attributes) for the host to attach. The old
+  session id stops authorizing once the new cookie lands — the standard
+  session-fixation defence on a privilege change. The CSRF token is
+  preserved so the current page keeps working. `todo.md §2`, Phase 3.
 - **`dev.zeko.stube.security` — response-header middleware + CSP
   builder.** `security/wrap-defaults` wraps a stube ring handler and
   adds a baseline of hardening headers (`X-Content-Type-Options`,

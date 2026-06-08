@@ -19,7 +19,7 @@
            (java.util UUID)))
 
 (declare dispatch! dispatch-to! schedule-event! stop-keepalive!
-         subscribe! unsubscribe!)
+         subscribe! unsubscribe! swap-conv!)
 
 ;; ---------------------------------------------------------------------------
 ;; Kernel values
@@ -332,6 +332,26 @@
   "The CSRF nonce recorded on conversation `cid`, or nil."
   [k cid]
   (:conv/csrf-token (conversation k cid)))
+
+(defn rotate-session!
+  "Rotate the session that owns conversation `cid`: mint a fresh
+  `stube_sid`, record it as the new `:conv/owner-token`, and return the
+  `Set-Cookie` header string the host must attach to its response (built
+  with this kernel's cookie attributes).  Returns nil if `cid` is
+  unknown or the kernel uses host-managed sessions.
+
+  Call this on login / logout: a fixed session id surviving a privilege
+  change is the classic session-fixation hazard.  The conversation's
+  CSRF token is left intact, so the *current* page keeps working; the
+  old `stube_sid` stops authorizing as soon as the new cookie lands."
+  [k cid]
+  (when (and (:ensure-session-fn k) (conversation k cid))
+    (let [sid (session/new-session)]
+      (swap-conv! k cid (fn [c] [(assoc c :conv/owner-token sid) []]))
+      (session/session-cookie-header sid
+        {:secure? (not (:dev-cookie? k))
+         :domain  (:cookie-domain k)
+         :path    (:cookie-path k)}))))
 
 (defn mint-conversation!
   "Register a new conversation for `root-id` and return its cid.

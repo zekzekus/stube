@@ -276,12 +276,14 @@ stube draws a deliberate line, documented in
   `:conv/principal` and read with `(s/principal)`.
 
 **Login / logout.** The principal is fixed for the life of a
-conversation. When the authenticated user changes (login, logout,
-privilege change), the correct move today is to **end the conversation
-and re-mint** so a fresh `:conv/principal` is captured. A dedicated
-`rotate-session!` helper that rotates `stube_sid` and the owner-token in
-place is on the roadmap (gap — tracked); until it lands, end-and-remint
-is the supported path.
+conversation. On a privilege change, call
+`(embed/rotate-session! k cid)`: it mints a fresh `stube_sid`, makes it
+the conversation's owner, and returns a `Set-Cookie` to attach to your
+login/logout response — the standard session-fixation defence (the old
+session id stops authorizing once the new cookie lands; the CSRF token
+is preserved so the current page keeps working). To also refresh
+`:conv/principal`, end the conversation and re-mint so it is recaptured
+at mint time.
 
 **Per-dispatch authorization** (e.g. "this handler runs only for role
 X") is currently the component's own responsibility inside `:handle`. A

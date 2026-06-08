@@ -26,7 +26,9 @@
   [req]
   (get (cookie-map req) session-cookie))
 
-(defn- new-session []
+(defn new-session
+  "Mint a fresh `stube_sid` value (a v4 UUID — 122 bits of entropy)."
+  []
   (str (UUID/randomUUID)))
 
 (defn session-cookie-header

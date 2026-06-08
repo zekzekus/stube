@@ -131,10 +131,12 @@ multi-tenant host exists (see §5, "deliberately not on this list").
       `(fn [conv event request] -> :continue | [:reject status body])`
       in `event-handler` / `back-handler` for host authz / rate-limit /
       audit.
-- [ ] **`embed/rotate-session!`** — mint a new `stube_sid`, update
-      `:conv/owner-token`, return a `Set-Cookie` the host attaches.
-      Documented as "call on login/logout"; replaces the current
-      end-and-remint workaround.
+- [x] **`embed/rotate-session!`** — mints a new `stube_sid`, updates
+      `:conv/owner-token`, returns a `Set-Cookie` (built with the
+      kernel's cookie attrs) the host attaches on login/logout.
+      Preserves the CSRF token so the current page keeps working;
+      returns nil for unknown cid / host-managed sessions. Pinned by
+      `session-test/rotate-session-rotates-owner-and-returns-cookie`.
 - [x] **`stube.security/wrap-defaults`** — Ring middleware adding
       `X-Content-Type-Options`, `Referrer-Policy`, COOP,
       `X-Frame-Options`, `Permissions-Policy` without clobbering

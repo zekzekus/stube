@@ -46,6 +46,19 @@
   [k cid]
   (rt/shell-for k cid))
 
+(defn rotate-session!
+  "Rotate the session that owns conversation `cid` and return a
+  `Set-Cookie` header string to attach to the host's response (or nil if
+  `cid` is unknown / sessions are host-managed).
+
+  Call this on login and logout: it mints a fresh `stube_sid`, makes it
+  the conversation's owner, and invalidates the old one once the cookie
+  lands — the standard session-fixation defence on a privilege change.
+  The conversation's CSRF token is preserved, so the current page keeps
+  working."
+  [k cid]
+  (rt/rotate-session! k cid))
+
 (defn rendered-shell-for!
   "Mint a conversation, boot it server-side, and return both the cid
   and a Hiccup shell whose `#root` placeholder already contains the

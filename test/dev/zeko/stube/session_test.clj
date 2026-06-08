@@ -51,3 +51,20 @@
           [_ cookie] (rt/ensure-session k {:headers {}})]
       (is (re-find #"Domain=ex.com" cookie))
       (is (re-find #"Path=/w" cookie)))))
+
+(deftest rotate-session-rotates-owner-and-returns-cookie
+  (let [k         (embed/make-kernel)
+        cid       (rt/mint-conversation! k :test/root {} {:headers {}})
+        old-owner (:conv/owner-token (rt/conversation k cid))
+        old-csrf  (rt/conversation-csrf-token k cid)
+        cookie    (embed/rotate-session! k cid)
+        new-owner (:conv/owner-token (rt/conversation k cid))]
+    (is (string? cookie))
+    (is (re-find #"Secure" cookie) "rotated cookie keeps the kernel's attributes")
+    (is (not= old-owner new-owner) "owner token is rotated")
+    (is (re-find (re-pattern (str "stube_sid=" new-owner)) cookie)
+        "the cookie carries the new owner token")
+    (is (= old-csrf (rt/conversation-csrf-token k cid))
+        "CSRF token is preserved so the current page keeps working")
+    (testing "unknown cid → nil"
+      (is (nil? (embed/rotate-session! k "cv-nope"))))))
