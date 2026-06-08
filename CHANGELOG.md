@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.9.1
+
 ### Docs
 
 - Added [`docs/scaling.md`](docs/scaling.md): how to operate a stube
