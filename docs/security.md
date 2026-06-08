@@ -192,13 +192,37 @@ become belt-and-braces once the framework fix lands.
 set. Pass `:headers {"X-Frame-Options" nil}` to drop a default (e.g.
 when you drive framing through CSP `frame-ancestors`).
 
-The CSP is the fiddly part: the stube shell uses an inline `data-init`
-attribute and Datastar uses inline `data-on:*` attributes, so a strict
-policy needs a per-render nonce (or hash) rather than blanket
-`unsafe-inline`. The shell also loads Datastar from a CDN
-(`d*/CDN-url`) — add that origin to `script-src`, or self-host the
-asset. Start from `default-src 'self'` plus the Datastar CDN origin and
-add nonces for the inline attributes.
+The CSP is the fiddly part, and the constraint comes from Datastar, not
+stube. Datastar **evaluates the expressions in `data-*` attributes at
+runtime via the JavaScript `Function` constructor** (the shell's
+`data-init="@get(…)"`, every `data-on:*`, every `$signal` reference).
+That is `eval`-class execution, so the policy must allow it:
+
+```clojure
+(security/content-security-policy
+  {:default-src "'self'"
+   ;; 'unsafe-eval' is required by Datastar's expression engine; the CDN
+   ;; origin is where the shell loads datastar.js (or self-host it and
+   ;; drop this).
+   :script-src  ["'self'" "'unsafe-eval'" "https://cdn.jsdelivr.net"]
+   :style-src   ["'self'" "'unsafe-inline'"]  ; stube emits scoped inline <style>
+   :connect-src ["'self'"]                     ; the SSE stream
+   :frame-ancestors "'none'"})
+```
+
+Notes:
+- `data-on:*` are **data attributes** Datastar binds with
+  `addEventListener` — they are *not* inline `onclick=` handlers, so
+  `script-src-attr`/`unsafe-hashes` is not what you need; `unsafe-eval`
+  (for the expression engine) is.
+- Self-hosting `datastar.js` lets you drop the CDN origin from
+  `script-src`. You still need `unsafe-eval`.
+- stube's own inline `<style>` blocks (scoped component CSS) need
+  `style-src 'unsafe-inline'`, or move that CSS to component
+  stylesheet files served from `/styles/*` and tighten it to `'self'`.
+- If a future Datastar build offers a precompiled/CSP-strict expression
+  mode, you can drop `unsafe-eval`; until then it is unavoidable for an
+  app that uses inline Datastar expressions at all.
 
 **Request limits**
 - The framework caps the signals body (`:max-signals-bytes`), EDN

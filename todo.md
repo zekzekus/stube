@@ -146,10 +146,15 @@ multi-tenant host exists (see §5, "deliberately not on this list").
       handler-set headers; `:headers` override (nil drops a default) and
       `:csp`. Plus `security/content-security-policy` directives→string
       builder. Host opt-in. Pinned by `security-test`.
-- [ ] **CSP recipe** — a documented, Datastar-compatible baseline using
-      a nonce for the shell's inline `data-init` and Datastar's inline
-      `data-on:*` attributes, so the page can drop `unsafe-inline`.
-      Verify against the upstream Datastar version pinned in nixpkgs.
+- [x] **CSP recipe** — documented in `docs/security.md` §5. The honest
+      finding: Datastar evaluates `data-*` expressions via the `Function`
+      constructor, so a working CSP needs `script-src 'unsafe-eval'`
+      (nonces don't help — `data-on:*` are data attributes bound with
+      `addEventListener`, not inline handlers). Shipped a concrete
+      baseline (default-src 'self', unsafe-eval + CDN for script-src,
+      unsafe-inline or `/styles/*` for style-src, connect-src 'self' for
+      SSE, frame-ancestors 'none') built with
+      `security/content-security-policy`.
 
 ### Phase 4 — multi-tenant / untrusted-component (parked)
 
