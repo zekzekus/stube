@@ -5,6 +5,10 @@ development entry.
 
 ## Unreleased
 
+(No changes yet.)
+
+## 0.9.2
+
 ### Docs
 
 - Reconciled [`docs/security.md`](docs/security.md) with the shipped
