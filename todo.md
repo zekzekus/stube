@@ -135,9 +135,12 @@ multi-tenant host exists (see §5, "deliberately not on this list").
       `:conv/owner-token`, return a `Set-Cookie` the host attaches.
       Documented as "call on login/logout"; replaces the current
       end-and-remint workaround.
-- [ ] **`stube.security/wrap-defaults`** — Ring middleware adding
+- [x] **`stube.security/wrap-defaults`** — Ring middleware adding
       `X-Content-Type-Options`, `Referrer-Policy`, COOP,
-      `X-Frame-Options` / `frame-ancestors`, `Permissions-Policy`.
+      `X-Frame-Options`, `Permissions-Policy` without clobbering
+      handler-set headers; `:headers` override (nil drops a default) and
+      `:csp`. Plus `security/content-security-policy` directives→string
+      builder. Host opt-in. Pinned by `security-test`.
 - [ ] **CSP recipe** — a documented, Datastar-compatible baseline using
       a nonce for the shell's inline `data-init` and Datastar's inline
       `data-on:*` attributes, so the page can drop `unsafe-inline`.

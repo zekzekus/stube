@@ -140,7 +140,7 @@ informed risk decision today and apply the compensating control in
 
 | Gap | Risk | Compensating control until fixed |
 |---|---|---|
-| **No CSP or security headers** (gap — tracked) | The shell can be framed cross-origin; no `nosniff`, no `Referrer-Policy`. | Apply the headers in [§5](#5-required-host-configuration) at the proxy or via host middleware. |
+| **CSP must be configured by the host** | The framework ships `security/wrap-defaults` (baseline headers) and `content-security-policy` (CSP builder), but cannot pick the actual CSP — only the host knows its CDN / analytics / font origins, and the inline `data-init` / `data-on:*` attributes need a per-render nonce. | Wrap the ring handler with `security/wrap-defaults`; supply a `:csp`. See [§5](#5-required-host-configuration). |
 | **Pub/sub topics are unscoped; `:io`/`:after` uncapped** (gap — tracked) | Any component can publish to any topic; async effects spawn unbounded futures. Only matters under an untrusted-component model. | Trust your component authors (see [§1](#1-threat-model)); use `publish-local!` for per-conversation channels. |
 
 ---
@@ -170,23 +170,31 @@ become belt-and-braces once the framework fix lands.
 - Do not strip or rewrite the `Cookie` / `Set-Cookie` headers — the
   `SameSite=Lax` attribute is load-bearing CSRF defence today.
 
-**Response headers** (apply at the proxy, or wrap `ring-handler`):
+**Response headers** — wrap the stube ring handler with
+`dev.zeko.stube.security/wrap-defaults`:
+```clojure
+(require '[dev.zeko.stube.security :as security])
+
+(-> (embed/ring-handler k {:mounts {"/app" :my/root}})
+    (security/wrap-defaults
+      {:csp (security/content-security-policy
+              {:default-src "'self'"
+               :script-src  ["'self'" "https://cdn.jsdelivr.net"]})}))
 ```
-X-Content-Type-Options: nosniff
-Referrer-Policy: same-origin
-X-Frame-Options: SAMEORIGIN          # or frame-ancestors via CSP
-Cross-Origin-Opener-Policy: same-origin
-Permissions-Policy: <your minimum>
-Content-Security-Policy: <see note>
-```
-The CSP is the fiddly one: the stube shell uses an inline `data-init`
+`wrap-defaults` adds `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: same-origin`, `X-Frame-Options: SAMEORIGIN`,
+`Cross-Origin-Opener-Policy: same-origin`, and a restrictive
+`Permissions-Policy` — without overwriting headers a handler already
+set. Pass `:headers {"X-Frame-Options" nil}` to drop a default (e.g.
+when you drive framing through CSP `frame-ancestors`).
+
+The CSP is the fiddly part: the stube shell uses an inline `data-init`
 attribute and Datastar uses inline `data-on:*` attributes, so a strict
-CSP needs a nonce or hash strategy rather than a blanket
+policy needs a per-render nonce (or hash) rather than blanket
 `unsafe-inline`. The shell also loads Datastar from a CDN
 (`d*/CDN-url`) — add that origin to `script-src`, or self-host the
-asset. A worked, Datastar-compatible CSP baseline is on the roadmap;
-until then, start from `default-src 'self'` plus the Datastar CDN
-origin and add nonces for the inline attributes.
+asset. Start from `default-src 'self'` plus the Datastar CDN origin and
+add nonces for the inline attributes.
 
 **Request limits**
 - The framework caps the signals body (`:max-signals-bytes`), EDN

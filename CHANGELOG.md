@@ -5,6 +5,19 @@ development entry.
 
 ## Unreleased
 
+### Added
+
+- **`dev.zeko.stube.security` — response-header middleware + CSP
+  builder.** `security/wrap-defaults` wraps a stube ring handler and
+  adds a baseline of hardening headers (`X-Content-Type-Options`,
+  `Referrer-Policy`, `X-Frame-Options`, `Cross-Origin-Opener-Policy`,
+  `Permissions-Policy`) without clobbering ones the handler already set;
+  it takes a `:headers` override map (a `nil` value drops a default) and
+  a `:csp` string. `security/content-security-policy` builds a CSP value
+  from a directives map. Headers are a host decision (only the host
+  knows its CDN/analytics origins), so this is opt-in — the kernel does
+  not add them itself. `todo.md §2`, Phase 3.
+
 ### Security
 
 - **Per-conversation CSRF token on every state-changing request.**
