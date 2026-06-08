@@ -61,15 +61,19 @@ multi-tenant host exists (see §5, "deliberately not on this list").
 
 ### Phase 1 — cheap, high-severity, no client cooperation
 
-- [ ] **Cid entropy.** Replace `cv-<hex counter>`
-      (`conversation.clj/new-cid`) with `cv-` + 16 `SecureRandom` bytes,
-      hex-encoded — keeps the `file-store` "cids are `[0-9a-f]` + `cv-`"
-      invariant literally true with no new alphabet or dependency. Ids
-      stay opaque to callers. ~30 LoC.
-- [ ] **Bounded parsing — size.** Add `:max-signals-bytes` (default
-      64 KiB) and `:max-payload-bytes` (default 4 KiB) to `make-kernel`;
-      reject oversize in `http.clj` with `413`. Cap EDN payload nesting
-      depth in `read-event-payload`.
+- [x] **Cid entropy.** `conversation.clj/new-cid` now mints `cv-` +
+      128 bits of `SecureRandom`, hex-encoded (32 hex chars). Chose hex
+      over base32 so the `file-store` "cids are `[0-9a-f]` + `cv-`"
+      invariant stays literally true with no new alphabet or
+      dependency. Instance ids stay counter-based — only reachable
+      under an already-authorized cid, so not an enumeration target.
+      Pinned by `conversation-test/new-cid-is-unguessable-and-well-formed`.
+- [x] **Bounded parsing — size.** `:max-signals-bytes` (64 KiB) and
+      `:max-payload-bytes` (4 KiB) on `make-kernel`. `http.clj` reads
+      the signals stream through a one-past-the-cap `slurp-capped`
+      (never buffers the whole body) → `413`; the EDN payload param is
+      size-bounded (which also bounds nesting depth) → `413` oversize /
+      `400` unparseable. Pinned by `http-test/event-bounds-request-parsing`.
 - [ ] **Bounded parsing — keyword interning.** Replace `:key-fn keyword`
       (`http.clj/parse-json`) and `(keyword event)` (`event-handler`)
       with a bounded keywordizer. **Blocked on a regression test

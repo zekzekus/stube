@@ -78,6 +78,11 @@ release.
   cid checks `authorized?` against the request cookie; a mismatch is a
   `403`. This is the single ownership primitive both the HTTP and halos
   handlers use (`session.clj`).
+- **Unguessable conversation ids.** A cid is `cv-` + 128 bits of
+  `SecureRandom`, hex-encoded (`conversation.clj/new-cid`). It is not a
+  secret — the owner cookie gates access — but it is not enumerable
+  either, so a visitor cannot fish for other live conversations via the
+  `410`-vs-`403` response split.
 - **EDN reads are eval-safe.** The file store reads conversations with
   `clojure.edn/read-string` and `:default tagged-literal` — unknown
   tags become inert data, never constructor calls (`store.clj`). The
@@ -87,6 +92,12 @@ release.
 - **Asset paths cannot traverse.** Component CSS/JS/behavior routes
   reject anything outside `[A-Za-z0-9_-]` one directory deep — no `..`,
   no nested paths, no dots in segment names (`http.clj` `safe-asset?`).
+- **Bounded request parsing.** An event POST caps its JSON signals body
+  (`:max-signals-bytes`, default 64 KiB) and its EDN `payload` query
+  param (`:max-payload-bytes`, default 4 KiB). Oversize → `413` (the
+  signals stream is never fully buffered); unparseable payload → `400`.
+  The payload bound also caps EDN nesting depth, so a deep value cannot
+  exhaust the parser stack.
 - **Cookies are `HttpOnly` and `SameSite=Lax`.** This blocks JS cookie
   theft and cross-site form POSTs (`session.clj`).
 - **A reaper exists.** `(embed/reap! k ttl)` ends conversations whose
@@ -109,9 +120,8 @@ informed risk decision today and apply the compensating control in
 |---|---|---|
 | **Cookie is not `Secure`** (gap — tracked) | Cookie rides plain HTTP if the host ever serves it. | Serve over HTTPS only; have the proxy refuse plain HTTP or `Strict-Transport-Security` it. |
 | **No CSRF token** (gap — tracked) | State-changing POSTs (`/event`, `/back`, `/upload`) rely entirely on the cookie + `SameSite=Lax`. | Keep `SameSite=Lax` intact end-to-end; ensure no proxy strips or rewrites the cookie attribute. |
-| **Cid is a sequential counter** (gap — tracked) | `cv-<hex counter>` is predictable; aids enumeration (a visitor with their own cookie can fish for live cids via the `410` vs `403` distinction). Not an auth bypass — the cookie check still holds. | None needed for confidentiality; the cookie gates access. Treat cids as non-secret. |
-| **Unbounded keyword interning** (gap — tracked) | `:key-fn keyword` on signals JSON and `(keyword event)` on the path segment permanently intern attacker-chosen strings — a slow memory-leak DoS on a long-lived process. | Cap request rate / body size at the edge. |
-| **No request-size caps; multipart tempfiles not deleted** (gap — tracked) | A client can OOM the EDN parser with a deep payload, or fill the tempfile directory with uploads stube never cleans up. | Cap body size and multipart size at the proxy; mount the tempfile dir on a bounded volume; reap it out-of-band. |
+| **Unbounded keyword interning** (gap — tracked) | `:key-fn keyword` on signals JSON and `(keyword event)` on the path segment permanently intern attacker-chosen strings — a slow memory-leak DoS on a long-lived process. The signals byte cap bounds the per-request volume but not a sustained drip. | Cap request rate at the edge. |
+| **Multipart tempfiles not deleted** (gap — tracked) | Uploads write tempfiles stube never cleans up, and there is no upload-size cap, so a client can fill the tempfile directory. | Cap multipart size at the proxy; mount the tempfile dir on a bounded volume; reap it out-of-band. |
 | **No CSP or security headers** (gap — tracked) | The shell can be framed cross-origin; no `nosniff`, no `Referrer-Policy`. | Apply the headers in [§5](#5-required-host-configuration) at the proxy or via host middleware. |
 | **Pub/sub topics are unscoped; `:io`/`:after` uncapped** (gap — tracked) | Any component can publish to any topic; async effects spawn unbounded futures. Only matters under an untrusted-component model. | Trust your component authors (see [§1](#1-threat-model)); use `publish-local!` for per-conversation channels. |
 

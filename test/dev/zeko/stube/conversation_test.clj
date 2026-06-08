@@ -19,6 +19,17 @@
   (is (= :test/c (-> (conv/embed :test/c) :embed/type)))
   (is (= {:x 1} (-> (conv/embed :test/c {:x 1}) :embed/args))))
 
+(deftest new-cid-is-unguessable-and-well-formed
+  (testing "cv- prefix + 32 lowercase hex chars (128 bits of SecureRandom)"
+    (is (re-matches #"cv-[0-9a-f]{32}" (conv/new-cid))))
+  (testing "distinct across many mints — no shared counter, high entropy"
+    (let [ids (repeatedly 10000 conv/new-cid)]
+      (is (= 10000 (count (distinct ids))))))
+  (testing "new-conversation stamps a fresh unguessable id each call"
+    (is (re-matches #"cv-[0-9a-f]{32}" (:conv/id (conv/new-conversation))))
+    (is (not= (:conv/id (conv/new-conversation))
+              (:conv/id (conv/new-conversation))))))
+
 (deftest instantiate-bakes-in-state-and-meta
   (let [cdef (registry/lookup :test/c)
         inst (conv/instantiate cdef (conv/embed :test/c {:x 7}) "ix-parent" :on-foo)]

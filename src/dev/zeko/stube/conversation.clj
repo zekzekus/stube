@@ -31,23 +31,47 @@
   domain fields by simple keyword lookup.  Handlers must not clobber the
   `:instance/*` keys."
   (:require [clojure.string          :as string]
-            [dev.zeko.stube.registry :as registry]))
+            [dev.zeko.stube.registry :as registry])
+  (:import (java.security SecureRandom)))
 
 ;; ---------------------------------------------------------------------------
 ;; Id minting
 ;; ---------------------------------------------------------------------------
 ;;
-;; Ids are short, human-readable, and unique per process.  They are *not*
-;; secrets — the cid in the URL is paired with session ownership at slice
-;; 4.  For slice 0 they only need to be unique.
+;; Two kinds of id, two threat models.
+;;
+;; A *conversation id* rides in the URL of every state-changing request.
+;; It is gated by the `stube_sid` owner cookie (see `session.clj`), so a
+;; guessed cid alone is not an auth bypass — but a *predictable* cid lets
+;; any visitor (everyone gets a cookie on first GET) enumerate live
+;; conversations and probe their state via the `410`-vs-`403` response
+;; split.  So cids are 128 bits from `SecureRandom`, hex-encoded: 32 hex
+;; chars after the `cv-` tag, unguessable and still filename/URL-safe
+;; (the `file-store` relies on cids being `[0-9a-f]` + `cv-`).
+;;
+;; An *instance id* is only ever dereferenced *within* an
+;; already-authorized conversation, so it is not an enumeration target.
+;; It stays a short, human-readable per-process counter — handy in logs
+;; and halos, cheap to mint.
 
-(defonce ^:private !cid-counter      (atom 0))
+(defonce ^:private ^SecureRandom secure-rng (SecureRandom.))
 (defonce ^:private !instance-counter (atom 0))
 
+(defn- ->hex ^String [^bytes bs]
+  (let [sb (StringBuilder. (* 2 (alength bs)))]
+    (dotimes [i (alength bs)]
+      (let [b (bit-and (aget bs i) 0xff)]
+        (when (< b 0x10) (.append sb \0))
+        (.append sb (Integer/toHexString b))))
+    (.toString sb)))
+
 (defn new-cid
-  "Mint a fresh conversation id."
+  "Mint a fresh, unguessable conversation id: `cv-` + 128 bits of
+  `SecureRandom`, hex-encoded.  See the threat-model note above."
   []
-  (str "cv-" (format "%06x" (swap! !cid-counter inc))))
+  (let [bs (byte-array 16)]
+    (.nextBytes secure-rng bs)
+    (str "cv-" (->hex bs))))
 
 (defn new-instance-id
   "Mint a fresh instance id."

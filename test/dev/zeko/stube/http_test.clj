@@ -144,6 +144,59 @@
                           :headers {"cookie" "stube_sid=wrong"}}))))
     (is (some? (server/conversation cid)))))
 
+(defn- install-noop-instance!
+  "Register a no-op component and put one live instance on `cid`'s stack
+  so event-handler reaches its dispatch branch."
+  [k cid]
+  (registry/register!
+    {:component/id :test/noop
+     :component/handle (fn [s _] [s []])})
+  (rt/swap-conv! k cid
+    (fn [c]
+      [(-> c
+           (assoc :conv/instances {"ix-1" {:instance/id "ix-1"
+                                           :instance/type :test/noop
+                                           :instance/children {}}})
+           (assoc :conv/stack ["ix-1"]))
+       []])))
+
+(deftest event-bounds-request-parsing
+  (let [k   (server/default-kernel)
+        cid (rt/create-conversation! k :test/root "owner")]
+    (install-noop-instance! k cid)
+    (testing "oversize signals body → 413, without OOMing the parser"
+      (let [big  (str "{\"x\":\"" (apply str (repeat 70000 \a)) "\"}")
+            resp (http/event-handler
+                   k {:path-params    {:cid cid :iid "ix-1" :event "go"}
+                      :request-method :post
+                      :headers        {"cookie" "stube_sid=owner"}
+                      :body           (java.io.ByteArrayInputStream.
+                                        (.getBytes ^String big "UTF-8"))})]
+        (is (= 413 (:status resp)))))
+    (testing "oversize EDN payload param → 413"
+      (let [resp (http/event-handler
+                   k {:path-params    {:cid cid :iid "ix-1" :event "go"}
+                      :request-method :post
+                      :headers        {"cookie" "stube_sid=owner"}
+                      :query-string   (str "_stube_payload="
+                                           (apply str (repeat 5000 \1)))})]
+        (is (= 413 (:status resp)))))
+    (testing "unparseable EDN payload param → 400"
+      (let [resp (http/event-handler
+                   k {:path-params    {:cid cid :iid "ix-1" :event "go"}
+                      :request-method :post
+                      :headers        {"cookie" "stube_sid=owner"}
+                      ;; %28 = '(' — three unbalanced opens never close.
+                      :query-string   "_stube_payload=%28%28%28"})]
+        (is (= 400 (:status resp)))))
+    (testing "in-bounds request still dispatches (204)"
+      (let [resp (http/event-handler
+                   k {:path-params    {:cid cid :iid "ix-1" :event "go"}
+                      :request-method :post
+                      :headers        {"cookie" "stube_sid=owner"}
+                      :query-string   "_stube_payload=42"})]
+        (is (= 204 (:status resp)))))))
+
 (deftest stale-upload-instance-in-live-conversation-is-noop
   (let [cid  (rt/create-conversation! (server/default-kernel) :test/root nil)
         resp (http/upload-handler {:path-params {:cid cid :iid "ix-missing"}})]

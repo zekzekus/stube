@@ -51,6 +51,13 @@
             :eager-scripts     []
             :halos?            false
             :signal-case       :kebab
+            ;; Bounded request parsing.  An event POST carries a JSON
+            ;; signals body and an EDN payload query param, both
+            ;; attacker-controlled; cap them so a single request can
+            ;; neither OOM the parser nor stream an unbounded body.
+            ;; Oversize → 413.
+            :max-signals-bytes 65536
+            :max-payload-bytes 4096
             ;; SSE comment-frame heartbeat that keeps reverse-proxy idle
             ;; timers happy.  15s sits under the common 30/60s thresholds
             ;; (nginx, ALB).  Set to nil or 0 to disable.
@@ -115,7 +122,14 @@
   * `:sse-keepalive-ms` — interval in milliseconds for the SSE
     heartbeat that keeps reverse-proxy idle timers happy.  Defaults
     to 15000.  Set to nil or 0 to disable (e.g. when the host's proxy
-    has no idle timeout, or in tests)."
+    has no idle timeout, or in tests).
+  * `:max-signals-bytes` — cap (in bytes) on the JSON signals body of
+    an event POST.  Default 64 KiB.  Oversize requests get a `413`
+    without the body being parsed or fully buffered.
+  * `:max-payload-bytes` — cap (in bytes) on the EDN `payload` query
+    param of an event POST.  Default 4 KiB.  Oversize → `413`;
+    unparseable → `400`.  The bound also caps EDN nesting depth, so a
+    deeply-nested value cannot exhaust the parser stack."
   ([]
    (make-kernel {}))
   ([opts]

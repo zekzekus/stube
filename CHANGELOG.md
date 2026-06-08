@@ -5,6 +5,30 @@ development entry.
 
 ## Unreleased
 
+### Security
+
+- **Bounded request parsing.** Event POSTs now cap the JSON signals
+  body (`:max-signals-bytes`, default 64 KiB) and the EDN `payload`
+  query param (`:max-payload-bytes`, default 4 KiB) on `make-kernel`.
+  Oversize → `413` (the signals stream is never fully buffered);
+  unparseable payload → `400`. The payload bound doubles as a nesting-
+  depth cap, so a maliciously deep value can no longer exhaust the EDN
+  parser stack (the `Throwable` catch also absorbs the `StackOverflowError`).
+  `todo.md §2`, Phase 1.
+
+
+- **Unguessable conversation ids.** `new-cid` now mints `cv-` + 128
+  bits of `SecureRandom` (32 hex chars) instead of a sequential
+  `cv-<hex counter>`. Cids were never an auth primitive on their own —
+  the `stube_sid` owner cookie gates access — but the old counter was
+  enumerable, letting any visitor probe other live conversations via
+  the `410`-stale-vs-`403`-forbidden response split. Cids stay opaque
+  to callers and filename/URL-safe; the `file-store` "`[0-9a-f]` +
+  `cv-`" invariant is unchanged. Instance ids remain per-process
+  counters — they are only reachable inside an already-authorized
+  conversation. First item of the security-hardening track; see
+  [`docs/security.md`](docs/security.md) and `todo.md §2`.
+
 ### Documentation
 
 - **`docs/security.md` — the security contract.** Threat model

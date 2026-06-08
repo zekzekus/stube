@@ -28,7 +28,8 @@
             [dev.zeko.stube.runtime                            :as rt]
             [dev.zeko.stube.session                            :as session]
             [dev.zeko.stube.shell                              :as shell])
-  (:import (java.net URLDecoder)))
+  (:import (java.io InputStream)
+           (java.net URLDecoder)))
 
 (defn- default-kernel []
   ((requiring-resolve 'dev.zeko.stube.server/default-kernel)))
@@ -46,15 +47,44 @@
                        :bufsize 8192
                        :key-fn  keyword}))
 
+;; Sentinel returned by the bounded readers below when the input exceeds
+;; its configured byte cap.  The handler turns it into a `413`.  Using a
+;; keyword (not an exception) keeps the size check on the normal return
+;; path — an over-cap body is an expected client error, not exceptional.
+(def ^:private too-large ::too-large)
+
+(defn- slurp-capped
+  "Read `raw` (a String or InputStream) as UTF-8 and return the string,
+  or [[too-large]] if it exceeds `max-bytes`.  nil `raw` → nil.
+
+  For a stream we read one byte past the cap and stop: `readNBytes`
+  blocks until the buffer fills or EOF, so a return of `max-bytes + 1`
+  proves there was more to come without ever buffering the whole
+  (potentially huge) body."
+  [raw max-bytes]
+  (let [cap (long max-bytes)]
+    (cond
+      (nil? raw)    nil
+      (string? raw) (if (> (alength (.getBytes ^String raw "UTF-8")) cap)
+                      too-large
+                      raw)
+      :else         (with-open [^InputStream in raw]
+                      (let [buf (byte-array (inc cap))
+                            n   (.readNBytes in buf 0 (alength buf))]
+                        (if (> n cap)
+                          too-large
+                          (String. buf 0 n "UTF-8")))))))
+
 (defn- read-signals
   "Pull the Datastar signals payload from a request and parse it.
-  Returns `{}` if there are none."
-  [req]
-  (let [raw (d*/get-signals req)]
+  Returns `{}` if there are none, or [[too-large]] if the raw body
+  exceeds `max-bytes`."
+  [req max-bytes]
+  (let [s (slurp-capped (d*/get-signals req) max-bytes)]
     (cond
-      (nil? raw)        {}
-      (string? raw)     (parse-json raw)
-      :else             (with-open [s raw] (parse-json s)))))
+      (nil? s)          {}
+      (identical? too-large s) too-large
+      :else             (parse-json s))))
 
 (defn- url-decode [s]
   (URLDecoder/decode (str s) "UTF-8"))
@@ -77,9 +107,23 @@
               (url-decode (or raw-v "")))))
         (some-> query-string (str/split #"&"))))
 
-(defn- read-event-payload [req]
-  (some-> (query-value req render/payload-query-param)
-          (edn/read-string)))
+(defn- read-event-payload
+  "Read the EDN payload query param, bounded by `max-bytes`.
+
+  Returns `[:ok value]` (with `value` nil when the param is absent),
+  `:too-large` when the encoded param exceeds the cap, or `:bad-payload`
+  when it fails to parse.  The param is always produced by stube's own
+  render helpers (`pr-str`), so a parse failure — including a
+  `StackOverflowError` from a maliciously deep value, which is why we
+  catch `Throwable` — only happens under tampering and maps to a `400`."
+  [req max-bytes]
+  (let [raw (query-value req render/payload-query-param)]
+    (cond
+      (nil? raw) [:ok nil]
+      (> (alength (.getBytes ^String raw "UTF-8")) (long max-bytes)) :too-large
+      :else      (try
+                   [:ok (edn/read-string raw)]
+                   (catch Throwable _ :bad-payload)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Optional slf4j MDC integration
@@ -264,6 +308,18 @@
 (defn- no-op-response []
   {:status  204
    :headers {"Cache-Control" "no-store"}})
+
+(defn- too-large-response []
+  {:status  413
+   :headers {"Content-Type" "text/plain; charset=utf-8"
+             "Cache-Control" "no-store"}
+   :body    "stube request payload exceeds the configured size limit."})
+
+(defn- bad-request-response []
+  {:status  400
+   :headers {"Content-Type" "text/plain; charset=utf-8"
+             "Cache-Control" "no-store"}
+   :body    "stube could not parse the request payload."})
 
 ;; ---------------------------------------------------------------------------
 ;; Handlers
@@ -483,10 +539,16 @@
        :else
        (with-mdc {:cid cid :iid iid}
          (fn []
-           (let [signals (read-signals req)
-                 ev      {:instance-id iid
-                          :event       (keyword event)
-                          :payload     (read-event-payload req)
-                          :signals     signals}]
-             (rt/dispatch! k cid ev)
-             {:status 204})))))))
+           (let [signals (read-signals req (:max-signals-bytes k))
+                 payload (read-event-payload req (:max-payload-bytes k))]
+             (cond
+               (identical? too-large signals) (too-large-response)
+               (= :too-large payload)         (too-large-response)
+               (= :bad-payload payload)       (bad-request-response)
+               :else
+               (do
+                 (rt/dispatch! k cid {:instance-id iid
+                                      :event       (keyword event)
+                                      :payload     (second payload)
+                                      :signals     signals})
+                 {:status 204})))))))))
