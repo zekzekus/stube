@@ -117,3 +117,34 @@
              (conv/merge-kept-signals {:instance/id "ix-1"}
                                       {:answer-ix-1 "local"}
                                       #{:answer}))))))
+
+(deftest merge-kept-signals-accepts-string-keys
+  ;; Regression guard for the bounded keyword-interning key-fn: untrusted
+  ;; signal keys are no longer auto-interned, so a wire key whose keyword
+  ;; has not been interned yet arrives as a *string*.  merge-kept-signals
+  ;; must probe both the keyword and the string wire form, or kept signals
+  ;; silently fail to round-trip on the first dispatch (worst under
+  ;; :camel, where the camelCased wire keyword is interned by the kernel
+  ;; only during the merge that follows the parse).
+  (testing "kebab global + local, string-keyed"
+    (binding [render/*signal-case* :kebab]
+      (is (= {:answer "x"}
+             (conv/merge-kept-signals {} {"answer" "x"} #{:answer})))
+      (is (= {:instance/id "ix-1" :answer "local"}
+             (conv/merge-kept-signals {:instance/id "ix-1"}
+                                      {"answer-ix-1" "local"}
+                                      #{:answer})))))
+  (testing "camel global + local, string-keyed (the camel first-dispatch case)"
+    (binding [render/*signal-case* :camel]
+      (is (= {:edit-title "v"}
+             (conv/merge-kept-signals {} {"editTitle" "v"} #{:edit-title})))
+      (is (= {:instance/id "ix-1" :edit-title "new"}
+             (conv/merge-kept-signals {:instance/id "ix-1"}
+                                      {"editTitleIx-1" "new"}
+                                      #{:edit-title})))))
+  (testing "local string key still beats a global one"
+    (binding [render/*signal-case* :kebab]
+      (is (= {:instance/id "ix-1" :answer "local"}
+             (conv/merge-kept-signals {:instance/id "ix-1"}
+                                      {"answer" "global" "answer-ix-1" "local"}
+                                      #{:answer}))))))

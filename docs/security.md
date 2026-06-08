@@ -98,6 +98,11 @@ release.
   signals stream is never fully buffered); unparseable payload → `400`.
   The payload bound also caps EDN nesting depth, so a deep value cannot
   exhaust the parser stack.
+- **Bounded keyword interning.** Untrusted JSON signal keys and the
+  event-name path segment are resolved with `find-keyword`, never
+  `keyword`, so an attacker cannot grow the JVM keyword table by sending
+  novel keys — closing a slow memory-leak DoS. Keys a component actually
+  uses are keyword literals (already interned) and resolve normally.
 - **Cookies are `HttpOnly` and `SameSite=Lax`.** This blocks JS cookie
   theft and cross-site form POSTs (`session.clj`).
 - **A reaper exists.** `(embed/reap! k ttl)` ends conversations whose
@@ -120,7 +125,6 @@ informed risk decision today and apply the compensating control in
 |---|---|---|
 | **Cookie is not `Secure`** (gap — tracked) | Cookie rides plain HTTP if the host ever serves it. | Serve over HTTPS only; have the proxy refuse plain HTTP or `Strict-Transport-Security` it. |
 | **No CSRF token** (gap — tracked) | State-changing POSTs (`/event`, `/back`, `/upload`) rely entirely on the cookie + `SameSite=Lax`. | Keep `SameSite=Lax` intact end-to-end; ensure no proxy strips or rewrites the cookie attribute. |
-| **Unbounded keyword interning** (gap — tracked) | `:key-fn keyword` on signals JSON and `(keyword event)` on the path segment permanently intern attacker-chosen strings — a slow memory-leak DoS on a long-lived process. The signals byte cap bounds the per-request volume but not a sustained drip. | Cap request rate at the edge. |
 | **Multipart tempfiles not deleted** (gap — tracked) | Uploads write tempfiles stube never cleans up, and there is no upload-size cap, so a client can fill the tempfile directory. | Cap multipart size at the proxy; mount the tempfile dir on a bounded volume; reap it out-of-band. |
 | **No CSP or security headers** (gap — tracked) | The shell can be framed cross-origin; no `nosniff`, no `Referrer-Policy`. | Apply the headers in [§5](#5-required-host-configuration) at the proxy or via host middleware. |
 | **Pub/sub topics are unscoped; `:io`/`:after` uncapped** (gap — tracked) | Any component can publish to any topic; async effects spawn unbounded futures. Only matters under an untrusted-component model. | Trust your component authors (see [§1](#1-threat-model)); use `publish-local!` for per-conversation channels. |

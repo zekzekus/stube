@@ -7,6 +7,20 @@ development entry.
 
 ### Security
 
+- **Bounded keyword interning (slow-DoS fix).** Untrusted JSON signal
+  keys and the event-name path segment were turned into keywords with
+  bare `keyword`, permanently growing the JVM keyword table — a slow
+  memory-leak DoS on a long-lived process. Both now use `find-keyword`:
+  a signal key that some component `:keep`s (a keyword literal, hence
+  already interned) still resolves; anything else stays a string and is
+  ignored. An event name no component ever declared was never interned,
+  so it can only no-op — the handler skips it (204) instead of minting
+  a keyword. `merge-kept-signals` and `s/signal` now probe both the
+  keyword and string wire form, so signal round-tripping is unchanged
+  under both `:kebab` and `:camel` (including the camel first-dispatch
+  case). No public API change. `todo.md §2`, Phase 1.
+
+
 - **Bounded request parsing.** Event POSTs now cap the JSON signals
   body (`:max-signals-bytes`, default 64 KiB) and the EDN `payload`
   query param (`:max-payload-bytes`, default 4 KiB) on `make-kernel`.

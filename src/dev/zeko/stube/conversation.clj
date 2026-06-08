@@ -432,9 +432,6 @@
   (string/replace s #"-([a-z])"
                   (fn [[_ c]] (string/upper-case c))))
 
-(defn- camel-key [k]
-  (keyword (kebab->camel (name k))))
-
 (defn- current-signal-case
   "Resolve `dev.zeko.stube.render/*signal-case*` lazily so this namespace
   stays independent of render.  Returns nil when the var has not been
@@ -460,27 +457,32 @@
   both the local-signal key and the logical key first, then falls back
   to the kebab forms — so the same `:keep #{:edit-title}` declaration
   works under either kernel casing without the host having to force a
-  per-call `{:case :kebab}` opt."
+  per-call `{:case :kebab}` opt.
+
+  Each candidate is probed in *both* its keyword and its string form.
+  The HTTP layer no longer auto-interns untrusted signal keys (it uses
+  `find-keyword`, to bound the keyword table), so a wire key whose
+  keyword has not been interned yet arrives as a plain string — most
+  visibly under `:camel`, where the camelCased wire keyword is interned
+  by this very function only *after* the parse.  Probing the string
+  form keeps the round-trip working on that first dispatch."
   [inst signals keep-keys]
   (if (empty? keep-keys)
     inst
-    (let [casing (or (current-signal-case) :kebab)
-          camel? (= casing :camel)]
+    (let [camel? (= (or (current-signal-case) :kebab) :camel)
+          ->wire (fn [kw] (let [s (name kw)] (if camel? (kebab->camel s) s)))
+          ;; Probe order mirrors the old precedence: wire form before
+          ;; logical form, and (via the caller below) local before
+          ;; global.  Keyword before string within each so an interned
+          ;; key wins its own string spelling.
+          probe  (fn [kw]
+                   (let [w (->wire kw)]
+                     (some (fn [cand] (when (contains? signals cand) cand))
+                           [(keyword w) w kw (name kw)])))]
       (reduce (fn [acc k]
-                (let [local-k        (when (:instance/id inst)
-                                       (local-signal inst k))
-                      local-wire-k   (when (and local-k camel?)
-                                       (camel-key local-k))
-                      global-wire-k  (when camel?
-                                       (camel-key k))
-                      hit (or (when (and local-wire-k (contains? signals local-wire-k))
-                                local-wire-k)
-                              (when (and local-k (contains? signals local-k))
-                                local-k)
-                              (when (and global-wire-k (contains? signals global-wire-k))
-                                global-wire-k)
-                              (when (contains? signals k)
-                                k))]
+                (let [local-k (when (:instance/id inst) (local-signal inst k))
+                      hit     (or (when local-k (probe local-k))
+                                  (probe k))]
                   (cond-> acc
                     hit (assoc k (get signals hit)))))
               inst

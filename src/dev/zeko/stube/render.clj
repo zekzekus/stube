@@ -816,7 +816,16 @@
   Casing follows the same resolution as [[bind]]."
   ([event k] (signal event k nil))
   ([event k opts]
-   (get-in event [:signals (keyword (signal-wire-name k opts))])))
+   ;; Probe both the wire keyword and the wire string: the HTTP layer
+   ;; only interns signal keys that were already interned, so a key can
+   ;; arrive either way.  `contains?` rather than `or` so a falsey
+   ;; signal value (an unchecked checkbox sends `false`) still reads.
+   (let [signals (:signals event)
+         wire    (signal-wire-name k opts)
+         wire-kw (keyword wire)]
+     (if (contains? signals wire-kw)
+       (get signals wire-kw)
+       (get signals wire)))))
 
 (defn indicator
   "Return attrs that mount Datastar's `data-indicator` on this element

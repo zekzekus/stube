@@ -74,15 +74,18 @@ multi-tenant host exists (see §5, "deliberately not on this list").
       (never buffers the whole body) → `413`; the EDN payload param is
       size-bounded (which also bounds nesting depth) → `413` oversize /
       `400` unparseable. Pinned by `http-test/event-bounds-request-parsing`.
-- [ ] **Bounded parsing — keyword interning.** Replace `:key-fn keyword`
-      (`http.clj/parse-json`) and `(keyword event)` (`event-handler`)
-      with a bounded keywordizer. **Blocked on a regression test
-      first:** `merge-kept-signals` matches on interned keyword keys
-      *including the kernel-computed camelCase variant* under
-      `:signal-case :camel` — pin current camel-binding behaviour
-      before touching the key-fn, then decide `(or (find-keyword s) s)`
-      vs an LRU-capped intern. This is the one item with a real design
-      choice, not a pragmatic pick.
+- [x] **Bounded parsing — keyword interning.** `parse-json` and
+      `event-handler` now resolve untrusted keys with `find-keyword`
+      (returns the keyword only if already interned, else a string /
+      no-op) instead of `keyword`. Chose `find-keyword` over an
+      LRU-capped intern because every key a component actually uses is
+      a keyword literal — already interned — so legitimate traffic is
+      unaffected and the keyword table can't grow from forged input.
+      `merge-kept-signals` and `s/signal` now probe both the keyword
+      and the string wire form, which is what makes the camel
+      first-dispatch case keep working. Pinned by
+      `conversation-test/merge-kept-signals-accepts-string-keys` and
+      `http-test/event-handler-bounds-keyword-interning`.
 - [ ] **Secure cookie + knob.** Default `Secure` on the `stube_sid`
       cookie (`session.clj/session-cookie-header`); add `:dev-cookie?`
       so the standalone/localhost dev server can flip it off. Optional

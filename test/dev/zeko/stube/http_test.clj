@@ -197,6 +197,42 @@
                       :query-string   "_stube_payload=42"})]
         (is (= 204 (:status resp)))))))
 
+(deftest event-handler-bounds-keyword-interning
+  ;; A path event whose keyword was never interned (no component names
+  ;; it) must be a harmless no-op, NOT a fresh permanent keyword.  An
+  ;; event a component does handle — a keyword literal, hence interned —
+  ;; still dispatches.
+  (registry/register!
+    {:component/id :test/counter
+     :component/handle (fn [s {:keys [event]}]
+                         ;; `:bump` literal here → interned at load time.
+                         (if (= event :bump)
+                           [(update s :n (fnil inc 0)) []]
+                           [s []]))})
+  (let [k   (server/default-kernel)
+        cid (rt/create-conversation! k :test/root "owner")]
+    (rt/swap-conv! k cid
+      (fn [c]
+        [(-> c
+             (assoc :conv/instances {"ix-1" {:instance/id "ix-1"
+                                             :instance/type :test/counter
+                                             :instance/rendered? true
+                                             :instance/children {}}})
+             (assoc :conv/stack ["ix-1"]))
+         []]))
+    (let [req (fn [event]
+                {:path-params    {:cid cid :iid "ix-1" :event event}
+                 :request-method :post
+                 :headers        {"cookie" "stube_sid=owner"}})]
+      (testing "interned, handled event dispatches"
+        (is (= 204 (:status (http/event-handler k (req "bump")))))
+        (is (= 1 (get-in (server/conversation cid) [:conv/instances "ix-1" :n]))))
+      (testing "never-named event is a no-op (204) and changes nothing"
+        (is (= 204 (:status (http/event-handler
+                              k (req "totally-unnamed-event-xyz")))))
+        (is (= 1 (get-in (server/conversation cid)
+                         [:conv/instances "ix-1" :n])))))))
+
 (deftest stale-upload-instance-in-live-conversation-is-noop
   (let [cid  (rt/create-conversation! (server/default-kernel) :test/root nil)
         resp (http/upload-handler {:path-params {:cid cid :iid "ix-missing"}})]

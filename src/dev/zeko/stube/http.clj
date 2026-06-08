@@ -45,7 +45,15 @@
 (def ^:private parse-json
   (json/parse-json-fn {:async?  false
                        :bufsize 8192
-                       :key-fn  keyword}))
+                       ;; `find-keyword`, not `keyword`: untrusted JSON
+                       ;; keys must never permanently intern (that is a
+                       ;; slow keyword-table memory-leak DoS).  Every
+                       ;; signal a component `:keep`s is a keyword literal
+                       ;; in its code, so it is already interned and
+                       ;; resolves here; anything else stays a string and
+                       ;; is simply ignored by `merge-kept-signals`, which
+                       ;; probes both forms.
+                       :key-fn  (fn [s] (or (find-keyword s) s))}))
 
 ;; Sentinel returned by the bounded readers below when the input exceeds
 ;; its configured byte cap.  The handler turns it into a `413`.  Using a
@@ -540,15 +548,24 @@
        (with-mdc {:cid cid :iid iid}
          (fn []
            (let [signals (read-signals req (:max-signals-bytes k))
-                 payload (read-event-payload req (:max-payload-bytes k))]
+                 payload (read-event-payload req (:max-payload-bytes k))
+                 ;; `find-keyword`, not `keyword`: an event name the
+                 ;; client invented but no component ever declared was
+                 ;; never interned (every handled event is a keyword
+                 ;; literal in component code), so dispatching it could
+                 ;; only no-op.  Skipping it without interning closes
+                 ;; the path-segment half of the keyword-table DoS while
+                 ;; staying observably identical to today's no-op.
+                 ev-kw   (find-keyword event)]
              (cond
                (identical? too-large signals) (too-large-response)
                (= :too-large payload)         (too-large-response)
                (= :bad-payload payload)       (bad-request-response)
+               (nil? ev-kw)                   (no-op-response)
                :else
                (do
                  (rt/dispatch! k cid {:instance-id iid
-                                      :event       (keyword event)
+                                      :event       ev-kw
                                       :payload     (second payload)
                                       :signals     signals})
                  {:status 204})))))))))
