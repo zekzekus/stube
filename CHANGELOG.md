@@ -7,6 +7,15 @@ development entry.
 
 ### Added
 
+- **Security/audit hooks + a dispatch authz seam on `make-kernel`.**
+  `:on-auth-fail`, `:on-stale`, and `:on-shell-mint` are optional
+  `(fn [info])` audit hooks (default nil) that fire on an owner/CSRF
+  rejection, a stale-`410`, and a GET conversation mint respectively — a
+  throwing hook is swallowed and logged. `:before-dispatch` is an
+  authz/rate-limit seam, `(fn [conv event request])` run just before an
+  event dispatches; return `:continue` or `[:reject status body]`. It
+  fails closed: a throwing hook rejects the request rather than letting
+  it through. `todo.md §2`, Phase 3.
 - **`embed/rotate-session!`** — rotate the session that owns a
   conversation on login/logout. Mints a fresh `stube_sid`, makes it the
   conversation's `:conv/owner-token`, and returns a `Set-Cookie` (built

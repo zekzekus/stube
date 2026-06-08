@@ -123,14 +123,17 @@ multi-tenant host exists (see §5, "deliberately not on this list").
 
 ### Phase 3 — operator seams and headers (hooks + docs)
 
-- [ ] **Security event hooks** on the kernel — `:on-auth-fail`,
-      `:on-stale`, `:on-shell-mint` — beside the existing
-      `:on-conv-mint` / `:on-error`. Replace the `println` paths in
-      `runtime.clj` / `store.clj` with a configurable logger fn.
-- [ ] **`:before-dispatch` seam** —
+- [x] **Security event hooks** on the kernel — `:on-auth-fail`,
+      `:on-stale`, `:on-shell-mint` — beside `:on-conv-mint` /
+      `:on-error`, each `(fn [info])`, default nil, throw-swallowed.
+      Fire on owner/CSRF rejection (with `:reason`/`:route`), stale-410,
+      and GET mint. (Deferred the `runtime`/`store` `println`→logger-fn
+      refactor; those are internal-error paths, lower value.) Pinned by
+      `http-test/security-hooks-fire`.
+- [x] **`:before-dispatch` seam** —
       `(fn [conv event request] -> :continue | [:reject status body])`
-      in `event-handler` / `back-handler` for host authz / rate-limit /
-      audit.
+      in `event-handler`, fail-closed (a throwing hook rejects). Pinned
+      by `http-test/before-dispatch-gates-events`.
 - [x] **`embed/rotate-session!`** — mints a new `stube_sid`, updates
       `:conv/owner-token`, returns a `Set-Cookie` (built with the
       kernel's cookie attrs) the host attaches on login/logout.

@@ -332,6 +332,70 @@
                                   [:conv/instances "ix-1" :seen :fields])
                           :_stube_csrf))))))
 
+(deftest security-hooks-fire
+  (testing ":on-shell-mint fires when a GET mints a conversation"
+    (let [seen (atom nil)
+          k    (embed/make-kernel {:on-shell-mint #(reset! seen %)})]
+      ((http/shell-handler k :demo/root) {:headers {}})
+      (is (some? (:cid @seen)))
+      (is (= :demo/root (:flow-id @seen)))))
+  (testing ":on-auth-fail fires on an owner-cookie mismatch"
+    (let [seen (atom nil)
+          k    (embed/make-kernel {:on-auth-fail #(reset! seen %)})
+          cid  (rt/create-conversation! k :demo/root "owner")]
+      (is (= 403 (:status (http/event-handler
+                            k {:path-params {:cid cid :iid "ix" :event "go"}
+                               :headers {"cookie" "stube_sid=wrong"}}))))
+      (is (= :session (:reason @seen)))
+      (is (= :event (:route @seen)))))
+  (testing ":on-stale fires when a stale conversation is reported"
+    (let [seen (atom nil)
+          k    (embed/make-kernel {:on-stale #(reset! seen %)})]
+      (is (= 410 (:status (http/event-handler
+                            k {:path-params {:cid "cv-gone" :iid "ix" :event "go"}}))))
+      (is (= "cv-gone" (:cid @seen))))))
+
+(deftest before-dispatch-gates-events
+  (registry/register!
+    {:component/id :test/bd
+     :component/handle (fn [s {:keys [event]}]
+                         (if (= event :bump)
+                           [(update s :n (fnil inc 0)) []]
+                           [s []]))})
+  (let [setup (fn [k]
+                (let [cid (rt/create-conversation! k :test/bd "owner")]
+                  (rt/swap-conv! k cid
+                    (fn [c]
+                      [(-> c
+                           (assoc :conv/instances {"ix-1" {:instance/id "ix-1"
+                                                           :instance/type :test/bd
+                                                           :instance/children {}}})
+                           (assoc :conv/stack ["ix-1"]))
+                       []]))
+                  cid))
+        req   (fn [cid] {:path-params    {:cid cid :iid "ix-1" :event "bump"}
+                         :request-method :post
+                         :headers        {"cookie" "stube_sid=owner"}})]
+    (testing ":continue lets the event dispatch"
+      (let [k   (embed/make-kernel {:before-dispatch (fn [_ _ _] :continue)})
+            cid (setup k)]
+        (is (= 204 (:status (http/event-handler k (req cid)))))
+        (is (= 1 (get-in (rt/conversation k cid) [:conv/instances "ix-1" :n])))))
+    (testing "[:reject status body] short-circuits with no dispatch"
+      (let [k    (embed/make-kernel
+                   {:before-dispatch (fn [_ _ _] [:reject 429 "slow down"])})
+            cid  (setup k)
+            resp (http/event-handler k (req cid))]
+        (is (= 429 (:status resp)))
+        (is (= "slow down" (:body resp)))
+        (is (nil? (get-in (rt/conversation k cid) [:conv/instances "ix-1" :n])))))
+    (testing "a throwing hook fails closed — 403 and no dispatch"
+      (let [k   (embed/make-kernel
+                  {:before-dispatch (fn [_ _ _] (throw (ex-info "boom" {})))})
+            cid (setup k)]
+        (is (= 403 (:status (http/event-handler k (req cid)))))
+        (is (nil? (get-in (rt/conversation k cid) [:conv/instances "ix-1" :n])))))))
+
 (deftest stale-upload-instance-in-live-conversation-is-noop
   (let [cid  (rt/create-conversation! (server/default-kernel) :test/root nil)
         resp (http/upload-handler {:path-params {:cid cid :iid "ix-missing"}})]

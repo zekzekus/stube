@@ -35,6 +35,33 @@
   ((requiring-resolve 'dev.zeko.stube.server/default-kernel)))
 
 ;; ---------------------------------------------------------------------------
+;; Security / audit hooks
+;; ---------------------------------------------------------------------------
+;;
+;; Optional kernel functions a host wires for observability and authz.
+;; Each defaults to nil (no-op).  A throwing hook is swallowed and logged
+;; — instrumentation must never take down a request.
+
+(defn- fire!
+  "Invoke the kernel hook under `hook-key` with `info`, if present."
+  [k hook-key info]
+  (when-let [f (get k hook-key)]
+    (try
+      (f info)
+      (catch Throwable t
+        (binding [*out* *err*]
+          (println "dev.zeko.stube.http:" hook-key "hook threw —" (ex-message t)))))))
+
+(defn- auth-fail!
+  "Fire `:on-auth-fail` and return the matching 403 response.  `reason`
+  is `:session` (cookie/owner mismatch) or `:csrf` (token mismatch)."
+  [k req cid route reason]
+  (fire! k :on-auth-fail {:request req :cid cid :route route :reason reason})
+  (if (= reason :csrf)
+    (session/csrf-forbidden-response)
+    (session/forbidden-response)))
+
+;; ---------------------------------------------------------------------------
 ;; JSON helpers
 ;; ---------------------------------------------------------------------------
 ;;
@@ -278,6 +305,7 @@
   forget the conversation."
   [k cid]
   (let [frags (stale-fragments)]
+    (fire! k :on-stale {:cid cid})
     (when-let [sse-gen (rt/sse k cid)]
       (f/push! sse-gen frags))
     (rt/end-conversation! k cid)
@@ -395,6 +423,7 @@
              pre-on?   (and dev? (halos-http/requested? req))]
          (when pre-on?
            (rt/enable-halos! k cid))
+         (fire! k :on-shell-mint {:request req :cid cid :flow-id flow-id})
          {:status  200
           :headers (cond-> {"Content-Type" "text/html; charset=utf-8"
                             "Cache-Control" "no-store"}
@@ -440,7 +469,7 @@
   ([k {:keys [path-params] :as req}]
    (let [cid (:cid path-params)]
      (if-not (rt/authorized? k req cid)
-       (session/forbidden-response)
+       (auth-fail! k req cid :sse :session)
        (hk/->sse-response req
          {hk/on-open
           (fn [sse-gen]
@@ -494,10 +523,10 @@
        (stale-response! k cid)
 
        (not (rt/authorized? k req cid))
-       (session/forbidden-response)
+       (auth-fail! k req cid :back :session)
 
        (not (session/csrf-ok? req live))
-       (session/csrf-forbidden-response)
+       (auth-fail! k req cid :back :csrf)
 
        :else
        (with-mdc {:cid cid}
@@ -521,7 +550,7 @@
        (stale-response! k cid)
 
        (not (rt/authorized? k req cid))
-       (session/forbidden-response)
+       (auth-fail! k req cid :upload :session)
 
        (:conv/ended? live)
        (stale-response! k cid)
@@ -550,7 +579,7 @@
              ;; effect.  The size cap above bounds what we parse.
              (if-not (session/valid-csrf-token? live token)
                (try
-                 (session/csrf-forbidden-response)
+                 (auth-fail! k req cid :upload :csrf)
                  (finally
                    (when-not (:keep-upload? k)
                      (delete-tempfiles! (multipart-tempfiles req')))))
@@ -582,10 +611,10 @@
        (stale-response! k cid)
 
        (not (rt/authorized? k req cid))
-       (session/forbidden-response)
+       (auth-fail! k req cid :event :session)
 
        (not (session/csrf-ok? req live))
-       (session/csrf-forbidden-response)
+       (auth-fail! k req cid :event :csrf)
 
        (:conv/ended? live)
        (stale-response! k cid)
@@ -615,9 +644,30 @@
                (= :bad-payload payload)       (bad-request-response)
                (nil? ev-kw)                   (no-op-response)
                :else
-               (do
-                 (rt/dispatch! k cid {:instance-id iid
-                                      :event       ev-kw
-                                      :payload     (second payload)
-                                      :signals     signals})
-                 {:status 204})))))))))
+               (let [ev       {:instance-id iid
+                               :event       ev-kw
+                               :payload     (second payload)
+                               :signals     signals}
+                     ;; `:before-dispatch` is the host's authz / rate-
+                     ;; limit / audit seam: `(fn [conv event request])`
+                     ;; returning `:continue` or `[:reject status body]`.
+                     ;; Fail closed — a throwing hook must never let an
+                     ;; un-authorized event through.
+                     decision (if-let [bd (:before-dispatch k)]
+                                (try
+                                  (bd live ev req)
+                                  (catch Throwable t
+                                    (binding [*out* *err*]
+                                      (println "dev.zeko.stube.http: :before-dispatch threw —"
+                                               (ex-message t)))
+                                    [:reject 403 "stube request rejected."]))
+                                :continue)]
+                 (if (and (vector? decision) (= :reject (first decision)))
+                   (let [[_ status body] decision]
+                     {:status  (or status 403)
+                      :headers {"Content-Type" "text/plain; charset=utf-8"
+                                "Cache-Control" "no-store"}
+                      :body    (or body "stube request rejected.")})
+                   (do
+                     (rt/dispatch! k cid ev)
+                     {:status 204})))))))))))

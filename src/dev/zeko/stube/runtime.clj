@@ -44,6 +44,13 @@
                 :session-id-fn     session/request-session
                 :on-conv-mint      (fn [conv _request] conv)
                 :on-error          nil
+                ;; Security / audit observability hooks + the dispatch
+                ;; authz seam.  All default to nil (no-op).  See
+                ;; make-kernel docstring.
+                :on-auth-fail      nil
+                :on-stale          nil
+                :on-shell-mint     nil
+                :before-dispatch   nil
                 :ui-css?           true
                 :base-css          []
                 :css-layer-order   nil
@@ -177,7 +184,19 @@
     multipart tempfiles once the `:upload-received` dispatch has
     consumed them.  Set this true when a handler hands the tempfile to
     asynchronous processing (e.g. an `:io` thunk) and takes
-    responsibility for deleting it itself."
+    responsibility for deleting it itself.
+  * `:on-auth-fail` / `:on-stale` / `:on-shell-mint` — optional audit
+    hooks, each `(fn [info])`, default nil (no-op).  `:on-auth-fail`
+    fires when an owner-cookie or CSRF check rejects a request
+    (`info` has `:request` `:cid` `:route` `:reason`); `:on-stale`
+    fires when a `410`-stale response goes out (`:cid`);
+    `:on-shell-mint` fires when a GET mints a conversation (`:request`
+    `:cid` `:flow-id`).  A throwing hook is swallowed and logged.
+  * `:before-dispatch` — optional authz / rate-limit seam,
+    `(fn [conv event request])` run just before an event is dispatched.
+    Return `:continue` to proceed or `[:reject status body]` to short-
+    circuit with that response.  Fails closed: a throwing hook rejects
+    the request."
   ([]
    (make-kernel {}))
   ([opts]

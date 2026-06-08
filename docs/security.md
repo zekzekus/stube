@@ -128,6 +128,10 @@ release.
   (`runtime.clj`).
 - **Graceful shutdown.** `halt!` refuses new mints (503), runs `:stop`
   hooks, drains SSE, and flushes the store (`runtime.clj`).
+- **Audit + authz seams.** `make-kernel` accepts `:on-auth-fail`,
+  `:on-stale`, `:on-shell-mint` audit hooks and a `:before-dispatch`
+  authz/rate-limit gate (fail-closed). The framework emits; the host
+  decides what to enforce and persist (see [§7](#7-authentication-vs-authorization)).
 
 ---
 
@@ -286,9 +290,16 @@ is preserved so the current page keeps working). To also refresh
 at mint time.
 
 **Per-dispatch authorization** (e.g. "this handler runs only for role
-X") is currently the component's own responsibility inside `:handle`. A
-`:before-dispatch` kernel seam to centralise authz / rate-limit / audit
-is on the roadmap (gap — tracked).
+X") can live in the component's `:handle`, or be centralised with the
+`:before-dispatch` kernel hook — `(fn [conv event request])` run just
+before each event dispatches, returning `:continue` or
+`[:reject status body]`. It fails closed (a throwing hook rejects), so
+it is a safe place for authz and per-cid rate limiting.
+
+**Audit.** Wire `:on-auth-fail`, `:on-stale`, and `:on-shell-mint` on
+`make-kernel` to record owner/CSRF rejections, stale-page reports, and
+conversation mints; the framework emits the events, the host persists
+them (see ADR 0004's framework/host split).
 
 ---
 
