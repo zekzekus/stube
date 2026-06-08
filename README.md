@@ -75,6 +75,7 @@ Seaside model, rebuilt for 2026.
 | [**Internals**](docs/internals.md) | How the kernel, conversation and effects fit together. |
 | [**Kit module**](docs/kit-module.md) | Add stube to a kit-clj app with `kit/install-module`. |
 | [**Security**](docs/security.md) | Threat model, shared-responsibility split, and the host-config checklist for a safe deployment. |
+| [**Scaling**](docs/scaling.md) | Operating under load: vertical first, then sticky-by-cid horizontal and what to externalize. |
 | [**Rationale**](docs/rationale.md) | Why stube exists. Seaside, the uncommon web, and where the model came from. |
 | [**Changelog**](CHANGELOG.md) | Big-rock changes by release/development pass. |
 

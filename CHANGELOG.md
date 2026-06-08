@@ -5,7 +5,15 @@ development entry.
 
 ## Unreleased
 
-(No changes yet.)
+### Docs
+
+- Added [`docs/scaling.md`](docs/scaling.md): how to operate a stube
+  deployment under load. Covers the single-JVM state model, vertical
+  scaling (the reaper, keepalive threads, per-cid dispatch
+  serialization), and horizontal scaling — the conversation-affinity
+  (sticky-by-`cid`) rule plus the three externalizations a multi-node
+  setup needs (shared conversation store, cross-node pub/sub, durable
+  timers). Linked from the README doc index.
 
 ## 0.9.0
 
